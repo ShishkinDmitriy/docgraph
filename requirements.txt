@@ -1,6 +1,4 @@
 anthropic>=0.40.0
-pdfplumber>=0.11.0
-pdf2image>=1.17.0
 rdflib>=7.0.0
 pyshacl>=0.25.0
 click>=8.1.0

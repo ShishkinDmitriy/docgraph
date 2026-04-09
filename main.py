@@ -4,6 +4,7 @@
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -12,11 +13,11 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from src.classifier.extractor import extract_text, extract_images
-from src.classifier.classifier import classify, classify_from_images, extract_details
+from src.classifier.extractor import extract_pdf
+from src.classifier.classifier import classify_pdf, extract_details, pdf_to_markdown, markdown_content_block
 from src.classifier.ontology import (
     build_category_descriptions,
-    build_extraction_prompt,
+    build_jsonld_extraction_prompt,
     load_document_classes,
     load_class_properties,
     load_preferred_model,
@@ -26,6 +27,95 @@ from src.classifier.results import append_result, find_classified, pdf_sha256
 from src.classifier.validator import validate, ShapeViolation
 
 console = Console()
+
+_STAMPS_PREFIX = "*Stamps / annotations: "
+_ISSUES_PREFIX = "*Extraction issues: "
+_DESC_PREFIX = "> "
+
+
+def _md_paths_for_pdf(pdf: Path) -> list[Path]:
+    """Return all .md files saved for this PDF, sorted by index."""
+    single = pdf.with_suffix(".md")
+    if single.exists():
+        return [single]
+    return sorted(pdf.parent.glob(f"{pdf.stem}_doc*.md"))
+
+
+def _load_or_extract_markdown(pdf, force, client, model, con, note=None) -> list[dict]:
+    """
+    Return a list of extracted docs (title / markdown / stamps).
+
+    Loads from existing .md files when possible; calls the LLM otherwise.
+    With --force, always re-extracts from the PDF.
+    """
+    existing = _md_paths_for_pdf(pdf)
+    if not force and existing:
+        docs = []
+        for md_path in existing:
+            con.print(f"  loading [dim]{md_path.name}[/dim]")
+            text = md_path.read_text(encoding="utf-8")
+            # Peel footer lines (issues then stamps) — both end with *
+            issues: list[str] = []
+            stamps: list[str] = []
+            for prefix, bucket in ((_ISSUES_PREFIX, issues), (_STAMPS_PREFIX, stamps)):
+                if text.rstrip().endswith("*") and prefix in text:
+                    body, footer = text.rsplit(prefix, 1)
+                    bucket.extend(s.strip() for s in footer.rstrip("*\n").split("|"))
+                    text = body.rstrip()
+            # Title is the first H2 heading (## ...) if present
+            title = "Document"
+            for line in text.splitlines():
+                if line.startswith("## "):
+                    title = line[3:].strip()
+                    break
+            # Description is the blockquote line immediately after the title
+            description = ""
+            lines = text.splitlines()
+            for idx, line in enumerate(lines):
+                if line.startswith("## ") and idx + 1 < len(lines):
+                    nxt = lines[idx + 1].strip()
+                    if nxt.startswith(_DESC_PREFIX):
+                        description = nxt[len(_DESC_PREFIX):]
+                    break
+            docs.append({"title": title, "description": description, "markdown": text, "stamps": stamps, "issues": issues})
+        return docs
+
+    pdf_block = extract_pdf(pdf)
+    con.print(f"  converting PDF to Markdown...")
+    docs = pdf_to_markdown(pdf_block, client, model, note=note)
+
+    if len(docs) == 1:
+        _save_doc(pdf.with_suffix(".md"), docs[0])
+        con.print(f"  markdown saved → [dim]{pdf.stem}.md[/dim]")
+        if docs[0].get("stamps"):
+            con.print(f"  stamps/annotations: [bold]{', '.join(docs[0]['stamps'])}[/bold]")
+        for issue in docs[0].get("issues", []):
+            con.print(f"  [yellow]extraction issue:[/yellow] {issue}")
+    else:
+        con.print(f"  detected [bold]{len(docs)}[/bold] sub-document(s)")
+        for i, doc in enumerate(docs, 1):
+            slug = re.sub(r'[^\w\-]', '_', doc["title"]).strip("_")
+            md_path = pdf.with_name(f"{pdf.stem}_doc{i}_{slug}.md")
+            _save_doc(md_path, doc)
+            con.print(f"  [{i}] {doc['title']} → [dim]{md_path.name}[/dim]")
+            if doc["stamps"]:
+                con.print(f"      stamps: [bold]{', '.join(doc['stamps'])}[/bold]")
+            for issue in doc.get("issues", []):
+                con.print(f"      [yellow]extraction issue:[/yellow] {issue}")
+
+    return docs
+
+
+def _save_doc(md_path: Path, doc: dict) -> None:
+    text = f"## {doc['title']}"
+    if doc.get("description"):
+        text += f"\n\n{_DESC_PREFIX}{doc['description']}"
+    text += f"\n\n{doc['markdown']}"
+    if doc.get("stamps"):
+        text += f"\n\n{_STAMPS_PREFIX}{' | '.join(doc['stamps'])}*"
+    if doc.get("issues"):
+        text += f"\n\n{_ISSUES_PREFIX}{' | '.join(doc['issues'])}*"
+    md_path.write_text(text, encoding="utf-8")
 
 
 @click.command()
@@ -145,24 +235,12 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, c
                     console.print(f"  [dim]already classified as {doc_id}, skipping[/dim]\n")
                     continue
 
-            console.print(f"  extracting text...")
-            text = extract_text(pdf)
+            docs = _load_or_extract_markdown(pdf, force, client, model, console, note=note)
 
-            if not text.strip():
-                console.print(f"  [dim]no text layer — rendering pages for vision OCR...[/dim]")
-                images = extract_images(pdf)
-                if not images:
-                    console.print(f"  [red]failed:[/red] could not render any pages")
-                    continue
-                for img in images:
-                    console.print(f"  saved page → {img['_path']}")
-                console.print(f"  sending {len(images)} page(s) to Claude vision...")
-                result, messages = classify_from_images(images, client, categories, model, note=note)
-                method = "vision"
-            else:
-                console.print(f"  extracted {len(text)} chars, classifying...")
-                result, messages = classify(text, client, categories, model)
-                method = "text"
+            content_block = markdown_content_block(docs)
+            console.print(f"  classifying...")
+            result, messages = classify_pdf(content_block, client, categories, model, note=note)
+            method = "markdown"
 
             hits = result.documents
             console.print(f"  detected [bold]{len(hits)}[/bold] document type(s):")
@@ -184,7 +262,7 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, c
                     console.print(f"  [{hit.category}] extracting {len(props)} properties...")
                     try:
                         hit.details = extract_details(
-                            messages, build_extraction_prompt(props), client, model
+                            messages, build_jsonld_extraction_prompt(doc_classes[hit.category], props), client, model
                         )
                         console.print(f"  [{hit.category}] details: {json.dumps(hit.details, indent=4)}")
                     except Exception as detail_err:

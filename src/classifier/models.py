@@ -9,15 +9,10 @@ from rdflib.namespace import XSD
 @dataclass
 class PropertyDef:
     uri: URIRef
-    field_key: str        # JSON key the LLM returns, e.g. "patient_owes"
-    label: str            # human-readable, used in the extraction prompt
+    field_key: str   # snake_case key derived from URI local name or tax:fieldKey
+    label: str       # human-readable, used in the extraction prompt
     rdf_range: URIRef = field(default_factory=lambda: XSD.string)
-    is_object_property: bool = False   # True for flat string object ranges (fin:Service, fin:Product)
-    is_monetary: bool = False          # True for tax:MonetaryAmount ranges
-    comment: str = ""                  # first sentence of rdfs:comment, used as extraction hint
-    is_compound_list: bool = False     # True when range is a list of compound objects (e.g. fin:LineItem)
-    is_compound_object: bool = False   # True when range is a single compound object (e.g. foaf:Agent)
-    item_schema: "list[PropertyDef]" = field(default_factory=list)  # sub-properties for compound types
+    comment: str = ""  # first sentence of rdfs:comment, used as extraction hint
 
 
 @dataclass
@@ -41,7 +36,7 @@ class DocumentHit:
     category: str
     confidence: float
     reason: str
-    details: dict | None = None
+    details: dict | None = None  # JSON-LD dict returned by the LLM
 
 
 @dataclass

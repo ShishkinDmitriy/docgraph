@@ -1,5 +1,6 @@
 """Load OWL/RDF ontology data: document classes, properties, and model config."""
 
+import json
 import re
 from pathlib import Path
 
@@ -13,25 +14,22 @@ FIN  = Namespace("http://example.org/financial/")
 LLM  = Namespace("http://example.org/llm#")
 FOAF = Namespace("http://xmlns.com/foaf/0.1/")
 
-# Object-property ranges extracted as a flat string (just a name/description).
-_EXTRACTABLE_OBJ_RANGES: frozenset[URIRef] = frozenset({
-    FIN.Service,
-    FIN.Product,
-})
+# Canonical @context used in every JSON-LD extraction prompt and result parse.
+JSONLD_CONTEXT: dict[str, str] = {
+    "fin":  "http://example.org/financial/",
+    "tax":  "http://example.org/tax-classifier/",
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "xsd":  "http://www.w3.org/2001/XMLSchema#",
+}
 
-# Object-property ranges extracted as a single nested JSON object.
-# Each entry must have DatatypeProperties with rdfs:domain set to that class.
-_COMPOUND_OBJ_RANGES: frozenset[URIRef] = frozenset({
-    FOAF.Agent,
-    FOAF.Person,
-    FOAF.Organization,
-})
 
-# Object-property ranges extracted as a JSON array of nested objects.
-# Each entry must have DatatypeProperties with rdfs:domain set to that class.
-_COMPOUND_LIST_RANGES: frozenset[URIRef] = frozenset({
-    FIN.LineItem,
-})
+def prefixed_name(uri: URIRef) -> str:
+    """Return a prefix:localname form for known namespaces, or the full URI string."""
+    s = str(uri)
+    for prefix, ns in JSONLD_CONTEXT.items():
+        if s.startswith(ns):
+            return f"{prefix}:{s[len(ns):]}"
+    return s
 
 
 def _local_name(uri) -> str:
@@ -86,51 +84,6 @@ def _build_ancestor_map(g: Graph) -> dict[URIRef, set[URIRef]]:
     return ancestors
 
 
-def _build_leaf_prop(g: Graph, prop_uri: URIRef, is_obj: bool) -> PropertyDef | None:
-    """
-    Build a PropertyDef for a leaf (non-compound) property.
-    Returns None for structural object links that cannot be extracted as scalars.
-    """
-    explicit_key = g.value(prop_uri, TAX.fieldKey)
-    field_key = str(explicit_key) if explicit_key else _to_snake(_local_name(prop_uri))
-    label     = g.value(prop_uri, RDFS.label) or field_key
-    rdf_range = g.value(prop_uri, RDFS.range) or (FOAF.Agent if is_obj else XSD.string)
-    is_monetary = is_obj and rdf_range == TAX.MonetaryAmount
-
-    if is_obj and not is_monetary and rdf_range not in _EXTRACTABLE_OBJ_RANGES:
-        return None
-
-    raw_comment = g.value(prop_uri, RDFS.comment)
-    comment = _first_sentence(str(raw_comment)) if raw_comment else ""
-
-    return PropertyDef(
-        uri=prop_uri,
-        field_key=field_key,
-        label=str(label),
-        rdf_range=rdf_range,
-        is_object_property=is_obj and not is_monetary,
-        is_monetary=is_monetary,
-        comment=comment,
-    )
-
-
-def _load_compound_item_schema(g: Graph, cls_uri: URIRef) -> list[PropertyDef]:
-    """
-    Load the extractable leaf sub-properties of a compound range class
-    (e.g. fin:LineItem). Only DatatypeProperties and extractable ObjectProperties
-    whose rdfs:domain includes cls_uri are returned.
-    """
-    props: list[PropertyDef] = []
-    for owl_type, is_obj in [(OWL.DatatypeProperty, False), (OWL.ObjectProperty, True)]:
-        for prop_uri in g.subjects(RDF.type, owl_type):
-            if cls_uri not in set(g.objects(prop_uri, RDFS.domain)):
-                continue
-            p = _build_leaf_prop(g, prop_uri, is_obj)
-            if p is not None:
-                props.append(p)
-    return props
-
-
 def load_document_classes(rdf_path: Path) -> dict[str, DocumentClass]:
     """
     Load OWL document classes from the categories ontology.
@@ -160,34 +113,18 @@ def load_class_properties(rdf_path: Path) -> dict[str, list[PropertyDef]]:
     """
     Load OWL properties grouped by the document class they belong to.
     Returns {notation: [PropertyDef, ...]}.
-
     Domain matching follows rdfs:subClassOf transitively.
-
-    Object properties are handled in four ways:
-    - _EXTRACTABLE_OBJ_RANGES → extracted as flat strings (is_object_property=True)
-    - _COMPOUND_OBJ_RANGES    → extracted as a single nested object (is_compound_object=True)
-    - _COMPOUND_LIST_RANGES   → extracted as an array of nested objects (is_compound_list=True)
-    - everything else         → skipped (structural links)
     """
     g = _parse_graph(rdf_path)
 
-    # Pre-load item schemas for all compound range classes (both object and list)
-    compound_schemas: dict[URIRef, list[PropertyDef]] = {
-        cls_uri: _load_compound_item_schema(g, cls_uri)
-        for cls_uri in _COMPOUND_LIST_RANGES | _COMPOUND_OBJ_RANGES
-    }
-
-    # Build notation → class URI map
     notation_to_uri: dict[str, URIRef] = {}
     for cls_uri in g.subjects(RDF.type, OWL.Class):
         notations = list(g.objects(cls_uri, SKOS.notation))
         if notations:
             notation_to_uri[str(notations[0])] = cls_uri  # type: ignore[assignment]
 
-    # Ancestor sets for subclass-aware domain matching
     ancestors = _build_ancestor_map(g)
 
-    # domain_uri → [notation, …]
     domain_to_notations: dict[URIRef, list[str]] = {}
     for notation, cls_uri in notation_to_uri.items():
         for anc in ancestors.get(cls_uri, {cls_uri}):
@@ -195,36 +132,22 @@ def load_class_properties(rdf_path: Path) -> dict[str, list[PropertyDef]]:
 
     result: dict[str, list[PropertyDef]] = {n: [] for n in notation_to_uri}
 
-    for owl_type, is_obj in [(OWL.DatatypeProperty, False), (OWL.ObjectProperty, True)]:
+    for owl_type in (OWL.DatatypeProperty, OWL.ObjectProperty):
         for prop_uri in g.subjects(RDF.type, owl_type):
-            explicit_key = g.value(prop_uri, TAX.fieldKey)
-            field_key = str(explicit_key) if explicit_key else _to_snake(_local_name(prop_uri))
-            label     = g.value(prop_uri, RDFS.label) or field_key
-            rdf_range = g.value(prop_uri, RDFS.range) or (FOAF.Agent if is_obj else XSD.string)
-            is_monetary     = is_obj and rdf_range == TAX.MonetaryAmount
-            is_compound     = is_obj and rdf_range in _COMPOUND_LIST_RANGES
-            is_compound_obj = is_obj and rdf_range in _COMPOUND_OBJ_RANGES
-
-            # Skip non-extractable structural object links
-            if is_obj and not is_monetary and not is_compound and not is_compound_obj \
-                    and rdf_range not in _EXTRACTABLE_OBJ_RANGES:
+            label = g.value(prop_uri, RDFS.label)
+            if not label:
                 continue
-
+            field_key = str(g.value(prop_uri, TAX.fieldKey) or _to_snake(_local_name(prop_uri)))
+            rdf_range = g.value(prop_uri, RDFS.range) or XSD.string
             raw_comment = g.value(prop_uri, RDFS.comment)
             comment = _first_sentence(str(raw_comment)) if raw_comment else ""
 
-            has_schema = is_compound or is_compound_obj
             prop = PropertyDef(
                 uri=prop_uri,
                 field_key=field_key,
                 label=str(label),
                 rdf_range=rdf_range,
-                is_object_property=is_obj and not is_monetary and not is_compound and not is_compound_obj,
-                is_monetary=is_monetary,
                 comment=comment,
-                is_compound_list=is_compound,
-                is_compound_object=is_compound_obj,
-                item_schema=compound_schemas.get(rdf_range, []) if has_schema else [],
             )
 
             for domain_uri in g.objects(prop_uri, RDFS.domain):
@@ -258,115 +181,50 @@ def load_preferred_model(rdf_path: Path) -> ModelConfig:
     raise ValueError(f"No model with llm:preferred true found in {rdf_path}")
 
 
-def load_categories(rdf_path: Path) -> dict[str, str]:
-    """Returns {notation: description} for building the classification prompt.
-    Falls back to skos:definition when rdfs:comment is absent."""
-    return {
-        cls.notation: cls.description or cls.definition
-        for cls in load_document_classes(rdf_path).values()
-    }
-
-
 def build_category_descriptions(
     doc_classes: dict[str, DocumentClass],
     class_props: dict[str, list[PropertyDef]],
 ) -> dict[str, str]:
-    """
-    Return {notation: full_description} where full_description combines the
-    class description with a structured list of its fields and sub-fields
-    derived from the ontology properties.
-
-    Format per class:
-        <description>
-        Fields: field_label, field_label, ...
-        <compound_label>: [sub_label, sub_label, ...]
-    """
+    """Return {notation: full_description} combining the class description with its field list."""
     result: dict[str, str] = {}
     for notation, cls in doc_classes.items():
         base = cls.description or cls.definition
         props = class_props.get(notation, [])
-
-        scalar_labels: list[str] = []
-        compound_parts: list[str] = []
-
-        for p in props:
-            if p.is_compound_list:
-                sub_labels = ", ".join(s.label for s in p.item_schema)
-                compound_parts.append(f"{p.label}: [{sub_labels}]")
-            elif p.is_compound_object:
-                sub_labels = ", ".join(s.label for s in p.item_schema)
-                compound_parts.append(f"{p.label}: {{{sub_labels}}}")
-            else:
-                scalar_labels.append(p.label)
-
-        lines = [base]
-        if scalar_labels:
-            lines.append("Fields: " + ", ".join(scalar_labels) + ".")
-        for cp in compound_parts:
-            lines.append(cp)
-
-        result[notation] = "\n".join(lines)
-
+        if props:
+            labels = ", ".join(p.label for p in props)
+            result[notation] = f"{base}\nFields: {labels}."
+        else:
+            result[notation] = base
     return result
 
 
-_RANGE_HINTS: dict[str, str] = {
-    str(XSD.date):           " (ISO date YYYY-MM-DD)",
-    str(XSD.gYear):          " (4-digit year)",
-    str(XSD.boolean):        " (true or false)",
-    str(XSD.decimal):        " (decimal number)",
-    str(TAX.MonetaryAmount): " (amount and ISO 4217 currency, e.g. 115.84 EUR)",
-    str(FIN.Service):        " (service name or description)",
-    str(FIN.Product):        " (product name or SKU)",
-}
-
-
-def _prop_line(p: PropertyDef, indent: str = "  ") -> str:
-    hint    = _RANGE_HINTS.get(str(p.rdf_range), "")
-    context = f" — {p.comment}" if p.comment else ""
-    return f'{indent}"{p.field_key}": "<{p.label}{context}{hint}>"'
-
-
-def build_extraction_prompt(properties: list[PropertyDef]) -> str:
+def build_jsonld_extraction_prompt(
+    doc_class: DocumentClass,
+    class_props: list[PropertyDef],
+) -> str:
     """
-    Build an LLM prompt that asks for the specific properties of a document class.
-    Scalar properties render as plain JSON fields.
-    Compound object properties (e.g. issuer) render as a nested JSON object.
-    Compound list properties (e.g. line_item) render as a JSON array of objects.
-    Sub-property schemas are derived from the range class's own properties.
+    Build a prompt asking the LLM to return document details as JSON-LD.
+    The LLM already has the document in context from the classification turn.
     """
-    lines: list[str] = []
-    for p in properties:
-        if p.is_compound_list:
-            item_lines = [_prop_line(sub, indent="      ") for sub in p.item_schema]
-            inner = ",\n".join(item_lines)
-            lines.append(
-                f'  "{p.field_key}": [\n'
-                f'    {{\n'
-                f'{inner}\n'
-                f'    }}\n'
-                f'  ]'
-            )
-        elif p.is_compound_object:
-            item_lines = [_prop_line(sub, indent="    ") for sub in p.item_schema]
-            # When the range is the abstract foaf:Agent, inject a type discriminator
-            # so Claude picks the concrete subclass (foaf:Person or foaf:Organization).
-            if p.rdf_range == FOAF.Agent:
-                item_lines.insert(0, '    "type": "<person or organization>"')
-            inner = ",\n".join(item_lines)
-            lines.append(
-                f'  "{p.field_key}": {{\n'
-                f'{inner}\n'
-                f'  }}'
-            )
-        else:
-            lines.append(_prop_line(p))
+    context_str = json.dumps(JSONLD_CONTEXT, indent=2)
+    class_qname = prefixed_name(doc_class.uri)
+
+    prop_lines = "\n".join(
+        f"  {prefixed_name(p.uri)}"
+        + (f" — {p.comment}" if p.comment else "")
+        for p in class_props
+    )
 
     return (
-        "Extract the following fields from this document. "
-        "Use null for any field not found. "
-        "For array fields extract one object per entry found in the document.\n\n"
-        "Respond with JSON only:\n{\n"
-        + ",\n".join(lines)
-        + "\n}"
+        f"Extract all available fields from this document and return as JSON-LD.\n\n"
+        f"Use exactly this @context:\n{context_str}\n\n"
+        f'Set "@type" to "{class_qname}" on the root object.\n\n'
+        f"For nested agents (issuer, recipient, counterparty, etc.):\n"
+        f'  - "@type": "foaf:Person" for individuals\n'
+        f'  - "@type": "foaf:Organization" for companies, practices, institutions\n\n'
+        f"For monetary amounts:\n"
+        f'  {{"@type": "tax:MonetaryAmount", "tax:numericValue": 115.84, "tax:currency": "EUR"}}\n\n'
+        f'For dates: {{"@value": "2024-01-15", "@type": "xsd:date"}}\n\n'
+        f"Available properties:\n{prop_lines}\n\n"
+        f"Return JSON-LD only. Use null for any field not found in the document."
     )
