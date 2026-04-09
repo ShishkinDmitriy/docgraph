@@ -1,0 +1,76 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix fs:   <http://example.org/fs#> .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Ontology declaration
+# ═══════════════════════════════════════════════════════════════════════════════
+
+<http://example.org/fs> a owl:Ontology ;
+    rdfs:label "File System Ontology" ;
+    rdfs:comment """Describes physical files stored on a filesystem.
+Covers identity (path, name), integrity (checksum), size, MIME type, and
+timestamps. Intended to serve as the provenance anchor for documents: a
+document is derived from the file that contains it.""" .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Classes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fs:File a owl:Class ;
+    rdfs:label "File" ;
+    rdfs:comment """A named, contiguous sequence of bytes stored in a file
+system directory. Identified by its full path on a specific host; content is
+verified via a cryptographic checksum. Format information belongs to the
+document layer (doc:PDFDocument) rather than here.""" .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fs:fileName a owl:DatatypeProperty ;
+    rdfs:domain fs:File ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "file name" ;
+    rdfs:comment "Base name of the file including its extension (e.g. invoice_2024.pdf)." .
+
+fs:filePath a owl:DatatypeProperty ;
+    rdfs:domain fs:File ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "file path" ;
+    rdfs:comment "Absolute path of the file on the local filesystem at the time of processing." .
+
+fs:sha256 a owl:DatatypeProperty ;
+    rdfs:domain fs:File ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "SHA-256" ;
+    rdfs:comment """Hex-encoded SHA-256 digest of the file's byte content.
+Serves as a stable content identifier for deduplication and integrity checks,
+independent of file name or location.""" .
+
+fs:fileSize a owl:DatatypeProperty ;
+    rdfs:domain fs:File ;
+    rdfs:range  xsd:long ;
+    rdfs:label  "file size" ;
+    rdfs:comment "Size of the file in bytes at the time of processing." .
+
+fs:mimeType a owl:DatatypeProperty ;
+    rdfs:domain fs:File ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "MIME type" ;
+    rdfs:comment "IANA media type identifying the file format (e.g. application/pdf, image/tiff)." .
+
+fs:createdAt a owl:DatatypeProperty ;
+    rdfs:domain fs:File ;
+    rdfs:range  xsd:dateTime ;
+    rdfs:label  "created at" ;
+    rdfs:comment """Filesystem creation timestamp. On Linux this reflects the
+inode change time (ctime) rather than true birth time; on macOS and Windows
+it is the actual creation time.""" .
+
+fs:modifiedAt a owl:DatatypeProperty ;
+    rdfs:domain fs:File ;
+    rdfs:range  xsd:dateTime ;
+    rdfs:label  "modified at" ;
+    rdfs:comment "Timestamp of the last modification to the file's byte content (mtime)." .

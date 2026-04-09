@@ -1,0 +1,685 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix fin:  <http://example.org/financial/> .
+@prefix tax:  <http://example.org/tax-classifier/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Concept scheme
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:financialDocuments a skos:ConceptScheme ;
+    skos:prefLabel "Financial Document Types" ;
+    rdfs:comment """Ontology of financial document types used in business and
+personal finance. Designed to supply concise definitions and structural
+descriptions for LLM prompt generation when classifying PDF documents.""" .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Abstract base
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:FinancialDocument a owl:Class ;
+    rdfs:subClassOf foaf:Document ;
+    rdfs:label "Financial Document" ;
+    rdfs:comment """Abstract superclass for any document that records or
+requests the movement of money between parties. Subclasses differ by intent:
+a Quote proposes a future amount, a DemandForPayment requests payment for
+delivered goods or services, a Receipt confirms payment received, a Statement
+summarises past activity, and so on. Every financial document has an issuer,
+a recipient, an issue date, and a document number.""" .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Top-level document classes
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:DemandForPayment a owl:Class, skos:Concept ;
+    rdfs:subClassOf fin:FinancialDocument ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "demand-for-payment" ;
+    rdfs:label "Demand For Payment" ;
+    skos:definition "A document requesting payment for goods or services already delivered, addressed to the party who owes the amount." ;
+    rdfs:comment """A DemandForPayment is a formal request for money owed,
+sent by a provider or seller after goods or services have been delivered.
+It itemises charges via LineItems (each with a monetary amount and currency)
+and states a total amount due — equal to the sum of its LineItem amounts —
+with a specific due date and payment terms.
+The distinction between a consumer-facing bill and a B2B invoice lies in the
+nature of the issuer and recipient, not in document structure: both share the
+same fields.
+Key visual signals: "Amount Due", "Due Date", "Invoice #" or "Account Number",
+line-item table with unit prices and amounts, subtotal + tax + total,
+payment instructions or bank/ACH details, possibly a tear-off payment stub.""" .
+
+fin:Receipt a owl:Class, skos:Concept ;
+    rdfs:subClassOf fin:FinancialDocument ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "receipt" ;
+    rdfs:label "Receipt" ;
+    skos:definition "Proof that a payment was received by a seller or provider." ;
+    rdfs:comment """A Receipt is issued after a financial transaction has been
+completed, confirming that funds were received. It references the original
+bill or invoice, the amount paid, the payment method and date, and a receipt
+or confirmation number. Receipts are important for expense reimbursement, tax
+deductions, and warranty claims.
+A receipt may be physical (paper, thermal print) or electronic (email, PDF).
+Key visual signals: "Receipt", "Thank you for your payment", payment date,
+payment method (card last 4, check number), "Paid" stamp or watermark.""" .
+
+fin:Quote a owl:Class, skos:Concept ;
+    rdfs:subClassOf fin:FinancialDocument ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "quote" ;
+    rdfs:label "Quote" ;
+    skos:definition "A non-binding estimate of the cost of goods or services before work begins." ;
+    rdfs:comment """A Quote (also called Estimate or Proposal) is issued by a
+seller before work starts or goods are shipped. It states the proposed price,
+scope, and terms but does not itself create a payment obligation — acceptance
+by the buyer converts it into an order or triggers invoice issuance.
+Quotes include an expiry date after which the prices may change, optional
+alternate line items, and proposed payment terms.
+Key visual signals: "Quote", "Estimate", "Proposal", "Valid until", "Subject to
+change", no "Amount Due" or due date, often a signature/acceptance block.""" .
+
+fin:Statement a owl:Class, skos:Concept ;
+    rdfs:subClassOf fin:FinancialDocument ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "statement" ;
+    rdfs:label "Statement" ;
+    skos:definition "A periodic summary of account transactions, balances, and amounts owed or available." ;
+    rdfs:comment """A Statement is a periodic (monthly, quarterly, annual)
+report produced by a financial institution or service provider summarising
+all Transactions within the period, the opening and closing balances, and the
+minimum or total amount due. It does not itself request new payment for
+undisputed charges — it informs the account holder of their current position.
+Bank statements, credit card statements, investment statements, and utility
+account statements are all subtypes.
+Key visual signals: statement date range ("Statement Period"), opening balance,
+closing balance, transaction list with dates and amounts, "Minimum Payment Due"
+or "New Balance".""" .
+
+fin:Transaction a owl:Class, skos:Concept ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "transaction" ;
+    rdfs:label "Transaction" ;
+    skos:definition "A single monetary event — a debit or credit — recorded against an account." ;
+    rdfs:comment """A Transaction is the atomic unit of financial record-keeping:
+one amount moving in one direction on a specific date. Every Statement is
+composed of Transactions. A transaction has a type (debit/credit), a date,
+an amount, a reference number, a merchant or counterparty, and optionally a
+category or memo field.
+Transactions are not standalone documents — they appear within Statements,
+bank exports (CSV/OFX), or digital receipts. In document classification a
+"transaction record" or "transaction confirmation" refers to a printout or
+email that captures a single transaction event, e.g. a wire confirmation or
+point-of-sale receipt.""" .
+
+fin:Transfer a owl:Class, skos:Concept ;
+    rdfs:subClassOf fin:Transaction ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "transfer" ;
+    rdfs:label "Transfer" ;
+    skos:definition "Movement of funds between two accounts or two parties." ;
+    rdfs:comment """A Transfer is a specialised Transaction that moves funds
+from a source account or party to a destination account or party. It produces
+two matching Transaction records: a debit on the source and a credit on the
+destination. Transfers include internal transfers (between a customer's own
+accounts), ACH/wire transfers (between institutions), and peer-to-peer payments.
+A transfer confirmation document states the from-account, to-account, amount,
+reference/trace number, and expected settlement date.
+Key visual signals: "Transfer Confirmation", "Wire Transfer Receipt",
+"From Account / To Account", trace or confirmation number, settlement date.""" .
+
+fin:Payout a owl:Class, skos:Concept ;
+    rdfs:subClassOf fin:Transaction ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "payout" ;
+    rdfs:label "Payout" ;
+    skos:definition "Disbursement of funds from a platform, institution, or employer to a recipient." ;
+    rdfs:comment """A Payout is a unidirectional disbursement from a platform
+(marketplace, payroll processor, insurance company, government agency) to a
+recipient. Examples include freelancer earnings payouts, insurance claim
+settlements, dividend payments, refund disbursements, and payroll deposits.
+Payouts include the recipient, the issuing entity, the gross amount, any
+withholding or fees deducted, the net amount disbursed, the payment method,
+and a payout reference number.
+Key visual signals: "Payout Summary", "Payment to [Name]", "Net Amount",
+deduction table (fees, tax withholding), payout date, bank or card last 4.""" .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Payment
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:Payment a owl:Class, skos:Concept ;
+    rdfs:subClassOf fin:FinancialDocument ;
+    skos:inScheme fin:financialDocuments ;
+    skos:notation "payment" ;
+    rdfs:label "Payment" ;
+    skos:definition "A document recording that funds were sent by a payer to settle one or more bills or invoices." ;
+    rdfs:comment """A Payment document is issued by or on behalf of the payer
+to record the act of remitting money. Unlike a Receipt (which is issued by the
+seller to confirm receipt of funds), a Payment document is produced by the
+paying party and shows the funds sent to settle one or more outstanding Bills
+or Invoices.
+Examples: remittance advice, payment voucher, bank payment confirmation,
+check stub, wire transfer remittance.
+Key visual signals: "Remittance Advice", "Payment Confirmation", "Amount Paid",
+table listing invoice numbers and amounts settled, payer and payee
+details, payment date, payment reference or cheque number.""" .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LineItem and Service
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:LineItem a owl:Class ;
+    rdfs:label "Line Item" ;
+    rdfs:comment """A LineItem is a single chargeable entry within a Bill,
+Invoice, or Quote. Each line item describes one unit of goods or services, its
+quantity, unit price, applicable tax, and subtotal. A document's grand total
+is derived from the sum of all line-item subtotals plus adjustments.
+Line items may reference a Service (for intangible work) or a Product (for
+physical goods). They are the primary source of detail for expense
+categorisation and tax deductibility analysis.""" .
+
+fin:Service a owl:Class ;
+    rdfs:label "Service" ;
+    rdfs:comment """A Service is an intangible work product or professional
+activity that was performed for the customer and gives rise to a charge on a
+LineItem. Examples: consulting hours, software licence, internet access,
+electricity supply, medical procedure, legal advice.
+A Service has a name, an optional industry code (CPT, SKU, SIC), a description
+of what was done, and the period during which it was rendered. Multiple
+LineItems on the same document may reference the same Service type at different
+rates or dates.""" .
+
+fin:Product a owl:Class ;
+    rdfs:label "Product" ;
+    rdfs:comment """A Product is a physical or digital item sold to the
+customer and listed on a LineItem. Products have a SKU or product code,
+a description, and a unit price. Unlike a Service, a Product is typically
+delivered at a point in time rather than over a period.""" .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Party (foaf:Agent) contact properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:legalName a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "name" ;
+    tax:fieldKey "name" ;
+    rdfs:comment "Full legal name of the organisation or person as it appears on the document." .
+
+fin:streetAddress a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "street address" ;
+    rdfs:comment "Street address including building number and street name." .
+
+fin:city a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "city" ;
+    rdfs:comment "City or town." .
+
+fin:postalCode a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "postal code" ;
+    rdfs:comment "Postal or ZIP code." .
+
+fin:country a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "country" ;
+    rdfs:comment "Country name or ISO 3166-1 alpha-2 code (e.g. DE, US, GB)." .
+
+fin:email a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "email" ;
+    rdfs:comment "Email address." .
+
+fin:phone a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "phone" ;
+    rdfs:comment "Phone number including country code (e.g. +49 30 12345678)." .
+
+fin:taxId a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "tax ID" ;
+    rdfs:comment "Tax identification number: VAT number, EIN, ABN, or equivalent national identifier." .
+
+fin:registrationNumber a owl:DatatypeProperty ;
+    rdfs:domain foaf:Agent ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "registration number" ;
+    rdfs:comment "Company or organisation registration number as issued by the relevant authority." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Shared document properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:issuer a owl:ObjectProperty ;
+    rdfs:domain fin:FinancialDocument ;
+    rdfs:range  foaf:Agent ;
+    rdfs:label  "issuer" ;
+    rdfs:comment """The organisation or person who created and sent this
+document. For a Bill or Invoice this is the seller/provider; for a Receipt
+it is the merchant; for a Statement it is the financial institution.""" .
+
+fin:documentRecipient a owl:ObjectProperty ;
+    rdfs:domain fin:FinancialDocument ;
+    rdfs:range  foaf:Agent ;
+    rdfs:label  "recipient" ;
+    rdfs:comment """The organisation or person to whom the document is
+addressed — the customer, account holder, or buyer.""" .
+
+fin:documentNumber a owl:DatatypeProperty ;
+    rdfs:domain fin:FinancialDocument ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "document number" ;
+    rdfs:comment """The unique identifier assigned by the issuer: invoice
+number, receipt number, statement number, quote reference, etc. Used for
+cross-referencing between related documents (e.g. a Receipt citing the
+Invoice it settles).""" .
+
+fin:issueDate a owl:DatatypeProperty ;
+    rdfs:domain fin:FinancialDocument ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "issue date" ;
+    rdfs:comment "Date on which the document was generated and sent to the recipient." .
+
+fin:currency a owl:DatatypeProperty ;
+    rdfs:domain fin:FinancialDocument ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "currency" ;
+    rdfs:comment "ISO 4217 currency code (e.g. USD, EUR, GBP) for all monetary amounts on this document." .
+
+fin:notes a owl:DatatypeProperty ;
+    rdfs:domain fin:FinancialDocument ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "notes" ;
+    rdfs:comment "Free-text notes, terms, or instructions printed on the document (e.g. payment instructions, legal disclaimers)." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# DemandForPayment properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:dueDate a owl:DatatypeProperty ;
+    rdfs:domain fin:DemandForPayment ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "due date" ;
+    rdfs:comment """The date by which payment must be received to avoid late
+fees or service interruption. A document without a due date is likely a
+Statement or Receipt rather than a DemandForPayment.""" .
+
+fin:paymentTerms a owl:DatatypeProperty ;
+    rdfs:domain fin:DemandForPayment ;
+    rdfs:domain fin:Quote ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "payment terms" ;
+    rdfs:comment """Human-readable payment conditions, e.g. "Net 30", "Due on
+receipt", "2/10 Net 30" (2% discount if paid within 10 days). Determines how
+to interpret the due date and any early-payment discounts.""" .
+
+fin:totalAmount a owl:DatatypeProperty ;
+    rdfs:domain fin:DemandForPayment ;
+    rdfs:domain fin:Quote ;
+    rdfs:domain fin:Receipt ;
+    rdfs:domain fin:Payment ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "total amount" ;
+    rdfs:comment """The gross monetary total of the document.
+For DemandForPayment: the sum of all LineItem amounts; must equal SUM(lineItem.amount).
+For Quote: the proposed total before acceptance.
+For Receipt: the amount actually paid.
+For Payment: the total funds remitted.""" .
+
+
+fin:lineItem a owl:ObjectProperty ;
+    rdfs:domain fin:DemandForPayment ;
+    rdfs:domain fin:Quote ;
+    rdfs:domain fin:Receipt ;
+    rdfs:range  fin:LineItem ;
+    rdfs:label  "line item" ;
+    rdfs:comment "Links a DemandForPayment, Quote, or Receipt to each of its component LineItems. The document total equals the sum of all LineItem amounts." .
+
+fin:accountNumber a owl:DatatypeProperty ;
+    rdfs:domain fin:DemandForPayment ;
+    rdfs:domain fin:Statement ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "account number" ;
+    rdfs:comment "The customer account number as assigned by the issuer, used to match bills and statements to the correct account." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# LineItem properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+fin:quantity a owl:DatatypeProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "quantity" ;
+    rdfs:comment "Number of units of the service or product covered by this line item (e.g. hours, licences, items)." .
+
+fin:unitPrice a owl:DatatypeProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "unit price" ;
+    rdfs:comment "Price per single unit of the service or product before tax." .
+
+fin:amount a owl:DatatypeProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "amount" ;
+    tax:fieldKey "amount" ;
+    rdfs:comment """The monetary total for this line item = quantity × unitPrice,
+before document-level adjustments. Contributes to the document's totalAmount.""" .
+
+fin:currency a owl:DatatypeProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "currency" ;
+    tax:fieldKey "currency" ;
+    rdfs:comment "ISO 4217 currency code for this line item (e.g. USD, EUR, GBP). Usually matches the document-level currency but may differ in multi-currency documents." .
+
+fin:taxAmount a owl:DatatypeProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "tax amount" ;
+    rdfs:comment "Tax charged specifically on this line item (VAT, sales tax, etc.), in the same currency. May be zero if the item is exempt." .
+
+fin:hasService a owl:ObjectProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  fin:Service ;
+    rdfs:label  "has service" ;
+    rdfs:comment """Links a LineItem to the Service it charges for.
+Use fin:hasProduct for physical goods. A LineItem should link to exactly one
+of Service or Product; if neither link is present the item is described only
+by its free-text description.""" .
+
+fin:hasProduct a owl:ObjectProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  fin:Product ;
+    rdfs:label  "has product" ;
+    rdfs:comment "Links a LineItem to the Product it charges for. Use fin:hasService for intangible services." .
+
+fin:serviceDate a owl:DatatypeProperty ;
+    rdfs:domain fin:LineItem ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "service date" ;
+    rdfs:comment "Date on which this specific line item's service was delivered or the product was shipped." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Service properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:serviceName a owl:DatatypeProperty ;
+    rdfs:domain fin:Service ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "service name" ;
+    rdfs:comment "Short name for the service as used by the provider (e.g. 'Consulting', 'Internet Access', 'Office 365 Business')." .
+
+fin:serviceCode a owl:DatatypeProperty ;
+    rdfs:domain fin:Service ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "service code" ;
+    rdfs:comment """Industry or provider-specific code identifying the service
+type (e.g. CPT procedure code for medical services, SKU for software products,
+utility tariff code). Useful for automated categorisation.""" .
+
+fin:serviceDescription a owl:DatatypeProperty ;
+    rdfs:domain fin:Service ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "service description" ;
+    rdfs:comment "Detailed description of what the service entails, as provided by the issuer." .
+
+fin:servicePeriodStart a owl:DatatypeProperty ;
+    rdfs:domain fin:Service ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "service period start" ;
+    rdfs:comment "Start of the period during which the service was rendered (for period-based services such as monthly subscriptions or consulting engagements)." .
+
+fin:servicePeriodEnd a owl:DatatypeProperty ;
+    rdfs:domain fin:Service ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "service period end" ;
+    rdfs:comment "End of the period during which the service was rendered." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Statement properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:statementPeriodStart a owl:DatatypeProperty ;
+    rdfs:domain fin:Statement ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "statement period start" ;
+    rdfs:comment "Start date of the period covered by this statement (inclusive)." .
+
+fin:statementPeriodEnd a owl:DatatypeProperty ;
+    rdfs:domain fin:Statement ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "statement period end" ;
+    rdfs:comment "End date of the period covered by this statement (inclusive)." .
+
+fin:openingBalance a owl:DatatypeProperty ;
+    rdfs:domain fin:Statement ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "opening balance" ;
+    rdfs:comment "Account balance at the start of the statement period." .
+
+fin:closingBalance a owl:DatatypeProperty ;
+    rdfs:domain fin:Statement ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "closing balance" ;
+    rdfs:comment "Account balance at the end of the statement period." .
+
+fin:minimumPaymentDue a owl:DatatypeProperty ;
+    rdfs:domain fin:Statement ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "minimum payment due" ;
+    rdfs:comment "The minimum amount the account holder must pay by the due date to remain in good standing (common on credit card statements)." .
+
+fin:statementTransaction a owl:ObjectProperty ;
+    rdfs:domain fin:Statement ;
+    rdfs:range  fin:Transaction ;
+    rdfs:label  "statement transaction" ;
+    rdfs:comment "Links a Statement to each Transaction listed within it." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Transaction properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:transactionType a owl:DatatypeProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "transaction type" ;
+    rdfs:comment """Classification of the transaction: 'debit', 'credit',
+'purchase', 'refund', 'fee', 'interest', 'transfer', 'payment'.
+On a bank statement, debits reduce the balance; credits increase it.""" .
+
+fin:transactionDate a owl:DatatypeProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "transaction date" ;
+    rdfs:comment "Date the transaction occurred (trade date). May differ from the settlement date when funds actually move." .
+
+fin:settlementDate a owl:DatatypeProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "settlement date" ;
+    rdfs:comment "Date the transaction was fully settled and funds moved between accounts. For most card transactions this is T+1 or T+2." .
+
+fin:transactionAmount a owl:DatatypeProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "transaction amount" ;
+    rdfs:comment "Absolute value of the amount involved in this transaction. The transactionType field indicates direction (debit vs credit)." .
+
+fin:referenceNumber a owl:DatatypeProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "reference number" ;
+    rdfs:comment "Unique identifier for this transaction assigned by the payment network or institution (e.g. authorisation code, trace number)." .
+
+fin:counterparty a owl:ObjectProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  foaf:Agent ;
+    rdfs:label  "counterparty" ;
+    rdfs:comment "The merchant, institution, or person on the other side of this transaction." .
+
+fin:memo a owl:DatatypeProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "memo" ;
+    rdfs:comment "Free-text description of the transaction as it appears on the statement (e.g. merchant name, payment reference, narrative)." .
+
+fin:transactionCategory a owl:DatatypeProperty ;
+    rdfs:domain fin:Transaction ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "transaction category" ;
+    rdfs:comment "Expense or income category assigned to this transaction, either by the institution or by automated categorisation (e.g. 'Groceries', 'Utilities', 'Salary')." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Transfer properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:fromAccount a owl:DatatypeProperty ;
+    rdfs:domain fin:Transfer ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "from account" ;
+    rdfs:comment "Account number or identifier from which funds are debited in this transfer." .
+
+fin:toAccount a owl:DatatypeProperty ;
+    rdfs:domain fin:Transfer ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "to account" ;
+    rdfs:comment "Account number or identifier to which funds are credited in this transfer." .
+
+fin:fromInstitution a owl:ObjectProperty ;
+    rdfs:domain fin:Transfer ;
+    rdfs:range  foaf:Organization ;
+    rdfs:label  "from institution" ;
+    rdfs:comment "Financial institution holding the source account." .
+
+fin:toInstitution a owl:ObjectProperty ;
+    rdfs:domain fin:Transfer ;
+    rdfs:range  foaf:Organization ;
+    rdfs:label  "to institution" ;
+    rdfs:comment "Financial institution holding the destination account." .
+
+fin:transferReference a owl:DatatypeProperty ;
+    rdfs:domain fin:Transfer ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "transfer reference" ;
+    rdfs:comment "Trace or confirmation number assigned to this transfer by the originating institution or payment network (ACH trace, SWIFT UETR, Fedwire IMAD)." .
+
+fin:transferMessage a owl:DatatypeProperty ;
+    rdfs:domain fin:Transfer ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "transfer message" ;
+    rdfs:comment "Optional message or memo attached to the transfer by the sender (e.g. 'Rent for April', 'Invoice #1234')." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Payout properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:payoutRecipient a owl:ObjectProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  foaf:Agent ;
+    rdfs:label  "payout recipient" ;
+    rdfs:comment "The person or organisation receiving the disbursement." .
+
+fin:payoutIssuer a owl:ObjectProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  foaf:Organization ;
+    rdfs:label  "payout issuer" ;
+    rdfs:comment "The platform, employer, institution, or agency disbursing the funds." .
+
+fin:grossPayoutAmount a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "gross payout amount" ;
+    rdfs:comment "Total amount before any deductions such as fees, tax withholding, or platform commissions." .
+
+fin:deductionsAmount a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "deductions amount" ;
+    rdfs:comment "Sum of all amounts withheld from the gross payout (fees, taxes, chargebacks). netPayoutAmount = grossPayoutAmount − deductionsAmount." .
+
+fin:netPayoutAmount a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "net payout amount" ;
+    rdfs:comment "The amount actually deposited or disbursed to the recipient after all deductions." .
+
+fin:payoutDate a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "payout date" ;
+    rdfs:comment "Date on which the payout was initiated or the funds were deposited into the recipient's account." .
+
+fin:payoutMethod a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "payout method" ;
+    rdfs:comment "How the payout was delivered: 'ACH', 'wire', 'check', 'PayPal', 'Stripe', 'prepaid card', etc." .
+
+fin:payoutReference a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "payout reference" ;
+    rdfs:comment "Unique identifier for this payout assigned by the issuing platform (e.g. Stripe payout ID, payroll batch number)." .
+
+fin:payoutStatus a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "payout status" ;
+    rdfs:comment """Current state of the payout: 'pending', 'in-transit',
+'paid', 'failed', 'cancelled'. A failed payout may be retried or replaced
+by a new payout event.""" .
+
+fin:payoutPeriodStart a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "payout period start" ;
+    rdfs:comment "Start of the earning or activity period that this payout covers (e.g. the pay period for a payroll payout)." .
+
+fin:payoutPeriodEnd a owl:DatatypeProperty ;
+    rdfs:domain fin:Payout ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "payout period end" ;
+    rdfs:comment "End of the earning or activity period that this payout covers." .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Quote properties
+# ═══════════════════════════════════════════════════════════════════════════════
+
+fin:quoteExpiryDate a owl:DatatypeProperty ;
+    rdfs:domain fin:Quote ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "quote expiry date" ;
+    rdfs:comment "Date after which the quoted prices are no longer guaranteed and the customer must request a new quote." .
+
+fin:quoteAccepted a owl:DatatypeProperty ;
+    rdfs:domain fin:Quote ;
+    rdfs:range  xsd:boolean ;
+    rdfs:label  "quote accepted" ;
+    rdfs:comment "True if the recipient has formally accepted the quote, converting it into a work order or triggering invoice issuance." .
+
+fin:acceptedDate a owl:DatatypeProperty ;
+    rdfs:domain fin:Quote ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "accepted date" ;
+    rdfs:comment "Date on which the recipient accepted the quote." .
+
+fin:relatedInvoice a owl:ObjectProperty ;
+    rdfs:domain fin:Quote ;
+    rdfs:range  fin:Invoice ;
+    rdfs:label  "related invoice" ;
+    rdfs:comment "The Invoice generated after this Quote was accepted." .

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -c ':*)",
+      "Bash(python:*)",
+      "Bash(.venv/bin/python:*)",
+      "Bash(wc:*)"
+    ]
+  }
+}

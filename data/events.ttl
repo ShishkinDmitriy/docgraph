@@ -1,0 +1,96 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix tax:  <http://example.org/tax-classifier/> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+
+# ── Classes ───────────────────────────────────────────────────────────────────
+
+tax:PatientPayment a owl:Class ;
+    rdfs:label "Patient Payment" ;
+    rdfs:comment """A payment made by a patient (or their guarantor) toward a
+medical bill. A single bill may have multiple payments, e.g. under a payment
+plan. The gross patient cost is the sum of all PatientPayments that settle a
+given bill. Whether the patient recovers any of that cost depends on whether
+an InsuranceReimbursement is later issued.""" .
+
+tax:InsuranceReimbursement a owl:Class ;
+    rdfs:label "Insurance Reimbursement" ;
+    rdfs:comment """A reimbursement paid by an insurance company back to the
+patient after the patient has already paid the provider directly. Its presence
+is not guaranteed: if the claim is denied, out-of-network, or the patient has
+no coverage, no reimbursement occurs and the patient bears the full payment
+amount. Net patient cost = SUM(PatientPayments) - SUM(InsuranceReimbursements)
+for a given bill.""" .
+
+# ── Object properties ─────────────────────────────────────────────────────────
+
+tax:settles a owl:ObjectProperty ;
+    rdfs:domain tax:PatientPayment ;
+    rdfs:range  tax:MedicalBill ;
+    rdfs:label  "settles" ;
+    rdfs:comment """Links a payment to the medical bill it is paying toward.
+A bill without any incoming tax:settles payments is still outstanding.""" .
+
+tax:reimbursedFor a owl:ObjectProperty ;
+    rdfs:domain tax:InsuranceReimbursement ;
+    rdfs:range  tax:PatientPayment ;
+    rdfs:label  "reimbursed for" ;
+    rdfs:comment """Links a reimbursement to the specific patient payment it
+recovers. Pointing at the payment (rather than the bill) preserves the audit
+trail when a patient makes multiple partial payments and only one is
+reimbursed.""" .
+
+tax:paidBy a owl:ObjectProperty ;
+    rdfs:domain tax:PatientPayment ;
+    rdfs:range  foaf:Person ;
+    rdfs:label  "paid by" ;
+    rdfs:comment "The person (patient or guarantor) who made the payment." .
+
+tax:reimbursedBy a owl:ObjectProperty ;
+    rdfs:domain tax:InsuranceReimbursement ;
+    rdfs:range  foaf:Organization ;
+    rdfs:label  "reimbursed by" ;
+    rdfs:comment "The insurance organization that issued the reimbursement." .
+
+# ── Datatype properties ───────────────────────────────────────────────────────
+
+tax:paymentAmount a owl:DatatypeProperty ;
+    rdfs:domain tax:PatientPayment ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "payment amount" ;
+    rdfs:comment "Amount paid by the patient in this payment event." .
+
+tax:paymentDate a owl:DatatypeProperty ;
+    rdfs:domain tax:PatientPayment ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "payment date" ;
+    rdfs:comment "Date the payment was made." .
+
+tax:paymentMethod a owl:DatatypeProperty ;
+    rdfs:domain tax:PatientPayment ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "payment method" ;
+    rdfs:comment "How the payment was made: cash, check, credit card, HSA, etc." .
+
+tax:reimbursementAmount a owl:DatatypeProperty ;
+    rdfs:domain tax:InsuranceReimbursement ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "reimbursement amount" ;
+    rdfs:comment """Amount the insurance company returned to the patient.
+May be less than the original payment if the insurer covers only a portion
+(e.g. coinsurance, deductible still applies).""" .
+
+tax:reimbursementDate a owl:DatatypeProperty ;
+    rdfs:domain tax:InsuranceReimbursement ;
+    rdfs:range  xsd:date ;
+    rdfs:label  "reimbursement date" ;
+    rdfs:comment "Date the reimbursement was received by the patient." .
+
+tax:claimNumber a owl:DatatypeProperty ;
+    rdfs:domain tax:InsuranceReimbursement ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "claim number" ;
+    rdfs:comment """Insurance claim number shown on the reimbursement document.
+Useful for matching a reimbursement back to the original EOB or bill when
+multiple claims are open at the same time.""" .

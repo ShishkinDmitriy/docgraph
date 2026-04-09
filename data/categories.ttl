@@ -1,0 +1,527 @@
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix tax:  <http://example.org/tax-classifier/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+# ── Concept scheme ────────────────────────────────────────────────────────────
+
+tax:categories a skos:ConceptScheme ;
+    skos:prefLabel "Tax Document Categories" .
+
+# ── Monetary amount ───────────────────────────────────────────────────────────
+
+tax:MonetaryAmount a owl:Class ;
+    rdfs:label "Monetary Amount" ;
+    rdfs:comment "A numeric amount paired with an ISO 4217 currency code." .
+
+tax:numericValue a owl:DatatypeProperty ;
+    rdfs:domain tax:MonetaryAmount ;
+    rdfs:range  xsd:decimal ;
+    rdfs:label  "Numeric Value" .
+
+tax:currency a owl:DatatypeProperty ;
+    rdfs:domain tax:MonetaryAmount ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "Currency Code (ISO 4217)" .
+
+# ── Document classes ──────────────────────────────────────────────────────────
+
+tax:W2Form a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "W-2" ;
+    skos:definition "Wage and Tax Statement from employer" .
+
+tax:Form1099INT a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1099-INT" ;
+    skos:definition "Interest income" .
+
+tax:Form1099DIV a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1099-DIV" ;
+    skos:definition "Dividend income" .
+
+tax:Form1099B a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1099-B" ;
+    skos:definition "Brokerage / capital gains" .
+
+tax:Form1099NEC a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1099-NEC" ;
+    skos:definition "Non-employee compensation / freelance income" .
+
+tax:Form1099MISC a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1099-MISC" ;
+    skos:definition "Miscellaneous income" .
+
+tax:Form1099R a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1099-R" ;
+    skos:definition "Retirement / pension distribution" .
+
+tax:FormSSA1099 a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "SSA-1099" ;
+    skos:definition "Social Security benefits" .
+
+tax:Form1098 a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1098" ;
+    skos:definition "Mortgage interest statement" .
+
+tax:Form1098T a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "1098-T" ;
+    skos:definition "Tuition statement" .
+
+tax:BankStatement a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "bank-statement" ;
+    skos:definition "Bank account statement" .
+
+tax:InvestmentStatement a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "investment-statement" ;
+    skos:definition "Brokerage or investment account statement" .
+
+tax:Receipt a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "receipt" ;
+    skos:definition "Receipt or invoice (potential deductible expense)" .
+
+tax:PropertyTaxBill a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "property-tax" ;
+    skos:definition "Property tax bill or notice" .
+
+tax:CharitableDonation a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "charitable-donation" ;
+    skos:definition "Charitable donation acknowledgment" .
+
+tax:MedicalBill a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "medical" ;
+    skos:definition "Medical bill, EOB, or HSA statement" .
+
+tax:TaxReturn a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "tax-return" ;
+    skos:definition "Previously filed tax return (1040 or state)" .
+
+tax:OtherDocument a owl:Class, skos:Concept ;
+    skos:inScheme tax:categories ;
+    skos:notation "other" ;
+    skos:definition "Does not match a known tax document type" .
+
+# ── Shared properties (multiple domains) ─────────────────────────────────────
+
+tax:payer a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099INT ;
+    rdfs:domain tax:Form1099DIV ;
+    rdfs:domain tax:Form1099NEC ;
+    rdfs:domain tax:Form1099MISC ;
+    rdfs:domain tax:Form1099R ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Payer Name" ;
+    tax:fieldKey "payer" .
+
+tax:ein a owl:DatatypeProperty ;
+    rdfs:domain tax:W2Form ;
+    rdfs:domain tax:Form1099NEC ;
+    rdfs:domain tax:CharitableDonation ;
+    rdfs:range xsd:string ;
+    rdfs:label "EIN" ;
+    tax:fieldKey "ein" .
+
+tax:recipient a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099NEC ;
+    rdfs:domain tax:Form1099MISC ;
+    rdfs:range foaf:Person ;
+    rdfs:label "Recipient Name" ;
+    tax:fieldKey "recipient" .
+
+tax:broker a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099B ;
+    rdfs:domain tax:InvestmentStatement ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Broker Name" ;
+    tax:fieldKey "broker" .
+
+tax:accountHolder a owl:ObjectProperty ;
+    rdfs:domain tax:BankStatement ;
+    rdfs:domain tax:InvestmentStatement ;
+    rdfs:range foaf:Agent ;
+    rdfs:label "Account Holder" ;
+    tax:fieldKey "account_holder" .
+
+tax:accountLast4 a owl:DatatypeProperty ;
+    rdfs:domain tax:BankStatement ;
+    rdfs:domain tax:InvestmentStatement ;
+    rdfs:range xsd:string ;
+    rdfs:label "Account Number (last 4)" ;
+    tax:fieldKey "account_last4" .
+
+tax:statementPeriod a owl:DatatypeProperty ;
+    rdfs:domain tax:BankStatement ;
+    rdfs:domain tax:InvestmentStatement ;
+    rdfs:range xsd:string ;
+    rdfs:label "Statement Period" ;
+    tax:fieldKey "period" .
+
+tax:propertyAddress a owl:DatatypeProperty ;
+    rdfs:domain tax:Form1098 ;
+    rdfs:domain tax:PropertyTaxBill ;
+    rdfs:range xsd:string ;
+    rdfs:label "Property Address" ;
+    tax:fieldKey "property_address" .
+
+# ── W-2 properties ────────────────────────────────────────────────────────────
+
+tax:employer a owl:ObjectProperty ;
+    rdfs:domain tax:W2Form ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Employer Name" ;
+    tax:fieldKey "employer" .
+
+tax:employee a owl:ObjectProperty ;
+    rdfs:domain tax:W2Form ;
+    rdfs:range foaf:Person ;
+    rdfs:label "Employee Name" ;
+    tax:fieldKey "employee" .
+
+tax:wages a owl:ObjectProperty ;
+    rdfs:domain tax:W2Form ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Wages (box 1)" ;
+    tax:fieldKey "wages" .
+
+tax:federalWithheld a owl:ObjectProperty ;
+    rdfs:domain tax:W2Form ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Federal Tax Withheld (box 2)" ;
+    tax:fieldKey "federal_withheld" .
+
+# ── 1099-INT properties ───────────────────────────────────────────────────────
+
+tax:accountNumber a owl:DatatypeProperty ;
+    rdfs:domain tax:Form1099INT ;
+    rdfs:range xsd:string ;
+    rdfs:label "Account Number" ;
+    tax:fieldKey "account" .
+
+tax:interestAmount a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099INT ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Interest Amount (box 1)" ;
+    tax:fieldKey "interest" .
+
+# ── 1099-DIV properties ───────────────────────────────────────────────────────
+
+tax:ordinaryDividends a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099DIV ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Ordinary Dividends (box 1a)" ;
+    tax:fieldKey "ordinary_dividends" .
+
+tax:qualifiedDividends a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099DIV ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Qualified Dividends (box 1b)" ;
+    tax:fieldKey "qualified_dividends" .
+
+# ── 1099-B properties ─────────────────────────────────────────────────────────
+
+tax:proceeds a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099B ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Proceeds" ;
+    tax:fieldKey "proceeds" .
+
+tax:costBasis a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099B ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Cost Basis" ;
+    tax:fieldKey "cost_basis" .
+
+tax:netGain a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099B ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Net Gain or Loss" ;
+    tax:fieldKey "net_gain" .
+
+# ── 1099-NEC properties ───────────────────────────────────────────────────────
+
+tax:compensationAmount a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099NEC ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Non-employee Compensation (box 1)" ;
+    tax:fieldKey "amount" .
+
+# ── 1099-MISC properties ──────────────────────────────────────────────────────
+
+tax:rents a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099MISC ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Rents (box 1)" ;
+    tax:fieldKey "rents" .
+
+tax:otherIncome a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099MISC ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Other Income (box 3)" ;
+    tax:fieldKey "other_income" .
+
+# ── 1099-R properties ─────────────────────────────────────────────────────────
+
+tax:grossDistribution a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099R ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Gross Distribution (box 1)" ;
+    tax:fieldKey "gross_distribution" .
+
+tax:taxableAmount a owl:ObjectProperty ;
+    rdfs:domain tax:Form1099R ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Taxable Amount (box 2a)" ;
+    tax:fieldKey "taxable_amount" .
+
+tax:distributionCode a owl:DatatypeProperty ;
+    rdfs:domain tax:Form1099R ;
+    rdfs:range xsd:string ;
+    rdfs:label "Distribution Code (box 7)" ;
+    tax:fieldKey "distribution_code" .
+
+# ── SSA-1099 properties ───────────────────────────────────────────────────────
+
+tax:beneficiary a owl:ObjectProperty ;
+    rdfs:domain tax:FormSSA1099 ;
+    rdfs:range foaf:Person ;
+    rdfs:label "Beneficiary Name" ;
+    tax:fieldKey "beneficiary" .
+
+tax:totalBenefits a owl:ObjectProperty ;
+    rdfs:domain tax:FormSSA1099 ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Benefits Paid (box 3)" ;
+    tax:fieldKey "total_benefits" .
+
+tax:medicareDeducted a owl:ObjectProperty ;
+    rdfs:domain tax:FormSSA1099 ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Medicare Premiums Deducted" ;
+    tax:fieldKey "medicare_deducted" .
+
+# ── 1098 properties ───────────────────────────────────────────────────────────
+
+tax:lender a owl:ObjectProperty ;
+    rdfs:domain tax:Form1098 ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Lender Name" ;
+    tax:fieldKey "lender" .
+
+tax:mortgageInterest a owl:ObjectProperty ;
+    rdfs:domain tax:Form1098 ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Mortgage Interest Received (box 1)" ;
+    tax:fieldKey "mortgage_interest" .
+
+tax:principal a owl:ObjectProperty ;
+    rdfs:domain tax:Form1098 ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Outstanding Principal (box 2)" ;
+    tax:fieldKey "principal" .
+
+# ── 1098-T properties ─────────────────────────────────────────────────────────
+
+tax:institution a owl:ObjectProperty ;
+    rdfs:domain tax:Form1098T ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Institution Name" ;
+    tax:fieldKey "institution" .
+
+tax:student a owl:ObjectProperty ;
+    rdfs:domain tax:Form1098T ;
+    rdfs:range foaf:Person ;
+    rdfs:label "Student Name" ;
+    tax:fieldKey "student" .
+
+tax:tuitionPayments a owl:ObjectProperty ;
+    rdfs:domain tax:Form1098T ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Payments Received (box 1)" ;
+    tax:fieldKey "payments" .
+
+tax:scholarships a owl:ObjectProperty ;
+    rdfs:domain tax:Form1098T ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Scholarships (box 5)" ;
+    tax:fieldKey "scholarships" .
+
+# ── Bank statement properties ─────────────────────────────────────────────────
+
+tax:bank a owl:ObjectProperty ;
+    rdfs:domain tax:BankStatement ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Bank Name" ;
+    tax:fieldKey "bank" .
+
+tax:endingBalance a owl:ObjectProperty ;
+    rdfs:domain tax:BankStatement ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Ending Balance" ;
+    tax:fieldKey "ending_balance" .
+
+# ── Investment statement properties ──────────────────────────────────────────
+
+tax:portfolioValue a owl:ObjectProperty ;
+    rdfs:domain tax:InvestmentStatement ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Portfolio Value" ;
+    tax:fieldKey "total_value" .
+
+# ── Receipt properties ────────────────────────────────────────────────────────
+
+tax:vendor a owl:ObjectProperty ;
+    rdfs:domain tax:Receipt ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Vendor or Merchant" ;
+    tax:fieldKey "vendor" .
+
+tax:transactionDate a owl:DatatypeProperty ;
+    rdfs:domain tax:Receipt ;
+    rdfs:range xsd:date ;
+    rdfs:label "Transaction Date" ;
+    tax:fieldKey "date" .
+
+tax:transactionAmount a owl:ObjectProperty ;
+    rdfs:domain tax:Receipt ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Amount" ;
+    tax:fieldKey "amount" .
+
+tax:expenseCategory a owl:DatatypeProperty ;
+    rdfs:domain tax:Receipt ;
+    rdfs:range xsd:string ;
+    rdfs:label "Expense Category" ;
+    tax:fieldKey "expense_category" .
+
+# ── Property tax bill properties ──────────────────────────────────────────────
+
+tax:assessingAuthority a owl:ObjectProperty ;
+    rdfs:domain tax:PropertyTaxBill ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Issuing Authority" ;
+    tax:fieldKey "authority" .
+
+tax:assessmentYear a owl:DatatypeProperty ;
+    rdfs:domain tax:PropertyTaxBill ;
+    rdfs:range xsd:gYear ;
+    rdfs:label "Assessment Year" ;
+    tax:fieldKey "assessment_year" .
+
+tax:amountDue a owl:ObjectProperty ;
+    rdfs:domain tax:PropertyTaxBill ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Amount Due" ;
+    tax:fieldKey "amount_due" .
+
+# ── Charitable donation properties ────────────────────────────────────────────
+
+tax:organization a owl:ObjectProperty ;
+    rdfs:domain tax:CharitableDonation ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Organization Name" ;
+    tax:fieldKey "organization" .
+
+tax:donationDate a owl:DatatypeProperty ;
+    rdfs:domain tax:CharitableDonation ;
+    rdfs:range xsd:date ;
+    rdfs:label "Donation Date" ;
+    tax:fieldKey "date" .
+
+tax:donationAmount a owl:ObjectProperty ;
+    rdfs:domain tax:CharitableDonation ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Donation Amount" ;
+    tax:fieldKey "amount" .
+
+tax:goodsOrServices a owl:DatatypeProperty ;
+    rdfs:domain tax:CharitableDonation ;
+    rdfs:range xsd:boolean ;
+    rdfs:label "Goods or Services Provided in Exchange" ;
+    tax:fieldKey "goods_or_services" .
+
+# ── Medical bill properties ───────────────────────────────────────────────────
+
+tax:provider a owl:ObjectProperty ;
+    rdfs:domain tax:MedicalBill ;
+    rdfs:range foaf:Organization ;
+    rdfs:label "Provider or Organization" ;
+    tax:fieldKey "provider" .
+
+tax:patient a owl:ObjectProperty ;
+    rdfs:domain tax:MedicalBill ;
+    rdfs:range foaf:Person ;
+    rdfs:label "Patient Name" ;
+    tax:fieldKey "patient" .
+
+tax:serviceDate a owl:DatatypeProperty ;
+    rdfs:domain tax:MedicalBill ;
+    rdfs:range xsd:date ;
+    rdfs:label "Service Date" ;
+    tax:fieldKey "service_date" .
+
+tax:totalBilled a owl:ObjectProperty ;
+    rdfs:domain tax:MedicalBill ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Billed" ;
+    tax:fieldKey "total_billed" .
+
+tax:patientOwes a owl:ObjectProperty ;
+    rdfs:domain tax:MedicalBill ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Amount Patient Owes" ;
+    tax:fieldKey "patient_owes" .
+
+# ── Tax return properties ─────────────────────────────────────────────────────
+
+tax:formType a owl:DatatypeProperty ;
+    rdfs:domain tax:TaxReturn ;
+    rdfs:range xsd:string ;
+    rdfs:label "Form Type" ;
+    tax:fieldKey "form" .
+
+tax:taxYear a owl:DatatypeProperty ;
+    rdfs:domain tax:TaxReturn ;
+    rdfs:range xsd:gYear ;
+    rdfs:label "Tax Year" ;
+    tax:fieldKey "tax_year" .
+
+tax:filer a owl:ObjectProperty ;
+    rdfs:domain tax:TaxReturn ;
+    rdfs:range foaf:Person ;
+    rdfs:label "Filer Name" ;
+    tax:fieldKey "filer" .
+
+tax:totalIncome a owl:ObjectProperty ;
+    rdfs:domain tax:TaxReturn ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Income" ;
+    tax:fieldKey "total_income" .
+
+tax:totalTax a owl:ObjectProperty ;
+    rdfs:domain tax:TaxReturn ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Total Tax" ;
+    tax:fieldKey "total_tax" .
+
+tax:refundOrOwed a owl:ObjectProperty ;
+    rdfs:domain tax:TaxReturn ;
+    rdfs:range tax:MonetaryAmount ;
+    rdfs:label "Refund or Amount Owed" ;
+    tax:fieldKey "refund_or_owed" .
