@@ -119,6 +119,7 @@ def classify_from_images(
     client: anthropic.Anthropic,
     categories: dict[str, str],
     model: ModelConfig,
+    note: str | None = None,
 ) -> tuple[ClassificationResult, Messages]:
     """
     Classify a scanned PDF via Claude vision.
@@ -128,9 +129,10 @@ def classify_from_images(
     system = SYSTEM_PROMPT.format(categories=_format_categories(categories))
     # Strip internal _path metadata before sending to the API
     api_images = [{k: v for k, v in img.items() if k != "_path"} for img in images]
-    user_content = api_images + [
-        {"type": "text", "text": "Classify this document:\n\nRespond with JSON only, no prose."}
-    ]
+    prompt = "Classify this document:\n\nRespond with JSON only, no prose."
+    if note:
+        prompt += f"\n\nNote from user: {note}"
+    user_content = api_images + [{"type": "text", "text": prompt}]
 
     messages: Messages = [{"role": "user", "content": user_content}]
 

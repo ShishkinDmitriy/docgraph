@@ -349,6 +349,10 @@ def build_extraction_prompt(properties: list[PropertyDef]) -> str:
             )
         elif p.is_compound_object:
             item_lines = [_prop_line(sub, indent="    ") for sub in p.item_schema]
+            # When the range is the abstract foaf:Agent, inject a type discriminator
+            # so Claude picks the concrete subclass (foaf:Person or foaf:Organization).
+            if p.rdf_range == FOAF.Agent:
+                item_lines.insert(0, '    "type": "<person or organization>"')
             inner = ",\n".join(item_lines)
             lines.append(
                 f'  "{p.field_key}": {{\n'

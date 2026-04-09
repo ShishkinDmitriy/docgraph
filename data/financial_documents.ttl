@@ -26,7 +26,7 @@ fin:FinancialDocument a owl:Class ;
     rdfs:comment """Abstract superclass for any document that records or
 requests the movement of money between parties. Subclasses differ by intent:
 a Quote proposes a future amount, a DemandForPayment requests payment for
-delivered goods or services, a Receipt confirms payment received, a Statement
+delivered goods or services, a ConfirmationOfPayment confirms payment received, a Statement
 summarises past activity, and so on. Every financial document has an issuer,
 a recipient, an issue date, and a document number.""" .
 
@@ -52,19 +52,19 @@ Key visual signals: "Amount Due", "Due Date", "Invoice #" or "Account Number",
 line-item table with unit prices and amounts, subtotal + tax + total,
 payment instructions or bank/ACH details, possibly a tear-off payment stub.""" .
 
-fin:Receipt a owl:Class, skos:Concept ;
+fin:ConfirmationOfPayment a owl:Class, skos:Concept ;
     rdfs:subClassOf fin:FinancialDocument ;
     skos:inScheme fin:financialDocuments ;
-    skos:notation "receipt" ;
-    rdfs:label "Receipt" ;
+    skos:notation "confirmation_of_payment" ;
+    rdfs:label "Confirmation of Payment" ;
     skos:definition "Proof that a payment was received by a seller or provider." ;
-    rdfs:comment """A Receipt is issued after a financial transaction has been
+    rdfs:comment """A Confirmation of Payment is issued after a financial transaction has been
 completed, confirming that funds were received. It references the original
 bill or invoice, the amount paid, the payment method and date, and a receipt
-or confirmation number. Receipts are important for expense reimbursement, tax
+or confirmation number. Confirmations of payment are important for expense reimbursement, tax
 deductions, and warranty claims.
-A receipt may be physical (paper, thermal print) or electronic (email, PDF).
-Key visual signals: "Receipt", "Thank you for your payment", payment date,
+A confirmation of payment may be physical (paper, thermal print) or electronic (email, PDF).
+Key visual signals: "Receipt", "Confirmation of Payment", "Thank you for your payment", payment date,
 payment method (card last 4, check number), "Paid" stamp or watermark.""" .
 
 fin:Quote a owl:Class, skos:Concept ;
@@ -158,7 +158,7 @@ fin:Payment a owl:Class, skos:Concept ;
     rdfs:label "Payment" ;
     skos:definition "A document recording that funds were sent by a payer to settle one or more bills or invoices." ;
     rdfs:comment """A Payment document is issued by or on behalf of the payer
-to record the act of remitting money. Unlike a Receipt (which is issued by the
+to record the act of remitting money. Unlike a ConfirmationOfPayment (which is issued by the
 seller to confirm receipt of funds), a Payment document is produced by the
 paying party and shows the funds sent to settle one or more outstanding Bills
 or Invoices.
@@ -211,34 +211,17 @@ fin:legalName a owl:DatatypeProperty ;
     tax:fieldKey "name" ;
     rdfs:comment "Full legal name of the organisation or person as it appears on the document." .
 
-fin:streetAddress a owl:DatatypeProperty ;
+foaf:address a owl:DatatypeProperty ;
     rdfs:domain foaf:Agent ;
     rdfs:range  xsd:string ;
-    rdfs:label  "street address" ;
-    rdfs:comment "Street address including building number and street name." .
+    rdfs:label  "address" ;
+    rdfs:comment "Full postal address as a single string (street, city, postal code, country)." .
 
-fin:city a owl:DatatypeProperty ;
-    rdfs:domain foaf:Agent ;
-    rdfs:range  xsd:string ;
-    rdfs:label  "city" ;
-    rdfs:comment "City or town." .
-
-fin:postalCode a owl:DatatypeProperty ;
-    rdfs:domain foaf:Agent ;
-    rdfs:range  xsd:string ;
-    rdfs:label  "postal code" ;
-    rdfs:comment "Postal or ZIP code." .
-
-fin:country a owl:DatatypeProperty ;
-    rdfs:domain foaf:Agent ;
-    rdfs:range  xsd:string ;
-    rdfs:label  "country" ;
-    rdfs:comment "Country name or ISO 3166-1 alpha-2 code (e.g. DE, US, GB)." .
-
-fin:email a owl:DatatypeProperty ;
+foaf:mbox a owl:DatatypeProperty ;
     rdfs:domain foaf:Agent ;
     rdfs:range  xsd:string ;
     rdfs:label  "email" ;
+    tax:fieldKey "email" ;
     rdfs:comment "Email address." .
 
 fin:phone a owl:DatatypeProperty ;
@@ -268,7 +251,7 @@ fin:issuer a owl:ObjectProperty ;
     rdfs:range  foaf:Agent ;
     rdfs:label  "issuer" ;
     rdfs:comment """The organisation or person who created and sent this
-document. For a Bill or Invoice this is the seller/provider; for a Receipt
+document. For a Bill or Invoice this is the seller/provider; for a ConfirmationOfPayment
 it is the merchant; for a Statement it is the financial institution.""" .
 
 fin:documentRecipient a owl:ObjectProperty ;
@@ -284,7 +267,7 @@ fin:documentNumber a owl:DatatypeProperty ;
     rdfs:label  "document number" ;
     rdfs:comment """The unique identifier assigned by the issuer: invoice
 number, receipt number, statement number, quote reference, etc. Used for
-cross-referencing between related documents (e.g. a Receipt citing the
+cross-referencing between related documents (e.g. a ConfirmationOfPayment citing the
 Invoice it settles).""" .
 
 fin:issueDate a owl:DatatypeProperty ;
@@ -315,7 +298,7 @@ fin:dueDate a owl:DatatypeProperty ;
     rdfs:label  "due date" ;
     rdfs:comment """The date by which payment must be received to avoid late
 fees or service interruption. A document without a due date is likely a
-Statement or Receipt rather than a DemandForPayment.""" .
+Statement or ConfirmationOfPayment rather than a DemandForPayment.""" .
 
 fin:paymentTerms a owl:DatatypeProperty ;
     rdfs:domain fin:DemandForPayment ;
@@ -329,24 +312,24 @@ to interpret the due date and any early-payment discounts.""" .
 fin:totalAmount a owl:DatatypeProperty ;
     rdfs:domain fin:DemandForPayment ;
     rdfs:domain fin:Quote ;
-    rdfs:domain fin:Receipt ;
+    rdfs:domain fin:ConfirmationOfPayment ;
     rdfs:domain fin:Payment ;
     rdfs:range  xsd:decimal ;
     rdfs:label  "total amount" ;
     rdfs:comment """The gross monetary total of the document.
 For DemandForPayment: the sum of all LineItem amounts; must equal SUM(lineItem.amount).
 For Quote: the proposed total before acceptance.
-For Receipt: the amount actually paid.
+For ConfirmationOfPayment: the amount actually paid.
 For Payment: the total funds remitted.""" .
 
 
 fin:lineItem a owl:ObjectProperty ;
     rdfs:domain fin:DemandForPayment ;
     rdfs:domain fin:Quote ;
-    rdfs:domain fin:Receipt ;
+    rdfs:domain fin:ConfirmationOfPayment ;
     rdfs:range  fin:LineItem ;
     rdfs:label  "line item" ;
-    rdfs:comment "Links a DemandForPayment, Quote, or Receipt to each of its component LineItems. The document total equals the sum of all LineItem amounts." .
+    rdfs:comment "Links a DemandForPayment, Quote, or ConfirmationOfPayment to each of its component LineItems. The document total equals the sum of all LineItem amounts." .
 
 fin:accountNumber a owl:DatatypeProperty ;
     rdfs:domain fin:DemandForPayment ;

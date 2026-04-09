@@ -83,7 +83,13 @@ console = Console()
     is_flag=True,
     help="Re-classify files even if they have already been processed.",
 )
-def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, categories_path: Path, models_path: Path, shapes_path: Path, debug: bool, force: bool):
+@click.option(
+    "--note",
+    type=str,
+    default=None,
+    help="Custom hint passed to the classifier, e.g. 'Contains Invoice and Receipt in top right corner'.",
+)
+def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, categories_path: Path, models_path: Path, shapes_path: Path, debug: bool, force: bool, note: str | None):
     """
     Classify PDF tax documents and organize them into folders.
 
@@ -151,7 +157,7 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, c
                 for img in images:
                     console.print(f"  saved page → {img['_path']}")
                 console.print(f"  sending {len(images)} page(s) to Claude vision...")
-                result, messages = classify_from_images(images, client, categories, model)
+                result, messages = classify_from_images(images, client, categories, model, note=note)
                 method = "vision"
             else:
                 console.print(f"  extracted {len(text)} chars, classifying...")

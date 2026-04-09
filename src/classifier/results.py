@@ -148,10 +148,29 @@ def _load_or_create(results_path: Path) -> Graph:
     return g
 
 
-def _agent_uri(name: str, foaf_type: URIRef) -> URIRef:
-    """Mint a stable URI for a foaf:Person or foaf:Organization from a display name."""
-    prefix = "person" if foaf_type == FOAF.Person else "org"
-    return TAX[f"{prefix}_{_safe(name)}"]
+def _normalize_name(name: str) -> str:
+    """Normalize a display name to a stable token set for URI minting.
+    Splits on whitespace and punctuation separators, lowercases, sorts tokens.
+    'Foo / Bar' and 'Foo, Bar' both become 'bar_foo'.
+    """
+    tokens = re.split(r"[\s/,;|]+", name.lower())
+    return "_".join(sorted(t for t in tokens if t))
+
+
+def _agent_uri(name: str) -> URIRef:
+    """Mint a stable URI for any foaf:Agent from a display name."""
+    return TAX[f"party_{_normalize_name(name)}"]
+
+
+def _resolve_foaf_type(party_type_str: str | None, fallback: URIRef) -> URIRef:
+    """Map the LLM's party_type string to the correct foaf class URI."""
+    if party_type_str:
+        v = party_type_str.strip().lower()
+        if v == "person":
+            return FOAF.Person
+        if v in ("organization", "organisation"):
+            return FOAF.Organization
+    return fallback
 
 
 def append_result(
@@ -256,13 +275,19 @@ def append_result(
                         g.add((item_node, sub.uri, _coerce(item_val, sub.rdf_range)))
             elif prop.is_compound_object and isinstance(value, dict):
                 name = str(value.get("name") or prop.field_key)
-                party_node = _agent_uri(name, prop.rdf_range)
-                g.add((party_node, RDF.type,  prop.rdf_range))
+                # For abstract foaf:Agent ranges, resolve to the concrete subclass
+                # from the LLM-supplied "type" field; otherwise use the declared range.
+                if prop.rdf_range == FOAF.Agent:
+                    foaf_type = _resolve_foaf_type(value.get("type"), FOAF.Agent)
+                else:
+                    foaf_type = prop.rdf_range
+                party_node = _agent_uri(name)
+                g.add((party_node, RDF.type,  foaf_type))
                 g.add((party_node, FOAF.name, RDFLiteral(name)))
                 g.add((doc_node, prop.uri, party_node))
                 sub_by_key = {s.field_key: s for s in prop.item_schema}
                 for item_key, item_val in value.items():
-                    if item_val is None or item_key == "name":
+                    if item_val is None or item_key in ("name", "type"):
                         continue
                     sub = sub_by_key.get(item_key)
                     if not sub:
@@ -276,7 +301,7 @@ def append_result(
                 g.add((m_node, TAX.currency,      RDFLiteral(currency)))
                 g.add((doc_node, prop.uri, m_node))
             elif prop.is_object_property:
-                party_node = _agent_uri(str(value), prop.rdf_range)
+                party_node = _agent_uri(str(value))
                 g.add((party_node, RDF.type,  prop.rdf_range))
                 g.add((party_node, FOAF.name, RDFLiteral(str(value))))
                 g.add((doc_node, prop.uri, party_node))
