@@ -141,28 +141,25 @@ def test_known_properties_with_multiple_values():
     assert set(addresses) == {"Berlin", "Munich"}
 
 
-def test_find_person_in_financial_documents_ttl():
+def test_foaf_class_hierarchy_usable_for_subclass_expansion():
     """
-    tax:dmitrii-shishkin from financial_documents.ttl is found when the file is
-    loaded into the ontology graph — the same way main.py loads it at runtime.
+    When the ontology graph declares the full FOAF hierarchy, querying with an
+    abstract class (foaf:Agent) expands to all concrete subclasses.
     """
-    from pathlib import Path
-    ttl = Path(__file__).parent.parent / "data" / "financial_documents.ttl"
     g = Graph()
-    g.parse(ttl)
+    g.add((FOAF.Person,       RDFS.subClassOf, FOAF.Agent))
+    g.add((FOAF.Organization, RDFS.subClassOf, FOAF.Agent))
+    g.add((PERSON_URI, RDF.type, FOAF.Person))
+    g.add((PERSON_URI, FOAF.name, Literal("REDACTED")))
+    g.add((ORG_URI, RDF.type, FOAF.Organization))
+    g.add((ORG_URI, FOAF.name, Literal("ООО Дельта")))
 
-    agent = _agent(g)
-
-    # Exact-type query
-    result = agent._find_entity("foaf:Person", {"foaf:name": "REDACTED"})
-    assert result["matches"], (
-        "tax:dmitrii-shishkin should be found by foaf:Person + foaf:name"
+    person_result = _agent(g)._find_entity("foaf:Agent", {"foaf:name": "REDACTED"})
+    assert any(m["uri"] == str(PERSON_URI) for m in person_result["matches"]), (
+        "foaf:Agent query should match foaf:Person via subclass expansion"
     )
 
-    # Abstract-type query — works via subclass expansion:
-    # foaf:Person rdfs:subClassOf foaf:Agent is declared in the file.
-    result_agent = agent._find_entity("foaf:Agent", {"foaf:name": "REDACTED"})
-    assert result_agent["matches"], (
-        "tax:dmitrii-shishkin should be found when querying with foaf:Agent "
-        "(foaf:Person rdfs:subClassOf foaf:Agent is declared in financial_documents.ttl)"
+    org_result = _agent(g)._find_entity("foaf:Agent", {"foaf:name": "ООО Дельта"})
+    assert any(m["uri"] == str(ORG_URI) for m in org_result["matches"]), (
+        "foaf:Agent query should match foaf:Organization via subclass expansion"
     )

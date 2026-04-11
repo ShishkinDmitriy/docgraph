@@ -1,0 +1,98 @@
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix sh:      <http://www.w3.org/ns/shacl#> .
+@prefix papyrus: <http://example.org/tax-classifier/papyrus#> .
+@prefix fin:     <http://example.org/financial/> .
+@prefix tax:     <http://example.org/tax-classifier/> .
+@prefix llm:     <http://example.org/llm#> .
+@prefix fs:      <http://example.org/fs#> .
+@prefix foaf:    <http://xmlns.com/foaf/0.1/> .
+@prefix skos:    <http://www.w3.org/2004/02/skos/core#> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Project registry — load this file first.
+#
+# Namespace mappings: read directly from the @prefix declarations above via
+# g.namespaces().  No separate namespace-triple objects are needed.
+#
+# papyrus:prefix on each ontology instance names which @prefix binding belongs
+# to that ontology, so the loader can assemble the JSONLD_CONTEXT.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+<http://example.org/tax-classifier/papyrus> a owl:Ontology .
+
+# ─── Schema ──────────────────────────────────────────────────────────────────
+
+papyrus:Self           a owl:Class .
+papyrus:Ontology       a owl:Class .
+papyrus:LocalOntology  a owl:Class ; rdfs:subClassOf papyrus:Ontology .
+papyrus:RemoteOntology a owl:Class ; rdfs:subClassOf papyrus:Ontology .
+
+papyrus:hasOntology  a owl:ObjectProperty  ; rdfs:domain papyrus:Self      ; rdfs:range owl:Class .
+papyrus:targetClass  a owl:ObjectProperty  ; rdfs:domain papyrus:Self      ; rdfs:range owl:Class .
+papyrus:model        a owl:ObjectProperty  ; rdfs:domain papyrus:Self      ; rdfs:comment "The LLM model to use for extraction." .
+papyrus:prefix       a owl:DatatypeProperty ;                                rdfs:range xsd:string .
+papyrus:relativePath a owl:DatatypeProperty ;                                rdfs:range xsd:string .
+papyrus:url          a owl:ObjectProperty .
+
+# ─── Papyrus individual ───────────────────────────────────────────────────────
+
+papyrus:this a papyrus:Self, owl:NamedIndividual ;
+    papyrus:targetClass fin:FinancialDocument ;
+    papyrus:model       llm:claude-haiku-4-5 ;
+    papyrus:hasOntology papyrus:financialDocs, papyrus:models, papyrus:shapes,
+                        papyrus:foaf, papyrus:skos, papyrus:prov .
+
+# ─── Local ontologies ─────────────────────────────────────────────────────────
+
+papyrus:financialDocs a papyrus:LocalOntology ;
+    papyrus:prefix       "fin" ;
+    papyrus:relativePath "data/financial_documents.ttl" .
+
+papyrus:models a papyrus:LocalOntology ;
+    papyrus:prefix       "llm" ;
+    papyrus:relativePath "data/models.ttl" .
+
+papyrus:shapes a papyrus:LocalOntology ;
+    papyrus:relativePath "data/shapes.ttl" .
+
+# ─── Remote ontologies ────────────────────────────────────────────────────────
+
+papyrus:foaf a papyrus:RemoteOntology ;
+    papyrus:prefix "foaf" ;
+    papyrus:url    <http://xmlns.com/foaf/0.1/> .
+
+papyrus:skos a papyrus:RemoteOntology ;
+    papyrus:prefix "skos" ;
+    papyrus:url    <https://www.w3.org/2009/08/skos-reference/skos.rdf> .
+
+papyrus:prov a papyrus:RemoteOntology ;
+    papyrus:prefix "prov" ;
+    papyrus:url    <http://www.w3.org/ns/prov-o> .
+
+# ─── Shape ────────────────────────────────────────────────────────────────────
+
+papyrus:PapyrusShape a sh:NodeShape ;
+    sh:targetClass papyrus:Self ;
+    sh:property [
+        sh:path     papyrus:targetClass ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:message  "papyrus:Self must declare exactly one papyrus:targetClass (an IRI)" ;
+    ] ;
+    sh:property [
+        sh:path     papyrus:model ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class    llm:Model ;
+        sh:message  "papyrus:Self must declare exactly one papyrus:model (a llm:Model)" ;
+    ] ;
+    sh:property [
+        sh:path     papyrus:hasOntology ;
+        sh:minCount 1 ;
+        sh:message  "papyrus:Self must declare at least one papyrus:hasOntology" ;
+    ] .

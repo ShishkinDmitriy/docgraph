@@ -15,7 +15,7 @@ TAX  = Namespace("http://example.org/tax-classifier/")
 FIN  = Namespace("http://example.org/financial/")
 LLM  = Namespace("http://example.org/llm#")
 FOAF = Namespace("http://xmlns.com/foaf/0.1/")
-SELF = Namespace("http://example.org/tax-classifier/self#")
+PAPYRUS = Namespace("http://example.org/tax-classifier/papyrus#")
 
 # Canonical @context used in JSON-LD extraction prompts and result parsing.
 # Populated from self.ttl at startup via load_self(); the values below are
@@ -29,40 +29,40 @@ JSONLD_CONTEXT: dict[str, str] = {
 
 
 @dataclass
-class SelfConfig:
-    """Configuration derived from data/self.ttl."""
+class PapyrusConfig:
+    """Configuration derived from data/papyrus.ttl."""
     namespaces:   dict[str, str]  # prefix → namespace URI
     target_class: URIRef          # OWL class whose subclasses are classification targets
     graph:        Graph           # all local (+ optionally remote) ontologies merged
 
 
-def load_self(self_path: Path, *, load_remote: bool = False) -> SelfConfig:
+def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusConfig:
     """
-    Parse data/self.ttl and return the project configuration.
+    Parse data/papyrus.ttl and return the project configuration.
 
-    Loads every self:LocalOntology listed via self:hasOntology into a single
-    combined graph.  If load_remote=True, also fetches self:RemoteOntology
-    URLs (skipped with a warning on network error).
+    Loads every papyrus:LocalOntology listed via papyrus:hasOntology into a
+    single combined graph.  If load_remote=True, also fetches
+    papyrus:RemoteOntology URLs (skipped with a warning on network error).
 
     Also updates the module-level JSONLD_CONTEXT dict in-place.
     """
-    self_graph = Graph()
-    self_graph.parse(self_path)
-    project_root = self_path.parent.parent  # data/self.ttl → data/ → project/
+    papyrus_graph = Graph()
+    papyrus_graph.parse(papyrus_path)
+    project_root = papyrus_path.parent.parent  # data/papyrus.ttl → data/ → project/
 
-    # ── Find the Self individual ──────────────────────────────────────────────
-    self_individual = self_graph.value(predicate=RDF.type, object=SELF.Self)
+    # ── Find the Papyrus individual ───────────────────────────────────────────
+    self_individual = papyrus_graph.value(predicate=RDF.type, object=PAPYRUS.Self)
     if self_individual is None:
-        raise ValueError(f"{self_path}: no individual of type self:Self found")
+        raise ValueError(f"{papyrus_path}: no individual of type papyrus:Self found")
 
     # ── Namespace map — read directly from @prefix declarations ───────────────
     # g.namespaces() returns every prefix bound in the file (plus rdflib defaults).
     # We collect only the prefixes that are explicitly claimed by an ontology
-    # instance via self:prefix, so the result is intentional rather than implicit.
-    declared_ns = dict(self_graph.namespaces())  # prefix → Namespace URI
+    # instance via papyrus:prefix, so the result is intentional rather than implicit.
+    declared_ns = dict(papyrus_graph.namespaces())  # prefix → Namespace URI
     namespaces: dict[str, str] = {}
-    for ont in self_graph.objects(self_individual, SELF.hasOntology):
-        p = self_graph.value(ont, SELF.prefix)
+    for ont in papyrus_graph.objects(self_individual, PAPYRUS.hasOntology):
+        p = papyrus_graph.value(ont, PAPYRUS.prefix)
         if p and str(p) in declared_ns:
             namespaces[str(p)] = str(declared_ns[str(p)])
 
@@ -70,33 +70,33 @@ def load_self(self_path: Path, *, load_remote: bool = False) -> SelfConfig:
     JSONLD_CONTEXT.update(namespaces)
 
     # ── Target class ──────────────────────────────────────────────────────────
-    target_class = self_graph.value(self_individual, SELF.targetClass)
+    target_class = papyrus_graph.value(self_individual, PAPYRUS.targetClass)
     if target_class is None:
-        raise ValueError(f"{self_path}: self:this has no self:targetClass")
+        raise ValueError(f"{papyrus_path}: papyrus:this has no papyrus:targetClass")
 
     # ── Build combined ontology graph ─────────────────────────────────────────
     combined = Graph()
-    combined += self_graph  # self.ttl itself is part of the graph
+    combined += papyrus_graph  # papyrus.ttl itself is part of the graph
 
-    for ont in self_graph.objects(self_individual, SELF.hasOntology):
-        ont_types = set(self_graph.objects(ont, RDF.type))
+    for ont in papyrus_graph.objects(self_individual, PAPYRUS.hasOntology):
+        ont_types = set(papyrus_graph.objects(ont, RDF.type))
 
-        if SELF.LocalOntology in ont_types:
-            rel = self_graph.value(ont, SELF.relativePath)
+        if PAPYRUS.LocalOntology in ont_types:
+            rel = papyrus_graph.value(ont, PAPYRUS.relativePath)
             if rel is None:
-                logger.warning("Local ontology <%s> has no self:relativePath — skipped", ont)
+                logger.warning("Local ontology <%s> has no papyrus:relativePath — skipped", ont)
                 continue
             path = project_root / str(rel)
             logger.debug("Loading local ontology from %s", path)
             combined.parse(path)
 
-        elif SELF.RemoteOntology in ont_types:
-            url = self_graph.value(ont, SELF.url)  # URIRef — set directly, no cast needed
+        elif PAPYRUS.RemoteOntology in ont_types:
+            url = papyrus_graph.value(ont, PAPYRUS.url)  # URIRef — set directly, no cast needed
             if not load_remote:
                 logger.debug("Skipping remote ontology <%s> (pass load_remote=True to fetch)", url)
                 continue
             if url is None:
-                logger.warning("Remote ontology <%s> has no self:url — skipped", ont)
+                logger.warning("Remote ontology <%s> has no papyrus:url — skipped", ont)
                 continue
             try:
                 logger.debug("Fetching remote ontology from %s", url)
@@ -104,7 +104,7 @@ def load_self(self_path: Path, *, load_remote: bool = False) -> SelfConfig:
             except Exception as exc:
                 logger.warning("Could not fetch remote ontology <%s>: %s", url, exc)
 
-    # ── Validate self:this against self:SelfShape ─────────────────────────────
+    # ── Validate papyrus:this against papyrus:PapyrusShape ────────────────────
     try:
         from pyshacl import validate as shacl_validate
         conforms, _, report_text = shacl_validate(
@@ -114,11 +114,11 @@ def load_self(self_path: Path, *, load_remote: bool = False) -> SelfConfig:
             abort_on_first=False,
         )
         if not conforms:
-            raise ValueError(f"self.ttl validation failed:\n{report_text}")
+            raise ValueError(f"papyrus.ttl validation failed:\n{report_text}")
     except ImportError:
-        logger.warning("pyshacl not installed — skipping self:this validation")
+        logger.warning("pyshacl not installed — skipping papyrus:this validation")
 
-    return SelfConfig(
+    return PapyrusConfig(
         namespaces=namespaces,
         target_class=URIRef(str(target_class)),
         graph=combined,
@@ -172,11 +172,11 @@ def load_preferred_model(g: Graph) -> ModelConfig:
     Return the ModelConfig for the model referenced by self:this via self:model.
     Raises ValueError if none is found.
     """
-    SELF_NS = Namespace("http://example.org/tax-classifier/self#")
-    self_this = g.value(predicate=RDF.type, object=SELF_NS.Self)
+    PAPYRUS_NS = Namespace("http://example.org/tax-classifier/papyrus#")
+    self_this = g.value(predicate=RDF.type, object=PAPYRUS_NS.Self)
     if self_this is None:
-        raise ValueError("No self:Self individual found in graph")
-    model_uri = g.value(self_this, SELF_NS.model)
+        raise ValueError("No papyrus:Self individual found in graph")
+    model_uri = g.value(self_this, PAPYRUS_NS.model)
     if model_uri is None:
         raise ValueError("self:this has no self:model property")
     model_id = g.value(model_uri, LLM.modelId)
