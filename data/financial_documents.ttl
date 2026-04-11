@@ -5,6 +5,21 @@
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix prov: <http://www.w3.org/ns/prov#> .
+
+
+# ── FOAF class hierarchy (subset used here, avoids requiring --fetch-remote) ──
+
+foaf:Agent        a owl:Class .
+foaf:Person       a owl:Class ; rdfs:subClassOf foaf:Agent .
+foaf:Organization a owl:Class ; rdfs:subClassOf foaf:Agent .
+foaf:Group        a owl:Class ; rdfs:subClassOf foaf:Agent .
+
+# ── Known individuals ─────────────────────────────────────────────────────────
+
+tax:dmitrii-shishkin a foaf:Person ;
+    foaf:address "REDACTED" ;
+    foaf:name "REDACTED" .
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Concept scheme
@@ -67,6 +82,35 @@ A confirmation of payment may be physical (paper, thermal print) or electronic (
 Key visual signals: "Receipt", "Confirmation of Payment", "Thank you for your payment", payment date,
 payment method (card last 4, check number), "Paid" stamp or watermark.""" .
 
+fin:evidencesTransaction a owl:ObjectProperty ;
+    rdfs:domain fin:ConfirmationOfPayment ;
+    rdfs:range  fin:Transaction ;
+    rdfs:label  "evidences transaction" ;
+    rdfs:comment """Links a ConfirmationOfPayment document to the Transaction it proves occurred.
+The bon (confirmation) is the physical evidence; the Transaction is the financial event
+that actually happened in the bank's system. Extract transaction details (amount, date,
+reference number, counterparty) from the bon into the linked Transaction node — but treat
+them as partial, since the bon only carries what the bank chose to print.
+Use fin:evidencesPayment for commercial payments and fin:evidencesTransfer for fund transfers.""" .
+
+fin:evidencesPayment a owl:ObjectProperty ;
+    rdfs:subPropertyOf fin:evidencesTransaction ;
+    rdfs:domain fin:ConfirmationOfPayment ;
+    rdfs:range  fin:Payment ;
+    rdfs:label  "evidences payment" ;
+    rdfs:comment """Specialisation of fin:evidencesTransaction for commercial payments.
+Use when the bon confirms money given in exchange for goods or services
+(i.e. a shop receipt, subscription confirmation, service invoice settlement).""" .
+
+fin:evidencesTransfer a owl:ObjectProperty ;
+    rdfs:subPropertyOf fin:evidencesTransaction ;
+    rdfs:domain fin:ConfirmationOfPayment ;
+    rdfs:range  fin:Transfer ;
+    rdfs:label  "evidences transfer" ;
+    rdfs:comment """Specialisation of fin:evidencesTransaction for fund transfers.
+Use when the bon confirms money moved between accounts or parties without a
+commercial exchange — wire confirmation, bank transfer receipt, or self-transfer slip.""" .
+
 fin:Quote a owl:Class, skos:Concept ;
     rdfs:subClassOf fin:FinancialDocument ;
     skos:inScheme fin:financialDocuments ;
@@ -99,37 +143,29 @@ Key visual signals: statement date range ("Statement Period"), opening balance,
 closing balance, transaction list with dates and amounts, "Minimum Payment Due"
 or "New Balance".""" .
 
-fin:Transaction a owl:Class, skos:Concept ;
-    skos:inScheme fin:financialDocuments ;
-    skos:notation "transaction" ;
+fin:Transaction a owl:Class ;
+    rdfs:subClassOf prov:Activity ;
     rdfs:label "Transaction" ;
-    skos:definition "A single monetary event — a debit or credit — recorded against an account." ;
-    rdfs:comment """A Transaction is the atomic unit of financial record-keeping:
-one amount moving in one direction on a specific date. Every Statement is
-composed of Transactions. A transaction has a type (debit/credit), a date,
-an amount, a reference number, a merchant or counterparty, and optionally a
-category or memo field.
-Transactions are not standalone documents — they appear within Statements,
-bank exports (CSV/OFX), or digital receipts. In document classification a
-"transaction record" or "transaction confirmation" refers to a printout or
-email that captures a single transaction event, e.g. a wire confirmation or
-point-of-sale receipt.""" .
+    skos:definition "A single monetary event — a debit or credit — that occurred in a financial system." ;
+    rdfs:comment """A Transaction is a financial event (prov:Activity), not a document.
+It represents one amount moving in one direction on a specific date inside a bank
+or payment system. Transactions are atomic: they have a type (debit/credit), a date,
+an amount, a reference number, a counterparty, and optionally a memo or category.
+A Transaction is never a standalone document. It may be listed within a Statement
+(via fin:statementTransaction) or referenced by a ConfirmationOfPayment
+(via fin:evidencesTransaction) as proof that the event occurred.""" .
 
-fin:Transfer a owl:Class, skos:Concept ;
+fin:Transfer a owl:Class ;
     rdfs:subClassOf fin:Transaction ;
-    skos:inScheme fin:financialDocuments ;
-    skos:notation "transfer" ;
     rdfs:label "Transfer" ;
-    skos:definition "Movement of funds between two accounts or two parties." ;
-    rdfs:comment """A Transfer is a specialised Transaction that moves funds
-from a source account or party to a destination account or party. It produces
-two matching Transaction records: a debit on the source and a credit on the
-destination. Transfers include internal transfers (between a customer's own
-accounts), ACH/wire transfers (between institutions), and peer-to-peer payments.
-A transfer confirmation document states the from-account, to-account, amount,
-reference/trace number, and expected settlement date.
-Key visual signals: "Transfer Confirmation", "Wire Transfer Receipt",
-"From Account / To Account", trace or confirmation number, settlement date.""" .
+    rdfs:comment """A Transfer is a financial event that moves funds between
+accounts or parties without a commercial exchange — no goods or services are
+delivered. Transfers may be:
+- self-transfers: between the same person's own accounts (e.g. savings → current);
+- third-party transfers: wire, SEPA credit transfer, peer-to-peer payment.
+Unlike a Payment, there is no invoice or bill being settled.
+A ConfirmationOfPayment document evidences that a Transfer occurred
+(via fin:evidencesTransfer). The Transfer event itself is not a document.""" .
 
 fin:Payout a owl:Class, skos:Concept ;
     rdfs:subClassOf fin:Transaction ;
@@ -148,25 +184,32 @@ Key visual signals: "Payout Summary", "Payment to [Name]", "Net Amount",
 deduction table (fees, tax withholding), payout date, bank or card last 4.""" .
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Payment
+# Financial events (prov:Activity via fin:Transaction)
+# These are not document types — they are the events that documents evidence.
 # ═══════════════════════════════════════════════════════════════════════════════
 
-fin:Payment a owl:Class, skos:Concept ;
-    rdfs:subClassOf fin:FinancialDocument ;
-    skos:inScheme fin:financialDocuments ;
-    skos:notation "payment" ;
+fin:Payment a owl:Class ;
+    rdfs:subClassOf fin:Transaction ;
     rdfs:label "Payment" ;
-    skos:definition "A document recording that funds were sent by a payer to settle one or more bills or invoices." ;
-    rdfs:comment """A Payment document is issued by or on behalf of the payer
-to record the act of remitting money. Unlike a ConfirmationOfPayment (which is issued by the
-seller to confirm receipt of funds), a Payment document is produced by the
-paying party and shows the funds sent to settle one or more outstanding Bills
-or Invoices.
-Examples: remittance advice, payment voucher, bank payment confirmation,
-check stub, wire transfer remittance.
-Key visual signals: "Remittance Advice", "Payment Confirmation", "Amount Paid",
-table listing invoice numbers and amounts settled, payer and payee
-details, payment date, payment reference or cheque number.""" .
+    rdfs:comment """A Payment is a financial event in which money is given by a
+payer in exchange for goods or services delivered by a payee. It is the act of
+settling a commercial obligation — paying a bill, invoice, or subscription.
+A Payment differs from a Transfer in that it crosses a commercial boundary:
+money flows from a customer to a merchant or service provider.
+A ConfirmationOfPayment document evidences that a Payment occurred
+(via fin:evidencesPayment). The Payment event itself is not a document.""" .
+
+fin:paymentMethod a owl:DatatypeProperty ;
+    rdfs:domain fin:Payment ;
+    rdfs:range  xsd:string ;
+    rdfs:label  "payment method" ;
+    rdfs:comment "How the payment was made: 'cash', 'card', 'SEPA', 'bank transfer', 'cheque', 'PayPal', etc." .
+
+fin:settlesDocument a owl:ObjectProperty ;
+    rdfs:domain fin:Payment ;
+    rdfs:range  fin:DemandForPayment ;
+    rdfs:label  "settles document" ;
+    rdfs:comment "Links a Payment event to the DemandForPayment (invoice or bill) it was made to settle." .
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # LineItem and Service
@@ -313,7 +356,6 @@ fin:totalAmount a owl:DatatypeProperty ;
     rdfs:domain fin:DemandForPayment ;
     rdfs:domain fin:Quote ;
     rdfs:domain fin:ConfirmationOfPayment ;
-    rdfs:domain fin:Payment ;
     rdfs:range  xsd:decimal ;
     rdfs:label  "total amount" ;
     rdfs:comment """The gross monetary total of the document.
@@ -328,6 +370,7 @@ fin:lineItem a owl:ObjectProperty ;
     rdfs:domain fin:Quote ;
     rdfs:domain fin:ConfirmationOfPayment ;
     rdfs:range  fin:LineItem ;
+
     rdfs:label  "line item" ;
     rdfs:comment "Links a DemandForPayment, Quote, or ConfirmationOfPayment to each of its component LineItems. The document total equals the sum of all LineItem amounts." .
 

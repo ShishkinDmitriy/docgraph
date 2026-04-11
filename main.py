@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """PDF tax document classifier CLI."""
 
-import json
 import logging
 import os
-import re
 import sys
+import traceback
 from pathlib import Path
 
 import anthropic
@@ -13,109 +12,18 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from src.classifier.extractor import extract_pdf
-from src.classifier.classifier import classify_pdf, extract_details, pdf_to_markdown, markdown_content_block
+from src.classifier.classifier import markdown_content_block
+from src.classifier.agent import run_extraction
+from src.classifier.markdown_io import load_or_extract
 from src.classifier.ontology import (
-    build_category_descriptions,
-    build_jsonld_extraction_prompt,
     load_document_classes,
-    load_class_properties,
     load_preferred_model,
+    load_self,
 )
-from src.classifier.interactive import fill_missing
 from src.classifier.results import append_result, find_classified, pdf_sha256
-from src.classifier.validator import validate, ShapeViolation
+from src.classifier.validator import validate
 
 console = Console()
-
-_STAMPS_PREFIX = "*Stamps / annotations: "
-_ISSUES_PREFIX = "*Extraction issues: "
-_DESC_PREFIX = "> "
-
-
-def _md_paths_for_pdf(pdf: Path) -> list[Path]:
-    """Return all .md files saved for this PDF, sorted by index."""
-    single = pdf.with_suffix(".md")
-    if single.exists():
-        return [single]
-    return sorted(pdf.parent.glob(f"{pdf.stem}_doc*.md"))
-
-
-def _load_or_extract_markdown(pdf, force, client, model, con, note=None) -> list[dict]:
-    """
-    Return a list of extracted docs (title / markdown / stamps).
-
-    Loads from existing .md files when possible; calls the LLM otherwise.
-    With --force, always re-extracts from the PDF.
-    """
-    existing = _md_paths_for_pdf(pdf)
-    if not force and existing:
-        docs = []
-        for md_path in existing:
-            con.print(f"  loading [dim]{md_path.name}[/dim]")
-            text = md_path.read_text(encoding="utf-8")
-            # Peel footer lines (issues then stamps) — both end with *
-            issues: list[str] = []
-            stamps: list[str] = []
-            for prefix, bucket in ((_ISSUES_PREFIX, issues), (_STAMPS_PREFIX, stamps)):
-                if text.rstrip().endswith("*") and prefix in text:
-                    body, footer = text.rsplit(prefix, 1)
-                    bucket.extend(s.strip() for s in footer.rstrip("*\n").split("|"))
-                    text = body.rstrip()
-            # Title is the first H2 heading (## ...) if present
-            title = "Document"
-            for line in text.splitlines():
-                if line.startswith("## "):
-                    title = line[3:].strip()
-                    break
-            # Description is the blockquote line immediately after the title
-            description = ""
-            lines = text.splitlines()
-            for idx, line in enumerate(lines):
-                if line.startswith("## ") and idx + 1 < len(lines):
-                    nxt = lines[idx + 1].strip()
-                    if nxt.startswith(_DESC_PREFIX):
-                        description = nxt[len(_DESC_PREFIX):]
-                    break
-            docs.append({"title": title, "description": description, "markdown": text, "stamps": stamps, "issues": issues})
-        return docs
-
-    pdf_block = extract_pdf(pdf)
-    con.print(f"  converting PDF to Markdown...")
-    docs = pdf_to_markdown(pdf_block, client, model, note=note)
-
-    if len(docs) == 1:
-        _save_doc(pdf.with_suffix(".md"), docs[0])
-        con.print(f"  markdown saved → [dim]{pdf.stem}.md[/dim]")
-        if docs[0].get("stamps"):
-            con.print(f"  stamps/annotations: [bold]{', '.join(docs[0]['stamps'])}[/bold]")
-        for issue in docs[0].get("issues", []):
-            con.print(f"  [yellow]extraction issue:[/yellow] {issue}")
-    else:
-        con.print(f"  detected [bold]{len(docs)}[/bold] sub-document(s)")
-        for i, doc in enumerate(docs, 1):
-            slug = re.sub(r'[^\w\-]', '_', doc["title"]).strip("_")
-            md_path = pdf.with_name(f"{pdf.stem}_doc{i}_{slug}.md")
-            _save_doc(md_path, doc)
-            con.print(f"  [{i}] {doc['title']} → [dim]{md_path.name}[/dim]")
-            if doc["stamps"]:
-                con.print(f"      stamps: [bold]{', '.join(doc['stamps'])}[/bold]")
-            for issue in doc.get("issues", []):
-                con.print(f"      [yellow]extraction issue:[/yellow] {issue}")
-
-    return docs
-
-
-def _save_doc(md_path: Path, doc: dict) -> None:
-    text = f"## {doc['title']}"
-    if doc.get("description"):
-        text += f"\n\n{_DESC_PREFIX}{doc['description']}"
-    text += f"\n\n{doc['markdown']}"
-    if doc.get("stamps"):
-        text += f"\n\n{_STAMPS_PREFIX}{' | '.join(doc['stamps'])}*"
-    if doc.get("issues"):
-        text += f"\n\n{_ISSUES_PREFIX}{' | '.join(doc['issues'])}*"
-    md_path.write_text(text, encoding="utf-8")
 
 
 @click.command()
@@ -140,28 +48,17 @@ def _save_doc(md_path: Path, doc: dict) -> None:
     help="Skip files with confidence below this threshold.",
 )
 @click.option(
-    "--categories",
-    "categories_path",
+    "--self-ontology",
+    "self_path",
     type=click.Path(exists=True, path_type=Path),
-    default=Path(__file__).parent / "data" / "financial_documents.ttl",
+    default=Path(__file__).parent / "data" / "self.ttl",
     show_default=True,
-    help="RDF file (Turtle) defining document categories.",
+    help="Project registry ontology (self.ttl). Declares all other ontologies.",
 )
 @click.option(
-    "--models",
-    "models_path",
-    type=click.Path(exists=True, path_type=Path),
-    default=Path(__file__).parent / "data" / "models.ttl",
-    show_default=True,
-    help="RDF file (Turtle) defining available LLM models.",
-)
-@click.option(
-    "--shapes",
-    "shapes_path",
-    type=click.Path(path_type=Path),
-    default=Path(__file__).parent / "data" / "shapes.ttl",
-    show_default=True,
-    help="SHACL shapes file for validating classification results.",
+    "--fetch-remote",
+    is_flag=True,
+    help="Fetch remote ontologies (FOAF, SKOS, PROV-O) listed in self.ttl.",
 )
 @click.option(
     "--debug",
@@ -179,31 +76,33 @@ def _save_doc(md_path: Path, doc: dict) -> None:
     default=None,
     help="Custom hint passed to the classifier, e.g. 'Contains Invoice and Receipt in top right corner'.",
 )
-def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, categories_path: Path, models_path: Path, shapes_path: Path, debug: bool, force: bool, note: str | None):
+def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, self_path: Path, fetch_remote: bool, debug: bool, force: bool, note: str | None):
     """
     Classify PDF tax documents and organize them into folders.
 
     INPUT_PATH can be a single PDF file or a directory of PDFs.
     """
+    logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
     if debug:
-        logging.basicConfig(level=logging.DEBUG, format="%(name)s | %(message)s")
-        logging.getLogger("anthropic").setLevel(logging.WARNING)
+        logging.getLogger("src.classifier").setLevel(logging.DEBUG)
+
+    # ── Load project registry (self.ttl) ──────────────────────────────────────
+    console.print(f"Loading project registry from [dim]{self_path}[/dim]...")
+    self_cfg = load_self(self_path, load_remote=fetch_remote)
+    console.print(f"  namespaces: {', '.join(self_cfg.namespaces)}")
+    console.print(f"  target class: [dim]{self_cfg.target_class}[/dim]\n")
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         console.print("[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.")
         sys.exit(1)
 
-    console.print(f"Loading models from [dim]{models_path}[/dim]...")
-    model = load_preferred_model(models_path)
+    model = load_preferred_model(self_cfg.graph)
     console.print(f"Using model: [bold]{model.label}[/bold] ({model.model_id})\n")
 
-    console.print(f"Loading categories from [dim]{categories_path}[/dim]...")
-    doc_classes   = load_document_classes(categories_path)
-    class_props   = load_class_properties(categories_path)
-    categories    = build_category_descriptions(doc_classes, class_props)
-    with_props    = sum(1 for p in class_props.values() if p)
-    console.print(f"Loaded [bold]{len(categories)}[/bold] categories ({with_props} with properties): {', '.join(categories)}\n")
+    doc_classes = load_document_classes(self_cfg.graph, self_cfg.target_class)
+    console.print(f"Loaded [bold]{len(doc_classes)}[/bold] document classes: {', '.join(doc_classes)}\n")
 
     client = anthropic.Anthropic(api_key=api_key)
 
@@ -225,6 +124,16 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, c
 
     results_ttl = output / "results.ttl"
 
+    if force and results_ttl.exists():
+        results_ttl.unlink()
+        console.print(f"  [yellow]--force: removed existing {results_ttl}[/yellow]\n")
+
+    # Keep results in memory so find_entity can query across documents in the same run.
+    from rdflib import Graph as _Graph
+    results_graph = _Graph()
+    if results_ttl.exists():
+        results_graph.parse(results_ttl)
+
     for pdf in pdfs:
         console.print(f"[bold]{pdf.name}[/bold]")
         try:
@@ -235,18 +144,37 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, c
                     console.print(f"  [dim]already classified as {doc_id}, skipping[/dim]\n")
                     continue
 
-            docs = _load_or_extract_markdown(pdf, force, client, model, console, note=note)
-
+            docs = load_or_extract(pdf, force, client, model, console, note=note)
             content_block = markdown_content_block(docs)
-            console.print(f"  classifying...")
-            result, messages = classify_pdf(content_block, client, categories, model, note=note)
-            method = "markdown"
 
-            hits = result.documents
-            console.print(f"  detected [bold]{len(hits)}[/bold] document type(s):")
-            for hit in hits:
+            def _on_classified(hit):
                 console.print(f"    [cyan]{hit.category}[/cyan] ({hit.confidence:.0%}): {hit.reason}")
 
+            def _on_extracted(hit):
+                if hit.category not in doc_classes:
+                    console.print(f"  [yellow]unknown category '{hit.category}' — skipping save[/yellow]")
+                    return
+                if not dry_run:
+                    append_result(
+                        results_ttl, pdf, hit,
+                        model=model, method="agent",
+                        doc_class_uri=doc_classes[hit.category].uri,
+                    )
+                    # Sync results_graph so subsequent PDFs can find_entity against it.
+                    results_graph.parse(results_ttl)
+                console.print(f"  [{hit.category}] extraction complete → {results_ttl}")
+
+            console.print("  running agent extraction...")
+            result = run_extraction(
+                content_block, self_cfg.graph, results_graph, doc_classes,
+                self_cfg.target_class,
+                client, model, note=note,
+                on_hit_classified=_on_classified,
+                on_hit_extracted=_on_extracted,
+            )
+
+            hits = result.documents
+            console.print(f"  detected [bold]{len(hits)}[/bold] document type(s)")
             accepted_hits = [h for h in hits if h.confidence >= min_confidence]
             skipped = len(hits) - len(accepted_hits)
             if skipped:
@@ -254,60 +182,18 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, c
 
             for hit in accepted_hits:
                 if hit.category not in doc_classes:
-                    console.print(f"  [yellow]unknown category '{hit.category}' — skipping[/yellow]")
-                    continue
-
-                props = class_props.get(hit.category, [])
-                if props:
-                    console.print(f"  [{hit.category}] extracting {len(props)} properties...")
-                    try:
-                        hit.details = extract_details(
-                            messages, build_jsonld_extraction_prompt(doc_classes[hit.category], props), client, model
-                        )
-                        console.print(f"  [{hit.category}] details: {json.dumps(hit.details, indent=4)}")
-                    except Exception as detail_err:
-                        console.print(f"  [{hit.category}] [yellow]detail extraction failed:[/yellow] {detail_err}")
+                    continue  # already warned in _on_extracted
 
                 if not dry_run:
-                    append_result(
-                        results_ttl, pdf, hit, result,
-                        model=model, method=method,
-                        doc_class=doc_classes[hit.category],
-                        class_props=props,
-                    )
-                    console.print(f"  [{hit.category}] saved to RDF → {results_ttl}")
-
-                    if shapes_path.exists():
-                        violations = validate(results_ttl, shapes_path)
-                        if violations:
-                            console.print(f"  [yellow]SHACL[/yellow] {len(violations)} violation(s):")
-                            for v in violations:
-                                node = v.focus_node.split("/")[-1]
-                                path = v.result_path.split("#")[-1] if v.result_path else "—"
-                                console.print(f"    [{('red' if v.severity == 'violation' else 'yellow')}]{v.severity}[/] {node}  {path}  {v.message}")
-
-                            if any(v.is_missing_field for v in violations):
-                                console.print(f"  [{hit.category}] attempting to fill missing fields…")
-                                hit = fill_missing(
-                                    violations, hit,
-                                    class_props=props,
-                                    messages=messages,
-                                    client=client,
-                                    model=model,
-                                )
-                                append_result(
-                                    results_ttl, pdf, hit, result,
-                                    model=model, method=method,
-                                    doc_class=doc_classes[hit.category],
-                                    class_props=props,
-                                )
-                                second_pass = validate(results_ttl, shapes_path)
-                                if second_pass:
-                                    console.print(f"  [yellow]SHACL[/yellow] still {len(second_pass)} violation(s) after fill")
-                                else:
-                                    console.print(f"  [green]SHACL[/green] conforms after fill")
-                        else:
-                            console.print(f"  [green]SHACL[/green] conforms")
+                    violations = validate(results_ttl, self_cfg.graph)
+                    if violations:
+                        console.print(f"  [yellow]SHACL[/yellow] {len(violations)} violation(s):")
+                        for v in violations:
+                            node = v.focus_node.split("/")[-1]
+                            path = v.result_path.split("#")[-1] if v.result_path else "—"
+                            console.print(f"    [{('red' if v.severity == 'violation' else 'yellow')}]{v.severity}[/] {node}  {path}  {v.message}")
+                    else:
+                        console.print(f"  [green]SHACL[/green] conforms")
 
             if accepted_hits:
                 cats_str = ", ".join(
@@ -322,7 +208,6 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, c
             console.print(f"  [green]done[/green]\n")
 
         except Exception as e:
-            import traceback
             console.print(f"  [red]error:[/red] {e}")
             console.print(f"  [dim]{traceback.format_exc().strip()}[/dim]\n")
 

@@ -5,24 +5,6 @@
 @prefix prov: <http://www.w3.org/ns/prov#> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 
-# ── Monetary amount shape ─────────────────────────────────────────────────────
-
-tax:MonetaryAmountShape a sh:NodeShape ;
-    sh:targetClass tax:MonetaryAmount ;
-    sh:property [
-        sh:path     tax:numericValue ;
-        sh:minCount 1 ;
-        sh:maxCount 1 ;
-        sh:datatype xsd:decimal ;
-        sh:message  "tax:MonetaryAmount must have exactly one tax:numericValue (xsd:decimal)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:currency ;
-        sh:minCount 1 ;
-        sh:maxCount 1 ;
-        sh:datatype xsd:string ;
-        sh:message  "tax:MonetaryAmount must have exactly one tax:currency (ISO 4217 string)" ;
-    ] .
 
 # ── FOAF agent shapes ─────────────────────────────────────────────────────────
 # Every foaf:Person and foaf:Organization we mint must carry a foaf:name.
@@ -97,128 +79,124 @@ fin:DemandForPaymentShape a sh:NodeShape ;
         sh:message  "DemandForPayment must have at least one fin:lineItem (fin:LineItem)" ;
     ] .
 
-# ── W-2 shape ─────────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# Extraction shapes
+#
+# These drive the shape_extractor pipeline (not validation).
+# Each document class is linked to its extraction shape via tax:extractionShape.
+# Depth is deliberately bounded by the DDD bounded-context rule:
+#   - Value objects (LineItem, Service) → sh:node, fully extracted
+#   - External entities (Agents)        → tax:AgentExtractionShape, identity only
+#   - Cross-document refs               → omitted entirely
+# ══════════════════════════════════════════════════════════════════════════════
 
-tax:W2FormShape a sh:NodeShape ;
-    sh:targetClass tax:W2Form ;
-    sh:property [
-        sh:path     tax:employer ;
-        sh:minCount 1 ;
-        sh:class    foaf:Organization ;
-        sh:message  "W-2 must have an employer (foaf:Organization)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:employee ;
-        sh:minCount 1 ;
-        sh:class    foaf:Person ;
-        sh:message  "W-2 must have an employee (foaf:Person)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:wages ;
-        sh:minCount 1 ;
-        sh:class    tax:MonetaryAmount ;
-        sh:message  "W-2 must have wages (tax:MonetaryAmount)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:ein ;
-        sh:maxCount 1 ;
-        sh:datatype xsd:string ;
-        sh:message  "W-2 EIN must be a single string" ;
-    ] .
+# ── Shared: agent identity (used by all document shapes) ─────────────────────
 
-# ── 1099-INT shape ────────────────────────────────────────────────────────────
+tax:AgentExtractionShape a sh:NodeShape ;
+    sh:property [ sh:path foaf:name    ; sh:maxCount 1 ; sh:datatype xsd:string ] ;
+    sh:property [ sh:path foaf:address ; sh:maxCount 1 ; sh:datatype xsd:string ] .
 
-tax:Form1099INTShape a sh:NodeShape ;
-    sh:targetClass tax:Form1099INT ;
-    sh:property [
-        sh:path     tax:payer ;
-        sh:minCount 1 ;
-        sh:class    foaf:Organization ;
-        sh:message  "1099-INT must have a payer (foaf:Organization)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:interestAmount ;
-        sh:minCount 1 ;
-        sh:class    tax:MonetaryAmount ;
-        sh:message  "1099-INT must have an interest amount (tax:MonetaryAmount)" ;
-    ] .
+# ── Shared: line item ─────────────────────────────────────────────────────────
 
-# ── 1099-NEC shape ────────────────────────────────────────────────────────────
+fin:LineItemExtractionShape a sh:NodeShape ;
+    tax:inline true ;
+    sh:property [ sh:path fin:amount      ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:quantity    ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:unitPrice   ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:currency    ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:taxAmount   ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:serviceDate ; sh:maxCount 1 ; sh:datatype xsd:date    ] .
 
-tax:Form1099NECShape a sh:NodeShape ;
-    sh:targetClass tax:Form1099NEC ;
-    sh:property [
-        sh:path     tax:payer ;
-        sh:minCount 1 ;
-        sh:class    foaf:Organization ;
-        sh:message  "1099-NEC must have a payer (foaf:Organization)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:recipient ;
-        sh:minCount 1 ;
-        sh:class    foaf:Person ;
-        sh:message  "1099-NEC must have a recipient (foaf:Person)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:compensationAmount ;
-        sh:minCount 1 ;
-        sh:class    tax:MonetaryAmount ;
-        sh:message  "1099-NEC must have a compensation amount (tax:MonetaryAmount)" ;
-    ] .
+# ── ConfirmationOfPayment ─────────────────────────────────────────────────────
 
-# ── Medical bill shape ────────────────────────────────────────────────────────
+fin:ConfirmationOfPayment tax:extractionShape fin:ConfirmationOfPaymentExtractionShape .
 
-tax:MedicalBillShape a sh:NodeShape ;
-    sh:targetClass tax:MedicalBill ;
-    sh:property [
-        sh:path     tax:provider ;
-        sh:minCount 1 ;
-        sh:class    foaf:Organization ;
-        sh:message  "Medical bill must have a provider (foaf:Organization)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:patient ;
-        sh:minCount 1 ;
-        sh:class    foaf:Person ;
-        sh:message  "Medical bill must have a patient (foaf:Person)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:patientOwes ;
-        sh:maxCount 1 ;
-        sh:class    tax:MonetaryAmount ;
-        sh:message  "patientOwes, if present, must be a single tax:MonetaryAmount" ;
-    ] .
+fin:ConfirmationOfPaymentExtractionShape a sh:NodeShape ;
+    sh:property [ sh:path fin:documentNumber    ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issueDate         ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:totalAmount       ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:currency          ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:notes             ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issuer            ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                  sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:documentRecipient ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                  sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:lineItem          ; sh:class fin:LineItem ;
+                                                  sh:node fin:LineItemExtractionShape     ] .
 
-# ── 1099-R shape ──────────────────────────────────────────────────────────────
+# ── DemandForPayment ──────────────────────────────────────────────────────────
 
-tax:Form1099RShape a sh:NodeShape ;
-    sh:targetClass tax:Form1099R ;
-    sh:property [
-        sh:path     tax:payer ;
-        sh:minCount 1 ;
-        sh:class    foaf:Organization ;
-        sh:message  "1099-R must have a payer (foaf:Organization)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:grossDistribution ;
-        sh:minCount 1 ;
-        sh:class    tax:MonetaryAmount ;
-        sh:message  "1099-R must have a gross distribution amount (tax:MonetaryAmount)" ;
-    ] .
+fin:DemandForPayment tax:extractionShape fin:DemandForPaymentExtractionShape .
 
-# ── Charitable donation shape ─────────────────────────────────────────────────
+fin:DemandForPaymentExtractionShape a sh:NodeShape ;
+    sh:property [ sh:path fin:documentNumber    ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issueDate         ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:dueDate           ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:totalAmount       ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:currency          ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:paymentTerms      ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:accountNumber     ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:notes             ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issuer            ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                  sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:documentRecipient ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                  sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:lineItem          ; sh:class fin:LineItem ;
+                                                  sh:node fin:LineItemExtractionShape     ] .
 
-tax:CharitableDonationShape a sh:NodeShape ;
-    sh:targetClass tax:CharitableDonation ;
-    sh:property [
-        sh:path     tax:organization ;
-        sh:minCount 1 ;
-        sh:class    foaf:Organization ;
-        sh:message  "Charitable donation must name the organization (foaf:Organization)" ;
-    ] ;
-    sh:property [
-        sh:path     tax:donationAmount ;
-        sh:minCount 1 ;
-        sh:class    tax:MonetaryAmount ;
-        sh:message  "Charitable donation must have an amount (tax:MonetaryAmount)" ;
-    ] .
+# ── Quote ─────────────────────────────────────────────────────────────────────
+
+fin:Quote tax:extractionShape fin:QuoteExtractionShape .
+
+fin:QuoteExtractionShape a sh:NodeShape ;
+    sh:property [ sh:path fin:documentNumber    ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issueDate         ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:quoteExpiryDate   ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:totalAmount       ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:currency          ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:paymentTerms      ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:notes             ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issuer            ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                  sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:documentRecipient ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                  sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:lineItem          ; sh:class fin:LineItem ;
+                                                  sh:node fin:LineItemExtractionShape     ] .
+
+# ── Statement ─────────────────────────────────────────────────────────────────
+
+fin:Statement tax:extractionShape fin:StatementExtractionShape .
+
+fin:StatementExtractionShape a sh:NodeShape ;
+    sh:property [ sh:path fin:documentNumber        ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issueDate             ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:statementPeriodStart  ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:statementPeriodEnd    ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:openingBalance        ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:closingBalance        ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:minimumPaymentDue     ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:currency              ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:accountNumber         ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:issuer                ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                      sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:documentRecipient     ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                      sh:node tax:AgentExtractionShape        ] .
+
+# ── Payout ────────────────────────────────────────────────────────────────────
+
+fin:Payout tax:extractionShape fin:PayoutExtractionShape .
+
+fin:PayoutExtractionShape a sh:NodeShape ;
+    sh:property [ sh:path fin:payoutReference   ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:payoutDate        ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:grossPayoutAmount ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:deductionsAmount  ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:netPayoutAmount   ; sh:maxCount 1 ; sh:datatype xsd:decimal ] ;
+    sh:property [ sh:path fin:payoutMethod      ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:payoutStatus      ; sh:maxCount 1 ; sh:datatype xsd:string  ] ;
+    sh:property [ sh:path fin:payoutPeriodStart ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:payoutPeriodEnd   ; sh:maxCount 1 ; sh:datatype xsd:date    ] ;
+    sh:property [ sh:path fin:payoutIssuer      ; sh:maxCount 1 ; sh:class foaf:Organization ;
+                                                  sh:node tax:AgentExtractionShape        ] ;
+    sh:property [ sh:path fin:payoutRecipient   ; sh:maxCount 1 ; sh:class foaf:Agent ;
+                                                  sh:node tax:AgentExtractionShape        ] .

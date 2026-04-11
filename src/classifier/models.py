@@ -1,18 +1,8 @@
-"""Shared dataclasses and type aliases for the tax classifier."""
+"""Shared dataclasses for the tax classifier."""
 
 from dataclasses import dataclass, field
 
 from rdflib import URIRef
-from rdflib.namespace import XSD
-
-
-@dataclass
-class PropertyDef:
-    uri: URIRef
-    field_key: str   # snake_case key derived from URI local name or tax:fieldKey
-    label: str       # human-readable, used in the extraction prompt
-    rdf_range: URIRef = field(default_factory=lambda: XSD.string)
-    comment: str = ""  # first sentence of rdfs:comment, used as extraction hint
 
 
 @dataclass
@@ -34,6 +24,7 @@ class ModelConfig:
 class DocumentHit:
     """One detected document type within a (possibly composite) PDF."""
     category: str
+    class_uri: str        # full OWL class URI, e.g. http://example.org/financial/DemandForPayment
     confidence: float
     reason: str
     details: dict | None = None  # JSON-LD dict returned by the LLM
@@ -43,7 +34,6 @@ class DocumentHit:
 class ClassificationResult:
     documents: list[DocumentHit]  # all detected types, sorted by confidence desc
 
-    # ── Convenience accessors for the primary (highest-confidence) hit ─────────
     @property
     def category(self) -> str:
         return self.documents[0].category if self.documents else "unknown"
@@ -64,7 +54,3 @@ class ClassificationResult:
     def details(self, value: dict | None) -> None:
         if self.documents:
             self.documents[0].details = value
-
-
-# Conversation history: list of {"role": ..., "content": ...}
-Messages = list[dict]

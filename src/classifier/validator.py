@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from rdflib import Graph, Namespace
+from rdflib import Graph
 from rdflib.namespace import RDF, SH
 
 
@@ -32,9 +32,9 @@ class ShapeViolation:
         return "MinCountConstraintComponent" in self.constraint_component
 
 
-def validate(data_path: Path, shapes_path: Path) -> list[ShapeViolation]:
+def validate(data_path: Path, shapes_graph: Graph) -> list[ShapeViolation]:
     """
-    Validate *data_path* against *shapes_path*.
+    Validate *data_path* against *shapes_graph*.
     Returns a (possibly empty) list of ShapeViolation objects.
     Raises ImportError if pyshacl is not installed.
     """
@@ -45,7 +45,7 @@ def validate(data_path: Path, shapes_path: Path) -> list[ShapeViolation]:
 
     conforms, results_graph, _ = _shacl_validate(
         data_graph,
-        shacl_graph=str(shapes_path),
+        shacl_graph=shapes_graph,
         inference="none",
         abort_on_first=False,
     )

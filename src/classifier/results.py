@@ -11,7 +11,7 @@ from typing import Literal
 from rdflib import BNode, Graph, Literal as RDFLiteral, Namespace, RDF, URIRef
 from rdflib.namespace import SKOS, XSD
 
-from .models import ClassificationResult, DocumentClass, DocumentHit, ModelConfig, PropertyDef
+from .models import DocumentHit, ModelConfig
 from .ontology import JSONLD_CONTEXT
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,18 @@ def _agent_uri(name: str) -> URIRef:
 
 def _doc_uri(pdf_path: Path, category: str) -> URIRef:
     return TAX[f"doc_{_safe(pdf_path.stem)}_{_safe(category)}"]
+
+
+def doc_uri_for_pdf(pdf_path: Path):
+    """Return a callable() → URI string for use as run_extraction's doc_uri_for.
+
+    The URI includes only the filename stem (category is not known yet at call time).
+    It is later updated in the results graph to include the category once the agent
+    has classified the document.
+    """
+    def _factory() -> str:
+        return str(TAX[f"doc_{_safe(pdf_path.stem)}"])
+    return _factory
 
 
 def _activity_uri(pdf_path: Path, category: str) -> URIRef:
@@ -138,11 +150,9 @@ def append_result(
     results_path: Path,
     pdf_path: Path,
     hit: DocumentHit,
-    result: ClassificationResult,
     model: ModelConfig,
-    method: Literal["text", "vision"],
-    doc_class: DocumentClass,
-    class_props: list[PropertyDef],
+    method: Literal["text", "vision", "markdown", "agent"],
+    doc_class_uri: URIRef,
 ) -> None:
     """
     Add (or overwrite) a classification result for one detected document type.
@@ -170,11 +180,11 @@ def append_result(
 
         temp_g = Graph()
         try:
-            temp_g.parse(data=json.dumps(jsonld_data), format="json-ld")
+            temp_g.parse(data=json.dumps(jsonld_data, ensure_ascii=False), format="json-ld")
             temp_g = _mint_agent_uris(temp_g)
 
             root_node = next(
-                (s for s in temp_g.subjects(RDF.type, doc_class.uri)),
+                (s for s in temp_g.subjects(RDF.type, doc_class_uri)),
                 None,
             )
             for s, p, o in temp_g:
@@ -208,7 +218,7 @@ def append_result(
 
     # ── Document provenance ───────────────────────────────────────────────────
     # These are added after JSON-LD merge so they always win over LLM output.
-    g.add((doc_node, RDF.type,             doc_class.uri))
+    g.add((doc_node, RDF.type,             doc_class_uri))
     g.add((doc_node, RDF.type,             PROV.Entity))
     g.add((doc_node, PROV.wasGeneratedBy,  activity_node))
     g.add((doc_node, PROV.wasDerivedFrom,  file_node))
