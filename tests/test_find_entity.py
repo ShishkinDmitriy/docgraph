@@ -104,20 +104,36 @@ def test_abstract_agent_expands_to_person():
 # ── no match — suggested URI ──────────────────────────────────────────────────
 
 def test_no_match_returns_suggested_uri():
-    """When nothing matches, matches is empty and suggested_uri is a stable string URI."""
-    result = _agent(Graph())._find_entity("foaf:Person", {"foaf:name": "Unknown Person"})
-
-    assert result["matches"] == []
-    assert result["suggested_uri"].startswith("http")
-    # Stable — same input produces the same URI
-    result2 = _agent(Graph())._find_entity("foaf:Person", {"foaf:name": "Unknown Person"})
-    assert result["suggested_uri"] == result2["suggested_uri"]
+    """When nothing matches, matches is empty and suggested_uri is stable."""
+    import src.classifier.agent as ag_mod
+    original = ag_mod._ontology.OUTPUT_PREFIX
+    try:
+        ag_mod._ontology.OUTPUT_PREFIX = "tax"
+        result  = _agent(Graph())._find_entity("foaf:Person", {"foaf:name": "Unknown Person"})
+        result2 = _agent(Graph())._find_entity("foaf:Person", {"foaf:name": "Unknown Person"})
+        assert result["matches"] == []
+        assert result["suggested_uri"].startswith("tax:")
+        assert result["suggested_uri"] == result2["suggested_uri"]
+    finally:
+        ag_mod._ontology.OUTPUT_PREFIX = original
 
 
 def test_suggested_uri_derived_from_name():
     """suggested_uri should embed a slug of the name."""
     result = _agent(Graph())._find_entity("foaf:Person", {"foaf:name": "John Doe"})
     assert "john-doe" in result["suggested_uri"]
+
+
+def test_suggested_uri_uses_output_prefix_and_namespace():
+    """suggested_uri is a CURIE whose prefix matches OUTPUT_PREFIX."""
+    import src.classifier.agent as ag_mod
+    original = ag_mod._ontology.OUTPUT_PREFIX
+    try:
+        ag_mod._ontology.OUTPUT_PREFIX = "ent"
+        result = _agent(Graph())._find_entity("foaf:Person", {"foaf:name": "Jane"})
+        assert result["suggested_uri"].startswith("ent:")
+    finally:
+        ag_mod._ontology.OUTPUT_PREFIX = original
 
 
 # ── integration: real financial_documents.ttl individual ─────────────────────

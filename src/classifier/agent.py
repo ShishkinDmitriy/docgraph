@@ -19,6 +19,7 @@ from rich.syntax import Syntax
 
 from .agent_tools import AGENT_TOOLS
 from .models import ClassificationResult, DocumentClass, DocumentHit, ModelConfig
+from . import ontology as _ontology
 from .ontology import JSONLD_CONTEXT, prefixed_name
 from .shape_extractor import (
     find_extraction_shape,
@@ -72,7 +73,9 @@ Extraction rules:
 - Decimals → plain JSON number
 - Arrays: repeat the item pattern for every occurrence; increment trailing index on @id
 - Do NOT add @context
+- Do NOT add properties that are not in the template — only fill what the shape defines.
 """
+
 
 
 class DocumentAgent:
@@ -280,7 +283,7 @@ class DocumentAgent:
             if self._on_classified:
                 self._on_classified(self._hit)
 
-        # Build a stable suggested URI: use class local name as prefix.
+        # Build a stable suggested URI in the configured output namespace.
         class_local = _slug(class_uri.rsplit(":", 1)[-1].rsplit("/", 1)[-1].lower())
         name_value = (
             properties.get("foaf:name")
@@ -289,7 +292,9 @@ class DocumentAgent:
             or next((v for v in properties.values() if isinstance(v, str) and v), None)
             or class_local
         )
-        suggested_uri = str(TAX[f"{class_local}_{_slug(str(name_value).lower())}"])
+        local = f"{class_local}_{_slug(str(name_value).lower())}"
+        prefix = _ontology.OUTPUT_PREFIX
+        suggested_uri = f"{prefix}:{local}" if prefix else str(_ontology.OUTPUT_NS[local])
 
         # Expand abstract superclasses to their known concrete subclasses so a
         # query for foaf:Agent also matches foaf:Person and foaf:Organization.

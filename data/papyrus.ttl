@@ -30,19 +30,24 @@ papyrus:Self           a owl:Class .
 papyrus:Ontology       a owl:Class .
 papyrus:LocalOntology  a owl:Class ; rdfs:subClassOf papyrus:Ontology .
 papyrus:RemoteOntology a owl:Class ; rdfs:subClassOf papyrus:Ontology .
+papyrus:Output         a owl:Class .
 
 papyrus:hasOntology  a owl:ObjectProperty  ; rdfs:domain papyrus:Self      ; rdfs:range owl:Class .
 papyrus:targetClass  a owl:ObjectProperty  ; rdfs:domain papyrus:Self      ; rdfs:range owl:Class .
 papyrus:model        a owl:ObjectProperty  ; rdfs:domain papyrus:Self      ; rdfs:comment "The LLM model to use for extraction." .
+papyrus:output       a owl:ObjectProperty  ; rdfs:domain papyrus:Self      ; rdfs:range papyrus:Output .
 papyrus:prefix       a owl:DatatypeProperty ;                                rdfs:range xsd:string .
 papyrus:relativePath a owl:DatatypeProperty ;                                rdfs:range xsd:string .
+papyrus:namespace    a owl:DatatypeProperty ;                                rdfs:range xsd:string ;
+    rdfs:comment "Base namespace URI used when minting entity URIs in the output graph." .
 papyrus:url          a owl:ObjectProperty .
 
 # ─── Papyrus individual ───────────────────────────────────────────────────────
 
 papyrus:this a papyrus:Self, owl:NamedIndividual ;
-    papyrus:targetClass fin:FinancialDocument ;
+    papyrus:targetClass foaf:Document ;
     papyrus:model       llm:claude-haiku-4-5 ;
+    papyrus:output      papyrus:results ;
     papyrus:hasOntology papyrus:financialDocs, papyrus:models, papyrus:shapes,
                         papyrus:foaf, papyrus:skos, papyrus:prov .
 
@@ -58,6 +63,13 @@ papyrus:models a papyrus:LocalOntology ;
 
 papyrus:shapes a papyrus:LocalOntology ;
     papyrus:relativePath "data/shapes.ttl" .
+
+# ─── Output ──────────────────────────────────────────────────────────────────
+
+papyrus:results a papyrus:Output ;
+    papyrus:prefix       "result" ;
+    papyrus:relativePath "classified/results.ttl" ;
+    papyrus:namespace    "http://example.org/result/" .
 
 # ─── Remote ontologies ────────────────────────────────────────────────────────
 
@@ -95,4 +107,28 @@ papyrus:PapyrusShape a sh:NodeShape ;
         sh:path     papyrus:hasOntology ;
         sh:minCount 1 ;
         sh:message  "papyrus:Self must declare at least one papyrus:hasOntology" ;
+    ] ;
+    sh:property [
+        sh:path     papyrus:output ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class    papyrus:Output ;
+        sh:message  "papyrus:Self must declare exactly one papyrus:output" ;
+    ] .
+
+papyrus:OutputShape a sh:NodeShape ;
+    sh:targetClass papyrus:Output ;
+    sh:property [
+        sh:path      papyrus:relativePath ;
+        sh:minCount  1 ;
+        sh:maxCount  1 ;
+        sh:datatype  xsd:string ;
+        sh:message   "papyrus:Output must declare exactly one papyrus:relativePath" ;
+    ] ;
+    sh:property [
+        sh:path      papyrus:namespace ;
+        sh:minCount  1 ;
+        sh:maxCount  1 ;
+        sh:datatype  xsd:string ;
+        sh:message   "papyrus:Output must declare exactly one papyrus:namespace" ;
     ] .

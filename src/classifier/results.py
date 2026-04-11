@@ -12,6 +12,7 @@ from rdflib import BNode, Graph, Literal as RDFLiteral, Namespace, RDF, URIRef
 from rdflib.namespace import SKOS, XSD
 
 from .models import DocumentHit, ModelConfig
+from . import ontology as _ontology
 from .ontology import JSONLD_CONTEXT
 
 logger = logging.getLogger(__name__)
@@ -40,27 +41,15 @@ def _normalize_name(name: str) -> str:
 
 def _agent_uri(name: str) -> URIRef:
     """Mint a stable URI for any foaf:Agent from a display name."""
-    return TAX[f"party_{_normalize_name(name)}"]
+    return _ontology.OUTPUT_NS[f"party_{_normalize_name(name)}"]
 
 
 def _doc_uri(pdf_path: Path, category: str) -> URIRef:
-    return TAX[f"doc_{_safe(pdf_path.stem)}_{_safe(category)}"]
-
-
-def doc_uri_for_pdf(pdf_path: Path):
-    """Return a callable() → URI string for use as run_extraction's doc_uri_for.
-
-    The URI includes only the filename stem (category is not known yet at call time).
-    It is later updated in the results graph to include the category once the agent
-    has classified the document.
-    """
-    def _factory() -> str:
-        return str(TAX[f"doc_{_safe(pdf_path.stem)}"])
-    return _factory
+    return _ontology.OUTPUT_NS[f"doc_{_safe(pdf_path.stem)}_{_safe(category)}"]
 
 
 def _activity_uri(pdf_path: Path, category: str) -> URIRef:
-    return TAX[f"activity_{_safe(pdf_path.stem)}_{_safe(category)}"]
+    return _ontology.OUTPUT_NS[f"activity_{_safe(pdf_path.stem)}_{_safe(category)}"]
 
 
 def _file_uri(pdf_path: Path) -> URIRef:
@@ -94,6 +83,8 @@ def find_classified(results_path: Path, sha256: str) -> URIRef | None:
 
 def _load_or_create(results_path: Path) -> Graph:
     g = Graph()
+    if _ontology.OUTPUT_PREFIX:
+        g.bind(_ontology.OUTPUT_PREFIX, _ontology.OUTPUT_NS)
     g.bind("tax",  TAX)
     g.bind("fin",  FIN)
     g.bind("llm",  LLM)

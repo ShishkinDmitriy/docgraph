@@ -18,14 +18,19 @@ FOAF = Namespace("http://xmlns.com/foaf/0.1/")
 PAPYRUS = Namespace("http://example.org/tax-classifier/papyrus#")
 
 # Canonical @context used in JSON-LD extraction prompts and result parsing.
-# Populated from self.ttl at startup via load_self(); the values below are
-# only a fallback in case load_self() is not called.
+# Populated from papyrus.ttl at startup via load_papyrus(); the values below are
+# only a fallback in case load_papyrus() is not called.
 JSONLD_CONTEXT: dict[str, str] = {
     "fin":  "http://example.org/financial/",
     "tax":  "http://example.org/tax-classifier/",
     "foaf": "http://xmlns.com/foaf/0.1/",
     "xsd":  "http://www.w3.org/2001/XMLSchema#",
 }
+
+# Output namespace and prefix used for minting entity and document URIs.
+# Set by load_papyrus() from papyrus:this → papyrus:results.
+OUTPUT_NS:     Namespace = Namespace("")
+OUTPUT_PREFIX: str       = ""
 
 
 @dataclass
@@ -34,6 +39,7 @@ class PapyrusConfig:
     namespaces:   dict[str, str]  # prefix → namespace URI
     target_class: URIRef          # OWL class whose subclasses are classification targets
     graph:        Graph           # all local (+ optionally remote) ontologies merged
+    output_path:  Path            # where results.ttl is written
 
 
 def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusConfig:
@@ -118,10 +124,28 @@ def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusCon
     except ImportError:
         logger.warning("pyshacl not installed — skipping papyrus:this validation")
 
+    # ── Output config ─────────────────────────────────────────────────────────
+    output_node = papyrus_graph.value(self_individual, PAPYRUS.output)
+    if output_node is None:
+        raise ValueError(f"{papyrus_path}: papyrus:this has no papyrus:output")
+    output_rel = papyrus_graph.value(output_node, PAPYRUS.relativePath)
+    output_ns  = papyrus_graph.value(output_node, PAPYRUS.namespace)
+    if output_rel is None or output_ns is None:
+        raise ValueError(f"{papyrus_path}: papyrus:output must have relativePath and namespace")
+
+    output_prefix = papyrus_graph.value(output_node, PAPYRUS.prefix)
+
+    global OUTPUT_NS, OUTPUT_PREFIX
+    OUTPUT_NS     = Namespace(str(output_ns))
+    OUTPUT_PREFIX = str(output_prefix) if output_prefix else ""
+    if OUTPUT_PREFIX:
+        JSONLD_CONTEXT[OUTPUT_PREFIX] = str(output_ns)
+
     return PapyrusConfig(
         namespaces=namespaces,
         target_class=URIRef(str(target_class)),
         graph=combined,
+        output_path=project_root / str(output_rel),
     )
 
 
@@ -169,7 +193,7 @@ def load_document_classes(g: Graph, target_class: URIRef) -> dict[str, DocumentC
 
 def load_preferred_model(g: Graph) -> ModelConfig:
     """
-    Return the ModelConfig for the model referenced by self:this via self:model.
+    Return the ModelConfig for the model referenced by papyrus:this via papyrus:model.
     Raises ValueError if none is found.
     """
     PAPYRUS_NS = Namespace("http://example.org/tax-classifier/papyrus#")
@@ -178,7 +202,7 @@ def load_preferred_model(g: Graph) -> ModelConfig:
         raise ValueError("No papyrus:Self individual found in graph")
     model_uri = g.value(self_this, PAPYRUS_NS.model)
     if model_uri is None:
-        raise ValueError("self:this has no self:model property")
+        raise ValueError("papyrus:this has no papyrus:model property")
     model_id = g.value(model_uri, LLM.modelId)
     label    = g.value(model_uri, RDFS.label)
     if not model_id:

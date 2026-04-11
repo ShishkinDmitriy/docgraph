@@ -18,7 +18,7 @@ from src.classifier.markdown_io import load_or_extract
 from src.classifier.ontology import (
     load_document_classes,
     load_preferred_model,
-    load_self,
+    load_papyrus,
 )
 from src.classifier.results import append_result, find_classified, pdf_sha256
 from src.classifier.validator import validate
@@ -28,13 +28,6 @@ console = Console()
 
 @click.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
-@click.option(
-    "--output", "-o",
-    type=click.Path(path_type=Path),
-    default=Path("./classified"),
-    show_default=True,
-    help="Output directory for organized PDFs.",
-)
 @click.option(
     "--dry-run", "-n",
     is_flag=True,
@@ -48,17 +41,17 @@ console = Console()
     help="Skip files with confidence below this threshold.",
 )
 @click.option(
-    "--self-ontology",
-    "self_path",
+    "--papyrus",
+    "papyrus_path",
     type=click.Path(exists=True, path_type=Path),
-    default=Path(__file__).parent / "data" / "self.ttl",
+    default=Path(__file__).parent / "data" / "papyrus.ttl",
     show_default=True,
-    help="Project registry ontology (self.ttl). Declares all other ontologies.",
+    help="Project registry ontology (papyrus.ttl). Declares all other ontologies.",
 )
 @click.option(
     "--fetch-remote",
     is_flag=True,
-    help="Fetch remote ontologies (FOAF, SKOS, PROV-O) listed in self.ttl.",
+    help="Fetch remote ontologies (FOAF, SKOS, PROV-O) listed in papyrus.ttl.",
 )
 @click.option(
     "--debug",
@@ -76,20 +69,21 @@ console = Console()
     default=None,
     help="Custom hint passed to the classifier, e.g. 'Contains Invoice and Receipt in top right corner'.",
 )
-def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, self_path: Path, fetch_remote: bool, debug: bool, force: bool, note: str | None):
+def main(input_path: Path, dry_run: bool, min_confidence: float, papyrus_path: Path, fetch_remote: bool, debug: bool, force: bool, note: str | None):
     """
-    Classify PDF tax documents and organize them into folders.
+    Classify PDF tax documents and extract structured data.
 
     INPUT_PATH can be a single PDF file or a directory of PDFs.
+    Output path is configured in papyrus.ttl via papyrus:results.
     """
     logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
     logging.getLogger("anthropic").setLevel(logging.WARNING)
     if debug:
         logging.getLogger("src.classifier").setLevel(logging.DEBUG)
 
-    # ── Load project registry (self.ttl) ──────────────────────────────────────
-    console.print(f"Loading project registry from [dim]{self_path}[/dim]...")
-    self_cfg = load_self(self_path, load_remote=fetch_remote)
+    # ── Load project registry (papyrus.ttl) ───────────────────────────────────
+    console.print(f"Loading project registry from [dim]{papyrus_path}[/dim]...")
+    self_cfg = load_papyrus(papyrus_path, load_remote=fetch_remote)
     console.print(f"  namespaces: {', '.join(self_cfg.namespaces)}")
     console.print(f"  target class: [dim]{self_cfg.target_class}[/dim]\n")
 
@@ -122,7 +116,7 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, s
     table.add_column("File", style="dim", max_width=40)
     table.add_column("Detected types (confidence)")
 
-    results_ttl = output / "results.ttl"
+    results_ttl = self_cfg.output_path
 
     if force and results_ttl.exists():
         results_ttl.unlink()
@@ -168,7 +162,8 @@ def main(input_path: Path, output: Path, dry_run: bool, min_confidence: float, s
             result = run_extraction(
                 content_block, self_cfg.graph, results_graph, doc_classes,
                 self_cfg.target_class,
-                client, model, note=note,
+                client, model,
+                note=note,
                 on_hit_classified=_on_classified,
                 on_hit_extracted=_on_extracted,
             )

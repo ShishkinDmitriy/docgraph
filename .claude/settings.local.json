@@ -5,7 +5,8 @@
       "Bash(python -c ':*)",
       "Bash(python:*)",
       "Bash(.venv/bin/python:*)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(PYTHONPATH=. .venv/bin/pytest:*)"
     ]
   }
 }
