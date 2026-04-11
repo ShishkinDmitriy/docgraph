@@ -159,10 +159,10 @@ def test_find_person_in_financial_documents_ttl():
         "tax:dmitrii-shishkin should be found by foaf:Person + foaf:name"
     )
 
-    # Abstract-type query — works because the individual is also typed foaf:Agent
-    # and the file declares both types explicitly
+    # Abstract-type query — works via subclass expansion:
+    # foaf:Person rdfs:subClassOf foaf:Agent is declared in the file.
     result_agent = agent._find_entity("foaf:Agent", {"foaf:name": "REDACTED"})
     assert result_agent["matches"], (
         "tax:dmitrii-shishkin should be found when querying with foaf:Agent "
-        "(it is explicitly typed as both foaf:Agent and foaf:Person in the TTL)"
+        "(foaf:Person rdfs:subClassOf foaf:Agent is declared in financial_documents.ttl)"
     )

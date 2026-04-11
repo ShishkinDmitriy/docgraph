@@ -38,8 +38,11 @@ You are a financial document extractor working with RDF/JSON-LD.
 Convention: values inside <> are instructions/placeholders to be resolved.
 Resolved values are plain strings without angle brackets.
 
-The initial stub has "@id": "<RESOLVE>" and "@type": "<BaseClass — one of: ...>".
-Handle it exactly like any secondary object whose @id starts with "<RESOLVE".
+Convention for placeholders: both "@id" and "@type" use "<RESOLVE...>" to signal
+that the value must be determined from the document.
+  "@id": "<RESOLVE>"                            → look up or mint a URI
+  "@type": "<RESOLVE:Base — one of: A | B>"    → pick the concrete class
+  "@type": "fin:DemandForPayment"              → already resolved, use as-is
 
 Steps:
 1. Read the document. Determine the concrete class from the @type hint.
@@ -119,7 +122,7 @@ class DocumentAgent:
         type_hint = "\n" + "\n".join(tree_lines)
         root_stub = {
             "@id":   "<RESOLVE>",
-            "@type": f"<{base_curie} — pick the most specific matching class:{type_hint}>",
+            "@type": f"<RESOLVE:{base_curie} — pick the most specific matching class:{type_hint}>",
         }
 
         prompt = (
@@ -294,20 +297,44 @@ class DocumentAgent:
         for sub in self.graph.subjects(RDFS.subClassOf, URIRef(expanded_class)):
             concrete.add(str(sub))
         if len(concrete) == 1:
-            type_clause = f"  ?s a <{expanded_class}> ."
+            type_clause = f"  ?s a {_sparql_term(URIRef(expanded_class))} ."
         else:
-            values = " ".join(f"<{c}>" for c in concrete)
+            values = " ".join(_sparql_term(URIRef(c)) for c in concrete)
             type_clause = f"  ?s a ?_type . VALUES ?_type {{ {values} }}"
         clauses = [type_clause]
+        var_counter = 0
         for prop, value in properties.items():
             if value is None or value == "null" or value == "":
                 continue
-            expanded_prop = _expand(prop)
-            if isinstance(value, str):
-                safe = value.replace("\\", "\\\\").replace('"', '\\"')
-                clauses.append(f'  ?s <{expanded_prop}> "{safe}" .')
-            elif isinstance(value, (int, float)):
-                clauses.append(f"  ?s <{expanded_prop}> {value} .")
+            inline, filter_tmpl = _sparql_literal(value)
+            if inline is None and filter_tmpl is None:
+                continue
+            segments = [seg.strip() for seg in prop.split("/")]
+
+            if filter_tmpl is not None:
+                # Typed value: bind to intermediate variable, then FILTER.
+                # Multi-hop paths also need the intermediate chain below.
+                subject = "?s"
+                for seg in segments[:-1]:
+                    nxt = f"?_v{var_counter}"
+                    var_counter += 1
+                    clauses.append(f"  {subject} {_sparql_term(URIRef(_expand(seg)))} {nxt} .")
+                    subject = nxt
+                leaf_var = f"?_v{var_counter}"
+                var_counter += 1
+                clauses.append(f"  {subject} {_sparql_term(URIRef(_expand(segments[-1])))} {leaf_var} .")
+                clauses.append(f"  FILTER({filter_tmpl.format(i=leaf_var[1:])})")
+            elif len(segments) == 1:
+                clauses.append(f"  ?s {_sparql_term(URIRef(_expand(segments[0])))} {inline} .")
+            else:
+                # Multi-hop path: explicit intermediate variables.
+                subject = "?s"
+                for seg in segments[:-1]:
+                    nxt = f"?_v{var_counter}"
+                    var_counter += 1
+                    clauses.append(f"  {subject} {_sparql_term(URIRef(_expand(seg)))} {nxt} .")
+                    subject = nxt
+                clauses.append(f"  {subject} {_sparql_term(URIRef(_expand(segments[-1])))} {inline} .")
 
         query = _sparql_prefixes() + "SELECT ?s WHERE {\n" + "\n".join(clauses) + "\n}"
 
@@ -469,6 +496,48 @@ def _summarise_response(response) -> str:
             args = json.dumps(block.input, indent=2, ensure_ascii=False)
             parts.append(f"tool_use: {block.name}\n{args}")
     return "\n\n".join(parts) if parts else "(empty)"
+
+
+import re as _re
+_DATE_RE  = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_GYEAR_RE = _re.compile(r"^\d{4}$")
+
+
+def _sparql_literal(value) -> tuple[str | None, str | None]:
+    """
+    Return (inline_literal, filter_expr) for a SPARQL clause, or (None, None) to skip.
+
+    inline_literal  — used directly in the triple pattern:  ?s prop "value" .
+    filter_expr     — requires an intermediate variable:
+                        ?s prop ?_vN . FILTER(filter_expr(?_vN))
+
+    Typed literals (dates, years) use FILTER(str(?var) = "...") because
+    rdflib's JSON-LD parser may store xsd:date as a CURIE instead of a full
+    URI, so direct typed-literal matching is unreliable.
+    """
+    if isinstance(value, bool):
+        return ("true" if value else "false", None)
+    if isinstance(value, (int, float)):
+        return (str(value), None)
+    if isinstance(value, str):
+        safe = value.replace("\\", "\\\\").replace('"', '\\"')
+        if _DATE_RE.match(value) or _GYEAR_RE.match(value):
+            return (None, f'str(?_v{{i}}) = "{safe}"')
+        return (f'"{safe}"', None)
+    return (None, None)
+
+
+def _sparql_term(uri: URIRef) -> str:
+    """
+    Return a CURIE if the prefix is declared in JSONLD_CONTEXT, else <full-uri>.
+    Using a CURIE requires the matching PREFIX declaration in the query header;
+    falling back to <uri> syntax works without any PREFIX declarations.
+    """
+    name = prefixed_name(uri)
+    if ":" not in name or name.startswith("http") or name.startswith("urn"):
+        return f"<{uri}>"
+    return name
+
 
 
 def _expand(curie: str) -> str:

@@ -104,6 +104,20 @@ def load_self(self_path: Path, *, load_remote: bool = False) -> SelfConfig:
             except Exception as exc:
                 logger.warning("Could not fetch remote ontology <%s>: %s", url, exc)
 
+    # ── Validate self:this against self:SelfShape ─────────────────────────────
+    try:
+        from pyshacl import validate as shacl_validate
+        conforms, _, report_text = shacl_validate(
+            combined,
+            shacl_graph=combined,
+            inference="none",
+            abort_on_first=False,
+        )
+        if not conforms:
+            raise ValueError(f"self.ttl validation failed:\n{report_text}")
+    except ImportError:
+        logger.warning("pyshacl not installed — skipping self:this validation")
+
     return SelfConfig(
         namespaces=namespaces,
         target_class=URIRef(str(target_class)),
@@ -155,23 +169,25 @@ def load_document_classes(g: Graph, target_class: URIRef) -> dict[str, DocumentC
 
 def load_preferred_model(g: Graph) -> ModelConfig:
     """
-    Return the ModelConfig for the model flagged with llm:preferred true.
+    Return the ModelConfig for the model referenced by self:this via self:model.
     Raises ValueError if none is found.
     """
-    for model_uri in g.subjects(RDF.type, LLM.Model):
-        preferred = g.value(model_uri, LLM.preferred)
-        if preferred and preferred.toPython() is True:
-            model_id = g.value(model_uri, LLM.modelId)
-            label    = g.value(model_uri, RDFS.label)
-            if not model_id:
-                raise ValueError(f"Preferred model {model_uri} has no llm:modelId")
-            return ModelConfig(
-                uri=model_uri,
-                model_id=str(model_id),
-                label=str(label) if label else str(model_uri),
-            )
-
-    raise ValueError("No model with llm:preferred true found in the ontology graph")
+    SELF_NS = Namespace("http://example.org/tax-classifier/self#")
+    self_this = g.value(predicate=RDF.type, object=SELF_NS.Self)
+    if self_this is None:
+        raise ValueError("No self:Self individual found in graph")
+    model_uri = g.value(self_this, SELF_NS.model)
+    if model_uri is None:
+        raise ValueError("self:this has no self:model property")
+    model_id = g.value(model_uri, LLM.modelId)
+    label    = g.value(model_uri, RDFS.label)
+    if not model_id:
+        raise ValueError(f"Model {model_uri} has no llm:modelId")
+    return ModelConfig(
+        uri=model_uri,
+        model_id=str(model_id),
+        label=str(label) if label else str(model_uri),
+    )
 
 
 def prefixed_name(uri: URIRef) -> str:

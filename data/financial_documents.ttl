@@ -8,18 +8,18 @@
 @prefix prov: <http://www.w3.org/ns/prov#> .
 
 
+# ── Known individuals ─────────────────────────────────────────────────────────
+
+tax:dmitrii-shishkin a foaf:Person ;
+    foaf:address "REDACTED" ;
+    foaf:name "REDACTED" .
+
 # ── FOAF class hierarchy (subset used here, avoids requiring --fetch-remote) ──
 
 foaf:Agent        a owl:Class .
 foaf:Person       a owl:Class ; rdfs:subClassOf foaf:Agent .
 foaf:Organization a owl:Class ; rdfs:subClassOf foaf:Agent .
 foaf:Group        a owl:Class ; rdfs:subClassOf foaf:Agent .
-
-# ── Known individuals ─────────────────────────────────────────────────────────
-
-tax:dmitrii-shishkin a foaf:Person ;
-    foaf:address "REDACTED" ;
-    foaf:name "REDACTED" .
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Concept scheme

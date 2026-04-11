@@ -56,19 +56,19 @@ def _mint_uri(parent_uri: str, prop_uri: str, index: int | None = None) -> str:
 
 def _concrete_type_hint(ont_graph: Graph, class_uri: URIRef) -> str:
     """
-    Return a type hint for the LLM.
+    Return a @type placeholder for a RESOLVE object.
 
-    If the class has known direct subclasses in the ontology, return
-    '<one of: sub1 | sub2 | ...>' so the LLM picks the concrete type.
-    Otherwise return the CURIE of the class itself.
+    Concrete class  → bare CURIE (already the resolved value, no angle brackets).
+    Abstract class  → "<BaseClass — one of: sub1 | sub2 | ...>" (instruction).
     """
+    base = _curie(str(class_uri))
     subs = sorted(
         _curie(str(s))
         for s in ont_graph.subjects(RDFS.subClassOf, class_uri)
     )
     if subs:
-        return f"<one of: {' | '.join(subs)}>"
-    return _curie(str(class_uri))
+        return f"<RESOLVE:{base} — one of: {' | '.join(subs)}>"
+    return base
 
 
 # ── Shapes loading ────────────────────────────────────────────────────────────
@@ -185,7 +185,7 @@ def shape_to_template(
             # Replace the generated @id with RESOLVE: so the agent knows to call find_entity.
             node_is_inline = bool(shapes_graph.value(node_shape, TAX.inline))
             if sh_class and not node_is_inline:
-                child["@id"] = f"<RESOLVE:{_curie(str(sh_class))}>"
+                child["@id"] = "<RESOLVE>"
             value = [child] if is_array else child
 
         elif or_head:
@@ -218,7 +218,7 @@ def shape_to_template(
             # @id is marked RESOLVE: so the agent knows it must call find_entity.
             curie_class = _curie(str(sh_class))
             child = {
-                "@id":       f"<RESOLVE:{curie_class}>",
+                "@id":       "<RESOLVE>",
                 "@type":     _concrete_type_hint(ont_graph, sh_class),
                 "foaf:name": "<string>",
             }

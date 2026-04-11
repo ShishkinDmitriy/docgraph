@@ -4,13 +4,13 @@
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 
 llm:anthropic a foaf:Organization ;
-    rdfs:label "Anthropic" .
+    rdfs:label "Anthropic" ;
+    foaf:name  "Anthropic" .
 
 llm:claude-haiku-4-5 a llm:Model, prov:Agent, prov:SoftwareAgent ;
     rdfs:label "Claude Haiku 4.5" ;
     llm:modelId "claude-haiku-4-5-20251001" ;
-    llm:provider llm:anthropic ;
-    llm:preferred true .
+    llm:provider llm:anthropic .
 
 llm:claude-sonnet-4-6 a llm:Model, prov:Agent, prov:SoftwareAgent ;
     rdfs:label "Claude Sonnet 4.6" ;

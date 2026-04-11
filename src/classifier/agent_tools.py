@@ -67,9 +67,10 @@ FIND_ENTITY_TOOL: dict = {
             "properties": {
                 "type": "object",
                 "description": (
-                    "Property-value pairs to match using CURIEs. "
-                    "Use the most specific identifying fields available, "
-                    "e.g. {\"fin:taxId\": \"7713759202\"} or {\"foaf:name\": \"ООО Дельта\"}. "
+                    "Property-value pairs to match. Keys are CURIEs or slash-separated "
+                    "property paths for nested values. "
+                    "e.g. {\"fin:taxId\": \"7713759202\"} or {\"foaf:name\": \"ООО Дельта\"} "
+                    "or {\"fin:issuer/foaf:name\": \"Zahnarztpraxis Liebermann\"}. "
                     "Fewer, more specific properties yield better results."
                 ),
             },
