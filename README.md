@@ -97,7 +97,25 @@ Confidence and provenance attach to the named graph, not to individual entities.
 
 **Results as a persistent RDF dataset** — currently `--force` deletes `results.ttl` and starts over. Instead, the results file should be loaded at startup as a proper RDF dataset and treated as persistent storage across runs. Each named graph is linked to its source input file, so `--force` on a specific PDF simply drops and replaces that graph rather than wiping everything. New extractions are merged in; unchanged documents are left untouched. This also means the dataset accumulates knowledge across many runs and can be queried incrementally without full re-extraction.
 
-**Ontology bundles** — instead of listing individual ontology files in `docgraph.ttl`, a bundle would package a coherent set of classes, shapes, and namespace declarations together under a single identifier. You would point `docgraph:hasOntology` at a bundle rather than individual files. Bundles could be versioned, shared, and installed independently — similar to how a package manager handles dependencies.
+**Ontology bundles and standard ontology profiles** — instead of listing individual ontology files in `docgraph.ttl`, a bundle would package a coherent set of classes, shapes, and namespace declarations together under a single identifier. Bundles could be versioned, shared, and installed independently — similar to how a package manager handles dependencies.
+
+Bundles also enable using standard ontologies (schema.org, P2P-O, DR-O) without sending their full content to the LLM. A bundle is a profile: it points at the standard ontology for URIs and semantic structure, then adds its own annotation overlay with LLM-facing metadata (`skos:notation`, `skos:definition`) and SHACL extraction shapes. The standard ontology stays untouched.
+
+Since standard ontologies use different properties for descriptions (`rdfs:comment` in schema.org, `skos:definition` elsewhere), the bundle would declare a configurable priority list for resolving the class description and label used in the classification prompt:
+
+```turtle
+ex:MyBundle a docgraph:Bundle ;
+    docgraph:descriptionProperties ( skos:definition skos:scopeNote rdfs:comment ) ;
+    docgraph:labelProperties       ( skos:prefLabel rdfs:label ) .
+```
+
+`skos:altLabel` (synonyms: "Bill", "Faktura", "Sales Invoice") would be included in the classification prompt as "also known as" hints, helping the LLM recognise terminology variants. `skos:hiddenLabel` (misspellings, abbreviations, locale-specific terms) would be passed as a separate silent-matching hint — present for recognition, not shown as canonical names.
+
+**Two-level classification** — as the number of document classes grows across domains (Finance, Medical, Legal, HR), sending the full class list to the LLM becomes impractical. Bundles map naturally to domains: the first classification pass picks the relevant bundle from a small stable list of domains; the second pass classifies within that bundle's classes. The LLM sees only the relevant subset at each step.
+
+**Context dimensions** — bundles can declare context dimensions relevant to their domain. The classification pipeline detects or infers those dimensions from the input and uses them to filter labels and select shape variants. What those dimensions are is entirely up to the bundle — language and jurisdiction for financial documents, geographic region or taxonomic family for natural history, time period for archival records, and so on.
+
+Language is a general-purpose dimension with built-in SKOS support: `skos:altLabel` and `skos:hiddenLabel` carry RDF language tags, so the classification prompt automatically shows only the labels relevant to the detected language. Other dimensions are domain-specific and declared by the bundle. A dimension can affect the classification prompt (filter which labels and definitions are shown), the extraction shapes (add required properties or format constraints), or both — and multiple dimensions can combine independently.
 
 **`.docgraph` project directory** — running `docgraph init` in any directory would create a `.docgraph/` folder (analogous to `.git/`) that holds the registry, ontology bundles, and cached Markdown extracts. The CLI would discover this folder automatically when invoked anywhere inside the project tree, so there would be no need to pass `--docgraph` explicitly. The output graph would also live inside `.docgraph/` by default, keeping the working directory clean.
 
