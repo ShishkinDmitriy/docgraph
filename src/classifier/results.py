@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import re
+from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -98,6 +99,29 @@ def _load_or_create(results_path: Path) -> Graph:
     return g
 
 
+def _fix_decimals(g: Graph) -> None:
+    """
+    Rewrite numeric literals to xsd:decimal with plain notation.
+
+    rdflib's JSON-LD parser types plain JSON numbers as xsd:double, which
+    Turtle serializes as scientific notation (2.19e+00).  Convert both
+    xsd:double and xsd:decimal to xsd:decimal using fixed-point formatting.
+    """
+    _numeric = {XSD.decimal, XSD.double, XSD.float}
+    for s, p, o in list(g.triples((None, None, None))):
+        if not (isinstance(o, RDFLiteral) and o.datatype in _numeric):
+            continue
+        try:
+            fixed = RDFLiteral(
+                format(Decimal(str(o)), 'f'),
+                datatype=XSD.decimal,
+            )
+            g.remove((s, p, o))
+            g.add((s, p, fixed))
+        except InvalidOperation:
+            pass
+
+
 def _mint_agent_uris(g: Graph) -> Graph:
     """Replace blank nodes typed as foaf:Agent subclasses with stable URIs."""
     bn_to_uri: dict[BNode, URIRef] = {}
@@ -172,6 +196,7 @@ def append_result(
         temp_g = Graph()
         try:
             temp_g.parse(data=json.dumps(jsonld_data, ensure_ascii=False), format="json-ld")
+            _fix_decimals(temp_g)
             temp_g = _mint_agent_uris(temp_g)
 
             root_node = next(
