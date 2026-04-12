@@ -15,11 +15,11 @@ TAX  = Namespace("http://example.org/tax-classifier/")
 FIN  = Namespace("http://example.org/financial/")
 LLM  = Namespace("http://example.org/llm#")
 FOAF = Namespace("http://xmlns.com/foaf/0.1/")
-PAPYRUS = Namespace("http://example.org/tax-classifier/papyrus#")
+DOCGRAPH = Namespace("http://example.org/tax-classifier/docgraph#")
 
 # Canonical @context used in JSON-LD extraction prompts and result parsing.
-# Populated from papyrus.ttl at startup via load_papyrus(); the values below are
-# only a fallback in case load_papyrus() is not called.
+# Populated from docgraph.ttl at startup via load_docgraph(); the values below are
+# only a fallback in case load_docgraph() is not called.
 JSONLD_CONTEXT: dict[str, str] = {
     "fin":  "http://example.org/financial/",
     "tax":  "http://example.org/tax-classifier/",
@@ -28,47 +28,47 @@ JSONLD_CONTEXT: dict[str, str] = {
 }
 
 # Output namespace and prefix used for minting entity and document URIs.
-# Set by load_papyrus() from papyrus:this → papyrus:results.
+# Set by load_docgraph() from docgraph:this → docgraph:results.
 OUTPUT_NS:     Namespace = Namespace("")
 OUTPUT_PREFIX: str       = ""
 
 
 @dataclass
-class PapyrusConfig:
-    """Configuration derived from data/papyrus.ttl."""
+class DocgraphConfig:
+    """Configuration derived from data/docgraph.ttl."""
     namespaces:   dict[str, str]  # prefix → namespace URI
     target_class: URIRef          # OWL class whose subclasses are classification targets
     graph:        Graph           # all local (+ optionally remote) ontologies merged
     output_path:  Path            # where results.ttl is written
 
 
-def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusConfig:
+def load_docgraph(docgraph_path: Path, *, load_remote: bool = False) -> DocgraphConfig:
     """
-    Parse data/papyrus.ttl and return the project configuration.
+    Parse data/docgraph.ttl and return the project configuration.
 
-    Loads every papyrus:LocalOntology listed via papyrus:hasOntology into a
+    Loads every docgraph:LocalOntology listed via docgraph:hasOntology into a
     single combined graph.  If load_remote=True, also fetches
-    papyrus:RemoteOntology URLs (skipped with a warning on network error).
+    docgraph:RemoteOntology URLs (skipped with a warning on network error).
 
     Also updates the module-level JSONLD_CONTEXT dict in-place.
     """
-    papyrus_graph = Graph()
-    papyrus_graph.parse(papyrus_path)
-    project_root = papyrus_path.parent.parent  # data/papyrus.ttl → data/ → project/
+    docgraph_graph = Graph()
+    docgraph_graph.parse(docgraph_path)
+    project_root = docgraph_path.parent.parent  # data/docgraph.ttl → data/ → project/
 
-    # ── Find the Papyrus individual ───────────────────────────────────────────
-    self_individual = papyrus_graph.value(predicate=RDF.type, object=PAPYRUS.Self)
+    # ── Find the DocGraph individual ──────────────────────────────────────────
+    self_individual = docgraph_graph.value(predicate=RDF.type, object=DOCGRAPH.Self)
     if self_individual is None:
-        raise ValueError(f"{papyrus_path}: no individual of type papyrus:Self found")
+        raise ValueError(f"{docgraph_path}: no individual of type docgraph:Self found")
 
     # ── Namespace map — read directly from @prefix declarations ───────────────
     # g.namespaces() returns every prefix bound in the file (plus rdflib defaults).
     # We collect only the prefixes that are explicitly claimed by an ontology
-    # instance via papyrus:prefix, so the result is intentional rather than implicit.
-    declared_ns = dict(papyrus_graph.namespaces())  # prefix → Namespace URI
+    # instance via docgraph:prefix, so the result is intentional rather than implicit.
+    declared_ns = dict(docgraph_graph.namespaces())  # prefix → Namespace URI
     namespaces: dict[str, str] = {}
-    for ont in papyrus_graph.objects(self_individual, PAPYRUS.hasOntology):
-        p = papyrus_graph.value(ont, PAPYRUS.prefix)
+    for ont in docgraph_graph.objects(self_individual, DOCGRAPH.hasOntology):
+        p = docgraph_graph.value(ont, DOCGRAPH.prefix)
         if p and str(p) in declared_ns:
             namespaces[str(p)] = str(declared_ns[str(p)])
 
@@ -76,33 +76,33 @@ def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusCon
     JSONLD_CONTEXT.update(namespaces)
 
     # ── Target class ──────────────────────────────────────────────────────────
-    target_class = papyrus_graph.value(self_individual, PAPYRUS.targetClass)
+    target_class = docgraph_graph.value(self_individual, DOCGRAPH.targetClass)
     if target_class is None:
-        raise ValueError(f"{papyrus_path}: papyrus:this has no papyrus:targetClass")
+        raise ValueError(f"{docgraph_path}: docgraph:this has no docgraph:targetClass")
 
     # ── Build combined ontology graph ─────────────────────────────────────────
     combined = Graph()
-    combined += papyrus_graph  # papyrus.ttl itself is part of the graph
+    combined += docgraph_graph  # docgraph.ttl itself is part of the graph
 
-    for ont in papyrus_graph.objects(self_individual, PAPYRUS.hasOntology):
-        ont_types = set(papyrus_graph.objects(ont, RDF.type))
+    for ont in docgraph_graph.objects(self_individual, DOCGRAPH.hasOntology):
+        ont_types = set(docgraph_graph.objects(ont, RDF.type))
 
-        if PAPYRUS.LocalOntology in ont_types:
-            rel = papyrus_graph.value(ont, PAPYRUS.relativePath)
+        if DOCGRAPH.LocalOntology in ont_types:
+            rel = docgraph_graph.value(ont, DOCGRAPH.relativePath)
             if rel is None:
-                logger.warning("Local ontology <%s> has no papyrus:relativePath — skipped", ont)
+                logger.warning("Local ontology <%s> has no docgraph:relativePath — skipped", ont)
                 continue
             path = project_root / str(rel)
             logger.debug("Loading local ontology from %s", path)
             combined.parse(path)
 
-        elif PAPYRUS.RemoteOntology in ont_types:
-            url = papyrus_graph.value(ont, PAPYRUS.url)  # URIRef — set directly, no cast needed
+        elif DOCGRAPH.RemoteOntology in ont_types:
+            url = docgraph_graph.value(ont, DOCGRAPH.url)  # URIRef — set directly, no cast needed
             if not load_remote:
                 logger.debug("Skipping remote ontology <%s> (pass load_remote=True to fetch)", url)
                 continue
             if url is None:
-                logger.warning("Remote ontology <%s> has no papyrus:url — skipped", ont)
+                logger.warning("Remote ontology <%s> has no docgraph:url — skipped", ont)
                 continue
             try:
                 logger.debug("Fetching remote ontology from %s", url)
@@ -110,7 +110,7 @@ def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusCon
             except Exception as exc:
                 logger.warning("Could not fetch remote ontology <%s>: %s", url, exc)
 
-    # ── Validate papyrus:this against papyrus:PapyrusShape ────────────────────
+    # ── Validate docgraph:this against docgraph:DocgraphShape ─────────────────
     try:
         from pyshacl import validate as shacl_validate
         conforms, _, report_text = shacl_validate(
@@ -120,20 +120,20 @@ def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusCon
             abort_on_first=False,
         )
         if not conforms:
-            raise ValueError(f"papyrus.ttl validation failed:\n{report_text}")
+            raise ValueError(f"docgraph.ttl validation failed:\n{report_text}")
     except ImportError:
-        logger.warning("pyshacl not installed — skipping papyrus:this validation")
+        logger.warning("pyshacl not installed — skipping docgraph:this validation")
 
     # ── Output config ─────────────────────────────────────────────────────────
-    output_node = papyrus_graph.value(self_individual, PAPYRUS.output)
+    output_node = docgraph_graph.value(self_individual, DOCGRAPH.output)
     if output_node is None:
-        raise ValueError(f"{papyrus_path}: papyrus:this has no papyrus:output")
-    output_rel = papyrus_graph.value(output_node, PAPYRUS.relativePath)
-    output_ns  = papyrus_graph.value(output_node, PAPYRUS.namespace)
+        raise ValueError(f"{docgraph_path}: docgraph:this has no docgraph:output")
+    output_rel = docgraph_graph.value(output_node, DOCGRAPH.relativePath)
+    output_ns  = docgraph_graph.value(output_node, DOCGRAPH.namespace)
     if output_rel is None or output_ns is None:
-        raise ValueError(f"{papyrus_path}: papyrus:output must have relativePath and namespace")
+        raise ValueError(f"{docgraph_path}: docgraph:output must have relativePath and namespace")
 
-    output_prefix = papyrus_graph.value(output_node, PAPYRUS.prefix)
+    output_prefix = docgraph_graph.value(output_node, DOCGRAPH.prefix)
 
     global OUTPUT_NS, OUTPUT_PREFIX
     OUTPUT_NS     = Namespace(str(output_ns))
@@ -141,7 +141,7 @@ def load_papyrus(papyrus_path: Path, *, load_remote: bool = False) -> PapyrusCon
     if OUTPUT_PREFIX:
         JSONLD_CONTEXT[OUTPUT_PREFIX] = str(output_ns)
 
-    return PapyrusConfig(
+    return DocgraphConfig(
         namespaces=namespaces,
         target_class=URIRef(str(target_class)),
         graph=combined,
@@ -193,16 +193,16 @@ def load_document_classes(g: Graph, target_class: URIRef) -> dict[str, DocumentC
 
 def load_preferred_model(g: Graph) -> ModelConfig:
     """
-    Return the ModelConfig for the model referenced by papyrus:this via papyrus:model.
+    Return the ModelConfig for the model referenced by docgraph:this via docgraph:model.
     Raises ValueError if none is found.
     """
-    PAPYRUS_NS = Namespace("http://example.org/tax-classifier/papyrus#")
-    self_this = g.value(predicate=RDF.type, object=PAPYRUS_NS.Self)
+    DOCGRAPH_NS = Namespace("http://example.org/tax-classifier/docgraph#")
+    self_this = g.value(predicate=RDF.type, object=DOCGRAPH_NS.Self)
     if self_this is None:
-        raise ValueError("No papyrus:Self individual found in graph")
-    model_uri = g.value(self_this, PAPYRUS_NS.model)
+        raise ValueError("No docgraph:Self individual found in graph")
+    model_uri = g.value(self_this, DOCGRAPH_NS.model)
     if model_uri is None:
-        raise ValueError("papyrus:this has no papyrus:model property")
+        raise ValueError("docgraph:this has no docgraph:model property")
     model_id = g.value(model_uri, LLM.modelId)
     label    = g.value(model_uri, RDFS.label)
     if not model_id:

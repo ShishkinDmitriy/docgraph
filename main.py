@@ -18,7 +18,7 @@ from src.classifier.markdown_io import load_or_extract
 from src.classifier.ontology import (
     load_document_classes,
     load_preferred_model,
-    load_papyrus,
+    load_docgraph,
 )
 from src.classifier.results import append_result, find_classified, pdf_sha256
 from src.classifier.validator import validate
@@ -41,17 +41,17 @@ console = Console()
     help="Skip files with confidence below this threshold.",
 )
 @click.option(
-    "--papyrus",
-    "papyrus_path",
+    "--docgraph",
+    "docgraph_path",
     type=click.Path(exists=True, path_type=Path),
-    default=Path(__file__).parent / "data" / "papyrus.ttl",
+    default=Path(__file__).parent / "data" / "docgraph.ttl",
     show_default=True,
-    help="Project registry ontology (papyrus.ttl). Declares all other ontologies.",
+    help="Project registry ontology (docgraph.ttl). Declares all other ontologies.",
 )
 @click.option(
     "--fetch-remote",
     is_flag=True,
-    help="Fetch remote ontologies (FOAF, SKOS, PROV-O) listed in papyrus.ttl.",
+    help="Fetch remote ontologies (FOAF, SKOS, PROV-O) listed in docgraph.ttl.",
 )
 @click.option(
     "--debug",
@@ -69,21 +69,21 @@ console = Console()
     default=None,
     help="Custom hint passed to the classifier, e.g. 'Contains Invoice and Receipt in top right corner'.",
 )
-def main(input_path: Path, dry_run: bool, min_confidence: float, papyrus_path: Path, fetch_remote: bool, debug: bool, force: bool, note: str | None):
+def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: Path, fetch_remote: bool, debug: bool, force: bool, note: str | None):
     """
     Classify PDF tax documents and extract structured data.
 
     INPUT_PATH can be a single PDF file or a directory of PDFs.
-    Output path is configured in papyrus.ttl via papyrus:results.
+    Output path is configured in docgraph.ttl via docgraph:results.
     """
     logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
     logging.getLogger("anthropic").setLevel(logging.WARNING)
     if debug:
         logging.getLogger("src.classifier").setLevel(logging.DEBUG)
 
-    # ── Load project registry (papyrus.ttl) ───────────────────────────────────
-    console.print(f"Loading project registry from [dim]{papyrus_path}[/dim]...")
-    self_cfg = load_papyrus(papyrus_path, load_remote=fetch_remote)
+    # ── Load project registry (docgraph.ttl) ──────────────────────────────────
+    console.print(f"Loading project registry from [dim]{docgraph_path}[/dim]...")
+    self_cfg = load_docgraph(docgraph_path, load_remote=fetch_remote)
     console.print(f"  namespaces: {', '.join(self_cfg.namespaces)}")
     console.print(f"  target class: [dim]{self_cfg.target_class}[/dim]\n")
 

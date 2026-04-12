@@ -1,0 +1,134 @@
+@prefix owl:      <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix sh:       <http://www.w3.org/ns/shacl#> .
+@prefix docgraph: <http://example.org/tax-classifier/docgraph#> .
+@prefix fin:      <http://example.org/financial/> .
+@prefix tax:      <http://example.org/tax-classifier/> .
+@prefix llm:      <http://example.org/llm#> .
+@prefix fs:       <http://example.org/fs#> .
+@prefix foaf:     <http://xmlns.com/foaf/0.1/> .
+@prefix skos:     <http://www.w3.org/2004/02/skos/core#> .
+@prefix prov:     <http://www.w3.org/ns/prov#> .
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Project registry — load this file first.
+#
+# Namespace mappings: read directly from the @prefix declarations above via
+# g.namespaces().  No separate namespace-triple objects are needed.
+#
+# docgraph:prefix on each ontology instance names which @prefix binding belongs
+# to that ontology, so the loader can assemble the JSONLD_CONTEXT.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+<http://example.org/tax-classifier/docgraph> a owl:Ontology .
+
+# ─── Schema ──────────────────────────────────────────────────────────────────
+
+docgraph:Self           a owl:Class .
+docgraph:Ontology       a owl:Class .
+docgraph:LocalOntology  a owl:Class ; rdfs:subClassOf docgraph:Ontology .
+docgraph:RemoteOntology a owl:Class ; rdfs:subClassOf docgraph:Ontology .
+docgraph:Output         a owl:Class .
+
+docgraph:hasOntology  a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:range owl:Class .
+docgraph:targetClass  a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:range owl:Class .
+docgraph:model        a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:comment "The LLM model to use for extraction." .
+docgraph:output       a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:range docgraph:Output .
+docgraph:prefix       a owl:DatatypeProperty ;                                 rdfs:range xsd:string .
+docgraph:relativePath a owl:DatatypeProperty ;                                 rdfs:range xsd:string .
+docgraph:namespace    a owl:DatatypeProperty ;                                 rdfs:range xsd:string ;
+    rdfs:comment "Base namespace URI used when minting entity URIs in the output graph." .
+docgraph:url          a owl:ObjectProperty .
+
+# ─── DocGraph individual ──────────────────────────────────────────────────────
+
+docgraph:this a docgraph:Self, owl:NamedIndividual ;
+    docgraph:targetClass foaf:Document ;
+    docgraph:model       llm:claude-haiku-4-5 ;
+    docgraph:output      docgraph:results ;
+    docgraph:hasOntology docgraph:financialDocs, docgraph:models, docgraph:shapes,
+                         docgraph:foaf, docgraph:skos, docgraph:prov .
+
+# ─── Local ontologies ─────────────────────────────────────────────────────────
+
+docgraph:financialDocs a docgraph:LocalOntology ;
+    docgraph:prefix       "fin" ;
+    docgraph:relativePath "data/financial_documents.ttl" .
+
+docgraph:models a docgraph:LocalOntology ;
+    docgraph:prefix       "llm" ;
+    docgraph:relativePath "data/models.ttl" .
+
+docgraph:shapes a docgraph:LocalOntology ;
+    docgraph:relativePath "data/shapes.ttl" .
+
+# ─── Output ──────────────────────────────────────────────────────────────────
+
+docgraph:results a docgraph:Output ;
+    docgraph:prefix       "result" ;
+    docgraph:relativePath "classified/results.ttl" ;
+    docgraph:namespace    "http://example.org/result/" .
+
+# ─── Remote ontologies ────────────────────────────────────────────────────────
+
+docgraph:foaf a docgraph:RemoteOntology ;
+    docgraph:prefix "foaf" ;
+    docgraph:url    <http://xmlns.com/foaf/0.1/> .
+
+docgraph:skos a docgraph:RemoteOntology ;
+    docgraph:prefix "skos" ;
+    docgraph:url    <https://www.w3.org/2009/08/skos-reference/skos.rdf> .
+
+docgraph:prov a docgraph:RemoteOntology ;
+    docgraph:prefix "prov" ;
+    docgraph:url    <http://www.w3.org/ns/prov-o> .
+
+# ─── Shape ────────────────────────────────────────────────────────────────────
+
+docgraph:DocgraphShape a sh:NodeShape ;
+    sh:targetClass docgraph:Self ;
+    sh:property [
+        sh:path     docgraph:targetClass ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:nodeKind sh:IRI ;
+        sh:message  "docgraph:Self must declare exactly one docgraph:targetClass (an IRI)" ;
+    ] ;
+    sh:property [
+        sh:path     docgraph:model ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class    llm:Model ;
+        sh:message  "docgraph:Self must declare exactly one docgraph:model (a llm:Model)" ;
+    ] ;
+    sh:property [
+        sh:path     docgraph:hasOntology ;
+        sh:minCount 1 ;
+        sh:message  "docgraph:Self must declare at least one docgraph:hasOntology" ;
+    ] ;
+    sh:property [
+        sh:path     docgraph:output ;
+        sh:minCount 1 ;
+        sh:maxCount 1 ;
+        sh:class    docgraph:Output ;
+        sh:message  "docgraph:Self must declare exactly one docgraph:output" ;
+    ] .
+
+docgraph:OutputShape a sh:NodeShape ;
+    sh:targetClass docgraph:Output ;
+    sh:property [
+        sh:path      docgraph:relativePath ;
+        sh:minCount  1 ;
+        sh:maxCount  1 ;
+        sh:datatype  xsd:string ;
+        sh:message   "docgraph:Output must declare exactly one docgraph:relativePath" ;
+    ] ;
+    sh:property [
+        sh:path      docgraph:namespace ;
+        sh:minCount  1 ;
+        sh:maxCount  1 ;
+        sh:datatype  xsd:string ;
+        sh:message   "docgraph:Output must declare exactly one docgraph:namespace" ;
+    ] .
