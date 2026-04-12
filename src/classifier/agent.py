@@ -341,7 +341,8 @@ class DocumentAgent:
                     subject = nxt
                 clauses.append(f"  {subject} {_sparql_term(URIRef(_expand(segments[-1])))} {inline} .")
 
-        query = _sparql_prefixes() + "SELECT ?s WHERE {\n" + "\n".join(clauses) + "\n}"
+        body = "SELECT ?s WHERE {\n" + "\n".join(clauses) + "\n}"
+        query = _sparql_prefixes(body) + body
 
         # Query both the accumulated results and the ontology graph (which may
         # contain pre-declared known entities like persons or organisations).
@@ -460,12 +461,14 @@ def _build_type_tree(
     return lines
 
 
-def _sparql_prefixes() -> str:
-    """Return SPARQL PREFIX declarations for all known namespaces."""
-    return "\n".join(
+def _sparql_prefixes(query_body: str) -> str:
+    """Return SPARQL PREFIX declarations for namespaces used in query_body."""
+    lines = [
         f"PREFIX {prefix}: <{ns}>"
         for prefix, ns in JSONLD_CONTEXT.items()
-    ) + "\n"
+        if f"{prefix}:" in query_body
+    ]
+    return ("\n".join(lines) + "\n") if lines else ""
 
 
 def _summarise_message(msg: dict) -> str:
