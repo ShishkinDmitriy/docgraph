@@ -42,7 +42,7 @@ class DocgraphConfig:
     output_path:  Path            # where results.ttl is written
 
 
-def load_docgraph(docgraph_path: Path, *, load_remote: bool = False) -> DocgraphConfig:
+def load_docgraph(docgraph_path: Path, *, load_remote: bool = True) -> DocgraphConfig:
     """
     Parse data/docgraph.ttl and return the project configuration.
 
@@ -99,7 +99,7 @@ def load_docgraph(docgraph_path: Path, *, load_remote: bool = False) -> Docgraph
         elif DOCGRAPH.RemoteOntology in ont_types:
             url = docgraph_graph.value(ont, DOCGRAPH.url)  # URIRef — set directly, no cast needed
             if not load_remote:
-                logger.debug("Skipping remote ontology <%s> (pass load_remote=True to fetch)", url)
+                logger.debug("Skipping remote ontology <%s> (remove --offline to fetch)", url)
                 continue
             if url is None:
                 logger.warning("Remote ontology <%s> has no docgraph:url — skipped", ont)

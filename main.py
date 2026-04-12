@@ -49,9 +49,9 @@ console = Console()
     help="Project registry ontology (docgraph.ttl). Declares all other ontologies.",
 )
 @click.option(
-    "--fetch-remote",
+    "--offline",
     is_flag=True,
-    help="Fetch remote ontologies (FOAF, SKOS, PROV-O) listed in docgraph.ttl.",
+    help="Skip fetching remote ontologies (FOAF, SKOS, PROV-O) listed in docgraph.ttl.",
 )
 @click.option(
     "--debug",
@@ -69,7 +69,7 @@ console = Console()
     default=None,
     help="Custom hint passed to the classifier, e.g. 'Contains Invoice and Receipt in top right corner'.",
 )
-def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: Path, fetch_remote: bool, debug: bool, force: bool, note: str | None):
+def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: Path, offline: bool, debug: bool, force: bool, note: str | None):
     """
     Classify PDF tax documents and extract structured data.
 
@@ -83,7 +83,7 @@ def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: 
 
     # ── Load project registry (docgraph.ttl) ──────────────────────────────────
     console.print(f"Loading project registry from [dim]{docgraph_path}[/dim]...")
-    self_cfg = load_docgraph(docgraph_path, load_remote=fetch_remote)
+    self_cfg = load_docgraph(docgraph_path, load_remote=not offline)
     console.print(f"  namespaces: {', '.join(self_cfg.namespaces)}")
     console.print(f"  target class: [dim]{self_cfg.target_class}[/dim]\n")
 
