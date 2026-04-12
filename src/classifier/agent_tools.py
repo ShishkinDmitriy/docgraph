@@ -18,11 +18,10 @@ CLASSIFY_TOOL: dict = {
 GET_SHAPE_TOOL: dict = {
     "name": "get_shape",
     "description": (
-        "Get the extraction template for a document class. "
-        "Call this first after reading the @type hint and choosing the class. "
-        "The template shows all properties to extract; the root @id is still RESOLVE: — "
-        "resolve it with find_entity after seeing which fields are available. "
-        "Provide confidence (0.0–1.0) and a one-sentence reason for the classification."
+        "Get the extraction template (SHACL shape) for any class — both document classes "
+        "and nested entity classes such as foaf:Organization or foaf:Person. "
+        "Call this to learn a child entity's properties before resolving it with find_entity. "
+        "For the root document class, also provide confidence (0.0–1.0) and a one-sentence reason."
     ),
     "input_schema": {
         "type": "object",

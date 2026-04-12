@@ -49,23 +49,36 @@ Steps:
 1. Read the document. Determine the concrete class from the @type hint.
 2. Call get_shape(class_uri, confidence, reason).
    The returned template shows all properties; the root @id is still "<RESOLVE>".
-3. Using the template as a guide, pick the most uniquely identifying fields from
-   the document (e.g. document number, total amount, date).
+3. Scan the template for nested objects that have "<RESOLVE>" @id placeholders and
+   that carry strong identifiers in the document — e.g. a tax ID, registration
+   number, or account number, not just a name.
+   For each such object:
+   a. Call get_shape(child_class) to learn its properties.
+      If get_shape returns an error (no shape defined), use only the properties
+      already present in the parent template for that object — do not invent fields.
+   b. Extract the strong identifiers from the document using the shape as a guide.
+   c. Call find_entity(child_class, {those identifiers}) and record the resolved URI.
+   Rationale: resolving a child entity first lets you use its stable URI — rather
+   than a weak name string — when searching for the root entity in step 4.
+4. Using the template as a guide, pick the most uniquely identifying fields from
+   the document (e.g. document number, total amount, date). Where step 3 resolved
+   a child, pass its URI as the property value instead of the raw string.
    Call find_entity(class_uri, {those fields}).
    - Match found → call submit_extraction({"@id": match_uri, "@type": class_uri}).
      Document already exists — done.
-   - No match → use suggested_uri as the root @id and proceed to step 4.
-4. Fill every placeholder in the template with values from the document.
-   Set the root "@id" to the suggested_uri from step 3.
-5. REQUIRED — resolve every "@id" that still starts with "<RESOLVE":
+   - No match → use suggested_uri as the root @id and proceed to step 5.
+5. Fill every placeholder in the template with values from the document.
+   Set the root "@id" to the suggested_uri from step 4.
+   Use the URIs already resolved in step 3 for those child objects.
+6. REQUIRED — resolve every "@id" that still starts with "<RESOLVE":
    - The @type shows the concrete class (or "one of: A | B") — pick from document content.
    - Call find_entity(concrete_class, {most identifying fields}).
    - Use matched URI or suggested_uri as @id (plain string, no angle brackets).
    - Include document properties absent from or different to known_properties
      (new facts are merged; a different address is not an error — both values kept).
    Do NOT submit while any "@id" value starts with "<RESOLVE".
-6. Call validate(document) — fix violations if any, at most twice.
-7. Call submit_extraction(document).
+7. Call validate(document) — fix violations if any, at most twice.
+8. Call submit_extraction(document).
 
 Extraction rules:
 - Replace every placeholder with a value from the document; use null if absent.
@@ -231,24 +244,24 @@ class DocumentAgent:
         reason: str | None = None,
     ) -> dict:
         notation = self._uri_to_notation.get(class_uri)
-        if notation is None:
-            return {"error": f"unknown class URI: {class_uri} — must be one of the URIs listed in @type"}
 
-        # Record the classification hit (may already exist from _find_entity).
-        if self._hit is None:
-            self._hit = DocumentHit(
-                category=notation,
-                class_uri=class_uri,
-                confidence=float(confidence) if confidence is not None else 1.0,
-                reason=reason or "",
-            )
-            if self._on_classified:
-                self._on_classified(self._hit)
-        elif confidence is not None:
-            self._hit.confidence = float(confidence)
-            self._hit.reason = reason or self._hit.reason
-        logger.info("agent | classified: %s (%.0f%%)", notation,
-                    self._hit.confidence * 100)
+        # Non-document classes (e.g. foaf:Organization resolved as a child entity)
+        # are valid shape targets — just skip the classification-hit bookkeeping.
+        if notation is not None:
+            if self._hit is None:
+                self._hit = DocumentHit(
+                    category=notation,
+                    class_uri=class_uri,
+                    confidence=float(confidence) if confidence is not None else 1.0,
+                    reason=reason or "",
+                )
+                if self._on_classified:
+                    self._on_classified(self._hit)
+            elif confidence is not None:
+                self._hit.confidence = float(confidence)
+                self._hit.reason = reason or self._hit.reason
+            logger.info("agent | classified: %s (%.0f%%)", notation,
+                        self._hit.confidence * 100)
 
         shape_uri = find_extraction_shape(self.graph, class_uri)
         if shape_uri is None:
