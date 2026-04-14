@@ -65,6 +65,49 @@ def init(directory: Path | None, force: bool):
 
 
 @cli.command()
+@click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
+@click.option(
+    "--docgraph",
+    "docgraph_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Project registry (docgraph.ttl). Auto-discovered when omitted.",
+)
+@click.option(
+    "--yes", "-y",
+    is_flag=True,
+    help="Skip confirmation prompt.",
+)
+def clean(directory: Path | None, docgraph_path: Path | None, yes: bool):
+    """
+    Remove the extracted results file (results.ttl).
+
+    Leaves the Markdown cache and ontology files untouched.
+    Run 'docgraph add' afterwards to re-extract from scratch.
+    """
+    if docgraph_path is None:
+        start = (directory or Path.cwd()).resolve()
+        project_root = find_project_root(start)
+        if project_root is not None:
+            docgraph_path = registry_path(project_root)
+        else:
+            docgraph_path = Path(__file__).parent / "data" / "docgraph.ttl"
+
+    self_cfg = load_docgraph(docgraph_path, load_remote=False)
+    results_ttl = self_cfg.output_path
+
+    if not results_ttl.exists():
+        console.print(f"[dim]Nothing to clean — {results_ttl} does not exist.[/dim]")
+        return
+
+    if not yes:
+        click.confirm(f"Remove {results_ttl}?", abort=True)
+
+    results_ttl.unlink()
+    console.print(f"[green]Removed[/green] {results_ttl}")
+
+
+@cli.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--min-confidence",
@@ -96,7 +139,7 @@ def init(directory: Path | None, force: bool):
 @click.option(
     "--force", "-f",
     is_flag=True,
-    help="Re-classify already-processed files.",
+    help="Re-classify already-processed files (ignores the skip-if-seen check).",
 )
 @click.option(
     "--note",
@@ -104,7 +147,7 @@ def init(directory: Path | None, force: bool):
     default=None,
     help="Free-text hint passed to the classifier.",
 )
-def run(
+def add(
     input_path: Path,
     min_confidence: float,
     docgraph_path: Path | None,
@@ -118,6 +161,7 @@ def run(
 
     INPUT_PATH can be a single PDF file or a directory of PDFs.
     Output path is configured in docgraph.ttl via docgraph:results.
+    Use 'docgraph clean' to wipe extracted results.
     """
     logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
     logging.getLogger("anthropic").setLevel(logging.WARNING)
@@ -187,10 +231,6 @@ def run(
     table.add_column("Detected types (confidence)")
 
     results_ttl = self_cfg.output_path
-
-    if force and results_ttl.exists():
-        results_ttl.unlink()
-        console.print(f"  [yellow]--force: removed existing {results_ttl}[/yellow]\n")
 
     # Keep results in memory so find_entity can query across documents in the same run.
     from rdflib import Graph as _Graph

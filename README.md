@@ -47,23 +47,35 @@ my-project/
 ### Classify documents
 
 ```
-docgraph run <input.pdf|directory/>
+docgraph add <input.pdf|directory/>
 ```
 
 The CLI walks up the directory tree from the input path to find `.docgraph/docgraph.ttl` automatically — no `--docgraph` flag needed when working inside an initialised project.  Results and Markdown caches are written inside `.docgraph/` by default, keeping the working directory clean.
 
-Options for `run`:
+Options for `add`:
 
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--docgraph` | auto-discovered | Override the registry path explicitly |
 | `--min-confidence` | `0.5` | Skip hits below this threshold |
-| `--force` / `-f` | off | Re-classify already-processed files |
+| `--force` / `-f` | off | Re-classify already-processed files (ignores skip-if-seen check) |
 | `--offline` | off | Skip fetching remote ontologies listed in docgraph.ttl |
 | `--note` | — | Free-text hint passed to the classifier |
 | `--debug` | off | Print full prompts and LLM responses |
 
-Results are written to the path declared in `docgraph:results` (`.docgraph/results.ttl` for initialised projects, `classified/results.ttl` for the legacy layout).
+Results are appended to the path declared in `docgraph:results` (`.docgraph/results.ttl` for initialised projects, `classified/results.ttl` for the legacy layout).
+
+### Remove results
+
+```
+docgraph clean [directory]
+```
+
+Deletes `results.ttl` and prompts for confirmation.  The Markdown cache and ontology files are left untouched.  Pass `-y` to skip the prompt.
+
+```
+docgraph clean -y
+```
 
 ## Project layout
 
