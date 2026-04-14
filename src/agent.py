@@ -10,14 +10,16 @@ Phases per document:
 import json
 import logging
 
-from rdflib import Graph, Namespace, RDF, URIRef
-from rdflib.namespace import RDF as RDF_NS, RDFS
+from rdflib import Graph, Namespace, URIRef
+from rdflib.namespace import RDFS
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 
-from .tool import AGENT_TOOLS, find_entity, get_shape, validate_tool
-
+from .tool import AGENT_TOOLS
+from .tool.find_entity_tool import find_entity
+from .tool.get_shape_tool import get_shape
+from .tool.validate_tool import validate_tool
 from .llm import LLMClient
 from .models import ClassificationResult, DocumentClass, DocumentHit, ModelConfig
 from . import ontology as _ontology

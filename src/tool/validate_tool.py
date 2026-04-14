@@ -1,10 +1,9 @@
-
 import json
 import logging
-from rdflib import Graph, Namespace, RDF, URIRef
-from rdflib.namespace import RDF as RDF_NS, RDFS
-from .. import ontology as _ontology
-from ..ontology import JSONLD_CONTEXT, prefixed_name
+
+from rdflib import Graph
+from rdflib.namespace import RDF as RDF_NS
+from ..ontology import JSONLD_CONTEXT
 
 logger = logging.getLogger(__name__)
 

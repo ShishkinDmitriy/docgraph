@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 from rdflib import Graph, Namespace, RDF, URIRef
-from rdflib.namespace import RDFS, XSD
+from rdflib.namespace import RDFS
 
 from .ontology import JSONLD_CONTEXT, prefixed_name
 

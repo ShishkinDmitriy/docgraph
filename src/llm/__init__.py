@@ -1,6 +1,6 @@
 """Backend-agnostic LLM client protocol and normalized response types."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol
 
 

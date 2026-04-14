@@ -1,6 +1,6 @@
 """Shared dataclasses for the tax classifier."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from rdflib import URIRef
 

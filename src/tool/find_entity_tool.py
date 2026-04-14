@@ -1,13 +1,13 @@
-from ..models import DocumentHit
-
 import logging
-from .. import ontology as _ontology
-from ..ontology import JSONLD_CONTEXT, prefixed_name
-from ..shape_extractor import (
-    _slug,
-)
-from rdflib import  URIRef
+import re as _re
+
+from rdflib import URIRef
 from rdflib.namespace import RDFS
+
+from .. import ontology as _ontology
+from ..models import DocumentHit
+from ..ontology import JSONLD_CONTEXT, prefixed_name
+from ..shape_extractor import _slug
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,6 @@ FIND_ENTITY_TOOL: dict = {
     },
 }
 
-import re as _re
 _DATE_RE  = _re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _GYEAR_RE = _re.compile(r"^\d{4}$")
 
