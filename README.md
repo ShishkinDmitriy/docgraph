@@ -2,34 +2,60 @@
 
 Classify PDF documents and extract structured RDF data using Claude.
 
-The project is configured through a small ontology registry (`data/docgraph.ttl`) that declares what ontologies to load, which OWL class is the classification target, which Claude model to use, and where to write results. Everything else — document categories, SHACL shapes, entity vocabularies — lives in plain Turtle files.
+The project is configured through a small ontology registry (`docgraph.ttl`) that declares what ontologies to load, which OWL class is the classification target, which Claude model to use, and where to write results. Everything else — document categories, SHACL shapes, entity vocabularies — lives in plain Turtle files.
 
 ## How it works
 
-1. **Load registry** — `data/docgraph.ttl` is parsed. It lists local ontology files to merge and optional remote ontologies (FOAF, SKOS, PROV-O) to fetch.
-2. **Convert PDF to Markdown** — each PDF is rendered to Markdown via Claude Vision and cached alongside the PDF.
+1. **Load registry** — `.docgraph/docgraph.ttl` is discovered automatically and parsed. It lists local ontology files to merge and optional remote ontologies (FOAF, SKOS, PROV-O) to fetch.
+2. **Convert PDF to Markdown** — each PDF is rendered to Markdown via Claude Vision and cached in `.docgraph/cache/`.
 3. **Agent loop** — a Claude agent classifies the document, deduplicates entities against previously extracted results (via SPARQL), and extracts structured properties as JSON-LD.
-4. **Persist** — results are appended to `classified/results.ttl` as RDF triples in the configured output namespace.
+4. **Persist** — results are appended to `.docgraph/results.ttl` as RDF triples in the configured output namespace.
 5. **Validate** — the output graph is checked against SHACL shapes.
 
 ## Setup
 
 ```
-pip install -r requirements.txt
+pip install -e .
 export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
+This registers a `docgraph` command in your environment.
+
 ## Usage
 
+### Initialise a project
+
 ```
-python main.py <input.pdf|directory/>
+docgraph init [directory]
 ```
 
-Options:
+Creates a `.docgraph/` folder in `directory` (default: current working directory).  Analogous to `git init` — run this once at the root of any project that will process documents.
+
+```
+my-project/
+  .docgraph/
+    docgraph.ttl              # project registry — edit this
+    ontologies/
+      financial_documents.ttl
+      models.ttl
+      shapes.ttl
+    cache/                    # Markdown extracts cached here
+    results.ttl               # output graph written here
+```
+
+### Classify documents
+
+```
+docgraph run <input.pdf|directory/>
+```
+
+The CLI walks up the directory tree from the input path to find `.docgraph/docgraph.ttl` automatically — no `--docgraph` flag needed when working inside an initialised project.  Results and Markdown caches are written inside `.docgraph/` by default, keeping the working directory clean.
+
+Options for `run`:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--docgraph` | `data/docgraph.ttl` | Project registry ontology |
+| `--docgraph` | auto-discovered | Override the registry path explicitly |
 | `--min-confidence` | `0.5` | Skip hits below this threshold |
 | `--force` / `-f` | off | Re-classify already-processed files |
 | `--dry-run` / `-n` | off | Preview without writing results |
@@ -37,18 +63,26 @@ Options:
 | `--note` | — | Free-text hint passed to the classifier |
 | `--debug` | off | Print full prompts and LLM responses |
 
-Results are written to the path declared in `docgraph:results` (default: `classified/results.ttl`).
+Results are written to the path declared in `docgraph:results` (`.docgraph/results.ttl` for initialised projects, `classified/results.ttl` for the legacy layout).
 
 ## Project layout
 
+After `docgraph init`:
+
 ```
-data/
-  docgraph.ttl           # project registry — start here
-  financial_documents.ttl  # OWL classes for fin: document types
-  shapes.ttl             # SHACL validation rules
-  models.ttl             # LLM model declarations
-classified/
-  results.ttl            # extracted RDF output (gitignored)
+.docgraph/
+  docgraph.ttl             # project registry — start here
+  ontologies/
+    financial_documents.ttl  # OWL classes for fin: document types
+    shapes.ttl               # SHACL validation rules
+    models.ttl               # LLM model declarations
+  cache/                   # per-PDF Markdown extracts (gitignore this)
+  results.ttl              # extracted RDF output (gitignore this)
+```
+
+Source layout:
+
+```
 src/classifier/
   agent.py               # Claude agent: classify → deduplicate → extract
   ontology.py            # registry loader, JSONLD_CONTEXT, namespace utils
@@ -56,8 +90,12 @@ src/classifier/
   validator.py           # SHACL validation wrapper
   results.py             # append/query results.ttl
   markdown_io.py         # Markdown cache read/write
-main.py                  # CLI entry point
+  project.py             # .docgraph/ discovery and init
+  templates/             # default files installed by `docgraph init`
+main.py                  # CLI entry point (commands: init, run)
 ```
+
+The `data/` directory at the repo root contains the same ontology files used as defaults before `init` was introduced.  It is still loaded as a fallback when no `.docgraph/` project is found.
 
 ## Configuring document classes
 
@@ -116,8 +154,6 @@ ex:MyBundle a docgraph:Bundle ;
 **Context dimensions** — bundles can declare context dimensions relevant to their domain. The classification pipeline detects or infers those dimensions from the input and uses them to filter labels and select shape variants. What those dimensions are is entirely up to the bundle — language and jurisdiction for financial documents, geographic region or taxonomic family for natural history, time period for archival records, and so on.
 
 Language is a general-purpose dimension with built-in SKOS support: `skos:altLabel` and `skos:hiddenLabel` carry RDF language tags, so the classification prompt automatically shows only the labels relevant to the detected language. Other dimensions are domain-specific and declared by the bundle. A dimension can affect the classification prompt (filter which labels and definitions are shown), the extraction shapes (add required properties or format constraints), or both — and multiple dimensions can combine independently.
-
-**`.docgraph` project directory** — running `docgraph init` in any directory would create a `.docgraph/` folder (analogous to `.git/`) that holds the registry, ontology bundles, and cached Markdown extracts. The CLI would discover this folder automatically when invoked anywhere inside the project tree, so there would be no need to pass `--docgraph` explicitly. The output graph would also live inside `.docgraph/` by default, keeping the working directory clean.
 
 ## Dependencies
 

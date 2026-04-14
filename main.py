@@ -20,38 +20,76 @@ from src.classifier.ontology import (
     load_preferred_model,
     load_docgraph,
 )
+from src.classifier.project import (
+    find_project_root,
+    init_project,
+    registry_path,
+    cache_dir as project_cache_dir,
+)
 from src.classifier.results import append_result, find_classified, pdf_sha256
 from src.classifier.validator import validate
 
 console = Console()
 
 
-@click.command()
+@click.group()
+def cli():
+    """Classify PDF documents and extract structured RDF data using Claude."""
+
+
+@cli.command()
+@click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
+@click.option(
+    "--force", "-f",
+    is_flag=True,
+    help="Reinitialise even if .docgraph/ already exists.",
+)
+def init(directory: Path | None, force: bool):
+    """
+    Initialise a .docgraph/ project directory.
+
+    Creates .docgraph/ in DIRECTORY (default: current working directory) with a
+    registry, default ontology files, and an empty cache.  Analogous to git init.
+    """
+    target = (directory or Path.cwd()).resolve()
+    if not target.is_dir():
+        console.print(f"[red]Error:[/red] {target} is not a directory.")
+        sys.exit(1)
+    try:
+        init_project(target, console, force=force)
+    except FileExistsError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+
+
+@cli.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--dry-run", "-n",
     is_flag=True,
-    help="Show what would happen without copying files.",
+    help="Show what would happen without writing results.",
 )
 @click.option(
     "--min-confidence",
     type=float,
     default=0.5,
     show_default=True,
-    help="Skip files with confidence below this threshold.",
+    help="Skip hits below this threshold.",
 )
 @click.option(
     "--docgraph",
     "docgraph_path",
     type=click.Path(exists=True, path_type=Path),
-    default=Path(__file__).parent / "data" / "docgraph.ttl",
-    show_default=True,
-    help="Project registry ontology (docgraph.ttl). Declares all other ontologies.",
+    default=None,
+    help=(
+        "Project registry ontology (docgraph.ttl).  Auto-discovered from "
+        ".docgraph/ when omitted."
+    ),
 )
 @click.option(
     "--offline",
     is_flag=True,
-    help="Skip fetching remote ontologies (FOAF, SKOS, PROV-O) listed in docgraph.ttl.",
+    help="Skip fetching remote ontologies listed in docgraph.ttl.",
 )
 @click.option(
     "--debug",
@@ -61,17 +99,26 @@ console = Console()
 @click.option(
     "--force", "-f",
     is_flag=True,
-    help="Re-classify files even if they have already been processed.",
+    help="Re-classify already-processed files.",
 )
 @click.option(
     "--note",
     type=str,
     default=None,
-    help="Custom hint passed to the classifier, e.g. 'Contains Invoice and Receipt in top right corner'.",
+    help="Free-text hint passed to the classifier.",
 )
-def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: Path, offline: bool, debug: bool, force: bool, note: str | None):
+def run(
+    input_path: Path,
+    dry_run: bool,
+    min_confidence: float,
+    docgraph_path: Path | None,
+    offline: bool,
+    debug: bool,
+    force: bool,
+    note: str | None,
+):
     """
-    Classify PDF tax documents and extract structured data.
+    Classify PDF documents and extract structured data.
 
     INPUT_PATH can be a single PDF file or a directory of PDFs.
     Output path is configured in docgraph.ttl via docgraph:results.
@@ -81,7 +128,20 @@ def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: 
     if debug:
         logging.getLogger("src.classifier").setLevel(logging.DEBUG)
 
-    # ── Load project registry (docgraph.ttl) ──────────────────────────────────
+    # ── Resolve project registry ──────────────────────────────────────────────
+    md_cache_dir: Path | None = None
+
+    if docgraph_path is None:
+        project_root = find_project_root(input_path if input_path.is_dir() else input_path.parent)
+        if project_root is not None:
+            docgraph_path = registry_path(project_root)
+            md_cache_dir  = project_cache_dir(project_root)
+            console.print(f"Discovered project at [dim]{project_root}[/dim]")
+        else:
+            # Legacy fallback: data/docgraph.ttl next to main.py
+            docgraph_path = Path(__file__).parent / "data" / "docgraph.ttl"
+
+    # ── Load project registry ─────────────────────────────────────────────────
     console.print(f"Loading project registry from [dim]{docgraph_path}[/dim]...")
     self_cfg = load_docgraph(docgraph_path, load_remote=not offline)
     console.print(f"  namespaces: {', '.join(self_cfg.namespaces)}")
@@ -138,7 +198,7 @@ def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: 
                     console.print(f"  [dim]already classified as {doc_id}, skipping[/dim]\n")
                     continue
 
-            docs = load_or_extract(pdf, force, client, model, console, note=note)
+            docs = load_or_extract(pdf, force, client, model, console, note=note, cache_dir=md_cache_dir)
             content_block = markdown_content_block(docs)
 
             def _on_classified(hit):
@@ -209,8 +269,8 @@ def main(input_path: Path, dry_run: bool, min_confidence: float, docgraph_path: 
     console.print(table)
 
     if dry_run:
-        console.print("\n[dim]Dry run — no files were copied.[/dim]")
+        console.print("\n[dim]Dry run — no files were written.[/dim]")
 
 
 if __name__ == "__main__":
-    main()
+    cli()
