@@ -16,10 +16,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
 
-from .tool.find_entity_tool import FIND_ENTITY_TOOL, find_entity
-from .tool.get_shape_tool import GET_SHAPE_TOOL, get_shape
-from .tool.submit_extraction_tool import SUBMIT_EXTRACTION_TOOL
-from .tool.validate_tool import VALIDATE_TOOL, validate_tool
+from .tool import AGENT_TOOLS, find_entity, get_shape, validate_tool
 
 from .llm import LLMClient
 from .models import ClassificationResult, DocumentClass, DocumentHit, ModelConfig
@@ -88,12 +85,6 @@ Extraction rules:
 - Do NOT add properties that are not in the template — only fill what the shape defines.
 """
 
-AGENT_TOOLS: list[dict] = [
-    GET_SHAPE_TOOL,
-    FIND_ENTITY_TOOL,
-    VALIDATE_TOOL,
-    SUBMIT_EXTRACTION_TOOL,
-]
 
 class DocumentAgent:
     MAX_TURNS = 16
