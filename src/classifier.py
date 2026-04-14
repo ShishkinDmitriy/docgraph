@@ -4,8 +4,7 @@ import json
 import logging
 import re
 
-import anthropic
-
+from .llm import LLMClient
 from .models import ModelConfig
 from .prompts import MARKDOWN_PROMPT
 
@@ -49,7 +48,7 @@ ExtractedDoc = dict  # {"title": str, "markdown": str, "stamps": list[str]}
 
 def pdf_to_markdown(
     pdf_block: dict,
-    client: anthropic.Anthropic,
+    client: LLMClient,
     model: ModelConfig,
     note: str | None = None,
 ) -> list[ExtractedDoc]:
@@ -63,14 +62,13 @@ def pdf_to_markdown(
     prompt = MARKDOWN_PROMPT
     if note:
         prompt += f"\n\nNote from user: {note}"
-    response = client.messages.create(
-        model=model.model_id,
+    response = client.create(
+        model_id=model.model_id,
         max_tokens=4096,
         messages=[{
             "role": "user",
             "content": [pdf_block, {"type": "text", "text": prompt}],
         }],
-        extra_headers={"anthropic-beta": "pdfs-2024-09-25"},
     )
     raw = response.content[0].text
     logger.debug("pdf_to_markdown | response:\n%s", raw)

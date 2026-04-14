@@ -191,27 +191,50 @@ def load_document_classes(g: Graph, target_class: URIRef) -> dict[str, DocumentC
     return classes
 
 
-def load_preferred_model(g: Graph) -> ModelConfig:
-    """
-    Return the ModelConfig for the model referenced by docgraph:this via docgraph:model.
-    Raises ValueError if none is found.
-    """
-    DOCGRAPH_NS = Namespace("http://example.org/tax-classifier/docgraph#")
-    self_this = g.value(predicate=RDF.type, object=DOCGRAPH_NS.Self)
-    if self_this is None:
-        raise ValueError("No docgraph:Self individual found in graph")
-    model_uri = g.value(self_this, DOCGRAPH_NS.model)
-    if model_uri is None:
-        raise ValueError("docgraph:this has no docgraph:model property")
-    model_id = g.value(model_uri, LLM.modelId)
-    label    = g.value(model_uri, RDFS.label)
+def _model_config_from_uri(g: Graph, model_uri: URIRef) -> ModelConfig:
+    """Build a ModelConfig from a model URI already resolved in *g*."""
+    model_id     = g.value(model_uri, LLM.modelId)
+    label        = g.value(model_uri, RDFS.label)
+    provider_uri = g.value(model_uri, LLM.provider)
     if not model_id:
         raise ValueError(f"Model {model_uri} has no llm:modelId")
+    # Derive a short provider name from the URI local part, e.g.
+    # <http://example.org/llm#anthropic> → "anthropic"
+    provider = str(provider_uri).rsplit("#", 1)[-1].rsplit("/", 1)[-1] if provider_uri else "anthropic"
     return ModelConfig(
         uri=model_uri,
         model_id=str(model_id),
         label=str(label) if label else str(model_uri),
+        provider=provider,
     )
+
+
+def load_preferred_model(g: Graph) -> ModelConfig:
+    """
+    Return the ModelConfig for the extraction model (docgraph:model).
+    Raises ValueError if none is found.
+    """
+    self_this = g.value(predicate=RDF.type, object=DOCGRAPH.Self)
+    if self_this is None:
+        raise ValueError("No docgraph:Self individual found in graph")
+    model_uri = g.value(self_this, DOCGRAPH.model)
+    if model_uri is None:
+        raise ValueError("docgraph:this has no docgraph:model property")
+    return _model_config_from_uri(g, model_uri)
+
+
+def load_vision_model(g: Graph) -> ModelConfig | None:
+    """
+    Return the ModelConfig for the vision/PDF model (docgraph:visionModel), or
+    None if not declared (caller should fall back to the extraction model).
+    """
+    self_this = g.value(predicate=RDF.type, object=DOCGRAPH.Self)
+    if self_this is None:
+        return None
+    model_uri = g.value(self_this, DOCGRAPH.visionModel)
+    if model_uri is None:
+        return None
+    return _model_config_from_uri(g, model_uri)
 
 
 def prefixed_name(uri: URIRef) -> str:

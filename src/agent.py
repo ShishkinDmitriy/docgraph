@@ -10,7 +10,6 @@ Phases per document:
 import json
 import logging
 
-import anthropic
 from rdflib import Graph, Namespace, RDF, URIRef
 from rdflib.namespace import RDF as RDF_NS, RDFS
 from rich.console import Console
@@ -22,6 +21,7 @@ from .tool.get_shape_tool import GET_SHAPE_TOOL, get_shape
 from .tool.submit_extraction_tool import SUBMIT_EXTRACTION_TOOL
 from .tool.validate_tool import VALIDATE_TOOL, validate_tool
 
+from .llm import LLMClient
 from .models import ClassificationResult, DocumentClass, DocumentHit, ModelConfig
 from . import ontology as _ontology
 from .ontology import JSONLD_CONTEXT, prefixed_name
@@ -102,7 +102,7 @@ class DocumentAgent:
         self,
         graph: Graph,                       # combined ontology graph (shapes + ontologies)
         results_graph: Graph,               # accumulated results — used by find_entity
-        client: anthropic.Anthropic,
+        client: LLMClient,
         model: ModelConfig,
         doc_classes: dict[str, DocumentClass],
         target_class: URIRef,               # root class, e.g. fin:FinancialDocument
@@ -159,15 +159,15 @@ class DocumentAgent:
 
         for turn in range(self.MAX_TURNS):
             _log_request(messages, turn)
-            response = self.client.messages.create(
-                model=self.model.model_id,
+            response = self.client.create(
+                model_id=self.model.model_id,
                 max_tokens=4096,
                 system=_SYSTEM,
                 tools=AGENT_TOOLS,
                 messages=messages,
             )
             _log_response(response, turn)
-            messages.append({"role": "assistant", "content": response.content})
+            messages.append({"role": "assistant", "content": response.assistant_message})
             if response.stop_reason in ("end_turn", "max_tokens"):
                 break
             if response.stop_reason == "tool_use":
@@ -311,7 +311,7 @@ def run_extraction(
     results_graph: Graph,
     doc_classes: dict,
     target_class: URIRef,
-    client: anthropic.Anthropic,
+    client: LLMClient,
     model: ModelConfig,
     note: str | None = None,
     on_hit_classified=None,

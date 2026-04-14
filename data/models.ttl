@@ -7,6 +7,10 @@ llm:anthropic a foaf:Organization ;
     rdfs:label "Anthropic" ;
     foaf:name  "Anthropic" .
 
+llm:openai a foaf:Organization ;
+    rdfs:label "OpenAI" ;
+    foaf:name  "OpenAI" .
+
 llm:claude-haiku-4-5 a llm:Model, prov:Agent, prov:SoftwareAgent ;
     rdfs:label "Claude Haiku 4.5" ;
     llm:modelId "claude-haiku-4-5-20251001" ;
@@ -21,4 +25,14 @@ llm:claude-opus-4-6 a llm:Model, prov:Agent, prov:SoftwareAgent ;
     rdfs:label "Claude Opus 4.6" ;
     llm:modelId "claude-opus-4-6" ;
     llm:provider llm:anthropic .
+
+llm:gpt-4o a llm:Model, prov:Agent, prov:SoftwareAgent ;
+    rdfs:label "GPT-4o" ;
+    llm:modelId "gpt-4o" ;
+    llm:provider llm:openai .
+
+llm:gpt-4o-mini a llm:Model, prov:Agent, prov:SoftwareAgent ;
+    rdfs:label "GPT-4o mini" ;
+    llm:modelId "gpt-4o-mini" ;
+    llm:provider llm:openai .
 

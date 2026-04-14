@@ -7,7 +7,6 @@ import sys
 import traceback
 from pathlib import Path
 
-import anthropic
 import click
 from rich.console import Console
 from rich.table import Table
@@ -18,8 +17,11 @@ from src.markdown_io import load_or_extract
 from src.ontology import (
     load_document_classes,
     load_preferred_model,
+    load_vision_model,
     load_docgraph,
 )
+from src.llm.anthropic import AnthropicClient
+from src.llm.openai import OpenAIClient
 from src.project import (
     find_project_root,
     init_project,
@@ -147,18 +149,32 @@ def run(
     console.print(f"  namespaces: {', '.join(self_cfg.namespaces)}")
     console.print(f"  target class: [dim]{self_cfg.target_class}[/dim]\n")
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        console.print("[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.")
-        sys.exit(1)
-
-    model = load_preferred_model(self_cfg.graph)
-    console.print(f"Using model: [bold]{model.label}[/bold] ({model.model_id})\n")
+    model        = load_preferred_model(self_cfg.graph)
+    vision_model = load_vision_model(self_cfg.graph) or model
+    console.print(f"Extraction model: [bold]{model.label}[/bold] ({model.model_id}) via [dim]{model.provider}[/dim]")
+    if vision_model is not model:
+        console.print(f"Vision model:     [bold]{vision_model.label}[/bold] ({vision_model.model_id}) via [dim]{vision_model.provider}[/dim]")
+    console.print()
 
     doc_classes = load_document_classes(self_cfg.graph, self_cfg.target_class)
     console.print(f"Loaded [bold]{len(doc_classes)}[/bold] document classes: {', '.join(doc_classes)}\n")
 
-    client = anthropic.Anthropic(api_key=api_key)
+    def _make_client(m):
+        if m.provider == "openai":
+            key = os.environ.get("OPENAI_API_KEY")
+            if not key:
+                console.print("[red]Error:[/red] OPENAI_API_KEY environment variable not set.")
+                sys.exit(1)
+            return OpenAIClient(api_key=key)
+        else:
+            key = os.environ.get("ANTHROPIC_API_KEY")
+            if not key:
+                console.print("[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.")
+                sys.exit(1)
+            return AnthropicClient(api_key=key)
+
+    client        = _make_client(model)
+    vision_client = _make_client(vision_model) if vision_model is not model else client
 
     # Collect PDFs
     if input_path.is_file():
@@ -198,7 +214,7 @@ def run(
                     console.print(f"  [dim]already classified as {doc_id}, skipping[/dim]\n")
                     continue
 
-            docs = load_or_extract(pdf, force, client, model, console, note=note, cache_dir=md_cache_dir)
+            docs = load_or_extract(pdf, force, vision_client, vision_model, console, note=note, cache_dir=md_cache_dir)
             content_block = markdown_content_block(docs)
 
             def _on_classified(hit):

@@ -15,9 +15,10 @@ class DocumentClass:
 
 @dataclass
 class ModelConfig:
-    uri: URIRef   # canonical URI from the ontology, e.g. tax:claude-haiku-4-5
-    model_id: str # API identifier, e.g. "claude-haiku-4-5-20251001"
+    uri: URIRef      # canonical URI from the ontology, e.g. llm:claude-haiku-4-5
+    model_id: str    # API identifier, e.g. "claude-haiku-4-5-20251001"
     label: str
+    provider: str    # local name of llm:provider individual, e.g. "anthropic", "openai"
 
 
 @dataclass

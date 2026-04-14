@@ -1,14 +1,14 @@
 # docgraph
 
-Classify PDF documents and extract structured RDF data using Claude.
+Classify PDF documents and extract structured RDF data using an LLM.
 
-The project is configured through a small ontology registry (`docgraph.ttl`) that declares what ontologies to load, which OWL class is the classification target, which Claude model to use, and where to write results. Everything else — document categories, SHACL shapes, entity vocabularies — lives in plain Turtle files.
+The project is configured through a small ontology registry (`docgraph.ttl`) that declares what ontologies to load, which OWL class is the classification target, which models to use, and where to write results. Everything else — document categories, SHACL shapes, entity vocabularies — lives in plain Turtle files.
 
 ## How it works
 
 1. **Load registry** — `.docgraph/docgraph.ttl` is discovered automatically and parsed. It lists local ontology files to merge and optional remote ontologies (FOAF, SKOS, PROV-O) to fetch.
-2. **Convert PDF to Markdown** — each PDF is rendered to Markdown via Claude Vision and cached in `.docgraph/cache/`.
-3. **Agent loop** — a Claude agent classifies the document, deduplicates entities against previously extracted results (via SPARQL), and extracts structured properties as JSON-LD.
+2. **Convert PDF to Markdown** — each PDF is rendered to Markdown via the vision model and cached in `.docgraph/cache/`.
+3. **Agent loop** — an LLM agent classifies the document, deduplicates entities against previously extracted results (via SPARQL), and extracts structured properties as JSON-LD.
 4. **Persist** — results are appended to `.docgraph/results.ttl` as RDF triples in the configured output namespace.
 5. **Validate** — the output graph is checked against SHACL shapes.
 
@@ -16,7 +16,8 @@ The project is configured through a small ontology registry (`docgraph.ttl`) tha
 
 ```
 pip install -e .
-export ANTHROPIC_API_KEY=sk-ant-...
+export ANTHROPIC_API_KEY=sk-ant-...   # for Anthropic models
+export OPENAI_API_KEY=sk-...          # for OpenAI models
 ```
 
 This registers a `docgraph` command in your environment.
@@ -112,6 +113,42 @@ fin:Invoice a owl:Class, skos:Concept ;
     skos:definition "A B2B demand for payment issued after goods or services were delivered." .
 ```
 
+## Configuring models
+
+Models are declared in `models.ttl` and referenced from the registry.  Two roles are supported:
+
+| Property | Role | Required |
+|----------|------|----------|
+| `docgraph:model` | Agent extraction loop — classifies, deduplicates, extracts | yes |
+| `docgraph:visionModel` | PDF → Markdown conversion — needs vision/document support | no, falls back to `docgraph:model` |
+
+**Single model (Anthropic)** — the default; one model handles both tasks:
+
+```turtle
+docgraph:this
+    docgraph:model llm:claude-haiku-4-5 .
+```
+
+**Split models** — use Claude for vision, GPT-4o for the cheaper extraction loop:
+
+```turtle
+docgraph:this
+    docgraph:model       llm:gpt-4o ;
+    docgraph:visionModel llm:claude-haiku-4-5 .
+```
+
+The CLI reads `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` as needed based on the provider declared for each model.  If the Markdown cache is already populated (a previous run with `AnthropicClient`), the vision model is never called and only `OPENAI_API_KEY` is required.
+
+Available models out of the box (add more to `models.ttl` as needed):
+
+| ID | Provider |
+|----|----------|
+| `llm:claude-haiku-4-5` | Anthropic |
+| `llm:claude-sonnet-4-6` | Anthropic |
+| `llm:claude-opus-4-6` | Anthropic |
+| `llm:gpt-4o` | OpenAI |
+| `llm:gpt-4o-mini` | OpenAI |
+
 ## Configuring the output namespace
 
 Edit `docgraph:results` in `data/docgraph.ttl`:
@@ -126,8 +163,6 @@ docgraph:results a docgraph:Output ;
 Minted entity URIs will use the declared namespace and prefix (e.g. `result:person_alice`).
 
 ## Future plans
-
-**Model abstraction** — the agent is currently coupled to the Anthropic SDK. The goal is to introduce a thin model interface so any backend can be plugged in: OpenAI-compatible APIs, Ollama, llama.cpp, or any local model that speaks a standard protocol. The ontology would declare the model type alongside the model ID, and the agent would receive a generic client rather than an `anthropic.Anthropic` instance.
 
 **Named graphs as containers** — today all extracted triples land in a flat `results.ttl`. The plan is to make each extracted document a named graph (RDF dataset, TriG format), so a single file holds many documents with clean boundaries. This enables selective regeneration (drop one graph and re-extract without touching others), easier diffing, and provenance queries scoped to a single source document.
 
@@ -159,7 +194,8 @@ Language is a general-purpose dimension with built-in SKOS support: `skos:altLab
 
 | Package | Role |
 |---------|------|
-| `anthropic` | Claude API client |
+| `anthropic` | Anthropic API client |
+| `openai` | OpenAI API client |
 | `rdflib` | RDF graph, SPARQL, Turtle serialisation |
 | `pyshacl` | SHACL validation |
 | `click` | CLI |

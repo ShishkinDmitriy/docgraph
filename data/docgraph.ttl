@@ -34,7 +34,8 @@ docgraph:Output         a owl:Class .
 
 docgraph:hasOntology  a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:range owl:Class .
 docgraph:targetClass  a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:range owl:Class .
-docgraph:model        a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:comment "The LLM model to use for extraction." .
+docgraph:model        a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:comment "The LLM model to use for the agent extraction loop." .
+docgraph:visionModel  a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:comment "The LLM model to use for PDF-to-Markdown conversion. Defaults to docgraph:model when absent." .
 docgraph:output       a owl:ObjectProperty  ; rdfs:domain docgraph:Self      ; rdfs:range docgraph:Output .
 docgraph:prefix       a owl:DatatypeProperty ;                                 rdfs:range xsd:string .
 docgraph:relativePath a owl:DatatypeProperty ;                                 rdfs:range xsd:string .
@@ -102,6 +103,12 @@ docgraph:DocgraphShape a sh:NodeShape ;
         sh:maxCount 1 ;
         sh:class    llm:Model ;
         sh:message  "docgraph:Self must declare exactly one docgraph:model (a llm:Model)" ;
+    ] ;
+    sh:property [
+        sh:path     docgraph:visionModel ;
+        sh:maxCount 1 ;
+        sh:class    llm:Model ;
+        sh:message  "docgraph:visionModel, if present, must reference exactly one llm:Model" ;
     ] ;
     sh:property [
         sh:path     docgraph:hasOntology ;
