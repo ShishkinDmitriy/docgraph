@@ -12,22 +12,22 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from src.classifier.classifier import markdown_content_block
-from src.classifier.agent import run_extraction
-from src.classifier.markdown_io import load_or_extract
-from src.classifier.ontology import (
+from src.classifier import markdown_content_block
+from src.agent import run_extraction
+from src.markdown_io import load_or_extract
+from src.ontology import (
     load_document_classes,
     load_preferred_model,
     load_docgraph,
 )
-from src.classifier.project import (
+from src.project import (
     find_project_root,
     init_project,
     registry_path,
     cache_dir as project_cache_dir,
 )
-from src.classifier.results import append_result, find_classified, pdf_sha256
-from src.classifier.validator import validate
+from src.results import append_result, find_classified, pdf_sha256
+from src.validator import validate
 
 console = Console()
 
@@ -126,7 +126,7 @@ def run(
     logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
     logging.getLogger("anthropic").setLevel(logging.WARNING)
     if debug:
-        logging.getLogger("src.classifier").setLevel(logging.DEBUG)
+        logging.getLogger("src").setLevel(logging.DEBUG)
 
     # ── Resolve project registry ──────────────────────────────────────────────
     md_cache_dir: Path | None = None

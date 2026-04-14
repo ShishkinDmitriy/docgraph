@@ -6,8 +6,8 @@ import pytest
 from rdflib import Graph, Literal, URIRef
 from rdflib.namespace import FOAF, RDF, RDFS
 
-from src.classifier.agent import DocumentAgent
-from src.classifier.models import ModelConfig
+from src.agent import DocumentAgent
+from src.models import ModelConfig
 
 FOAF_PERSON = "http://xmlns.com/foaf/0.1/Person"
 FOAF_ORG    = "http://xmlns.com/foaf/0.1/Organization"
@@ -105,7 +105,7 @@ def test_abstract_agent_expands_to_person():
 
 def test_no_match_returns_suggested_uri():
     """When nothing matches, matches is empty and suggested_uri is stable."""
-    import src.classifier.agent as ag_mod
+    import src.agent as ag_mod
     original = ag_mod._ontology.OUTPUT_PREFIX
     try:
         ag_mod._ontology.OUTPUT_PREFIX = "tax"
@@ -126,7 +126,7 @@ def test_suggested_uri_derived_from_name():
 
 def test_suggested_uri_uses_output_prefix_and_namespace():
     """suggested_uri is a CURIE whose prefix matches OUTPUT_PREFIX."""
-    import src.classifier.agent as ag_mod
+    import src.agent as ag_mod
     original = ag_mod._ontology.OUTPUT_PREFIX
     try:
         ag_mod._ontology.OUTPUT_PREFIX = "ent"

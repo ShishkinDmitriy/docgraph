@@ -12,7 +12,7 @@ ONTOLOGIES_SUBDIR = "ontologies"
 CACHE_SUBDIR      = "cache"
 
 # data/ is the single canonical source for both the registry and ontology files.
-_DATA_DIR = Path(__file__).parent.parent.parent / "data"
+_DATA_DIR = Path(__file__).parent.parent / "data"
 
 _DOCGRAPH = Namespace("http://example.org/tax-classifier/docgraph#")
 

@@ -21,7 +21,7 @@ _VALID_JSON_ESCAPES = set(r'"\\/bfnrtu')
 
 
 def _fix_invalid_escapes(s: str) -> str:
-    """Replace invalid JSON escape sequences (e.g. \_ \* \[ \]) with the literal character."""
+    r"""Replace invalid JSON escape sequences (e.g. \_ \* \[ \]) with the literal character."""
     result = []
     i = 0
     while i < len(s):

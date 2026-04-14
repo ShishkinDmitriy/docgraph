@@ -3,8 +3,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.classifier.classifier import ClassificationResult
-from src.classifier.organizer import organize
+from src.classifier import ClassificationResult
+from src.organizer import organize
 
 
 def test_organize_creates_correct_path(tmp_path):

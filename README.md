@@ -83,7 +83,7 @@ After `docgraph init`:
 Source layout:
 
 ```
-src/classifier/
+src/
   agent.py               # Claude agent: classify → deduplicate → extract
   ontology.py            # registry loader, JSONLD_CONTEXT, namespace utils
   classifier.py          # PDF → Markdown content block
@@ -91,7 +91,7 @@ src/classifier/
   results.py             # append/query results.ttl
   markdown_io.py         # Markdown cache read/write
   project.py             # .docgraph/ discovery and init
-  templates/             # default files installed by `docgraph init`
+  tool/                  # Claude tool implementations
 main.py                  # CLI entry point (commands: init, run)
 ```
 
