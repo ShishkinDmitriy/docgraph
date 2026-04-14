@@ -67,11 +67,6 @@ def init(directory: Path | None, force: bool):
 @cli.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.option(
-    "--dry-run", "-n",
-    is_flag=True,
-    help="Show what would happen without writing results.",
-)
-@click.option(
     "--min-confidence",
     type=float,
     default=0.5,
@@ -111,7 +106,6 @@ def init(directory: Path | None, force: bool):
 )
 def run(
     input_path: Path,
-    dry_run: bool,
     min_confidence: float,
     docgraph_path: Path | None,
     offline: bool,
@@ -207,7 +201,7 @@ def run(
     for pdf in pdfs:
         console.print(f"[bold]{pdf.name}[/bold]")
         try:
-            if not dry_run and not force:
+            if not force:
                 existing = find_classified(results_ttl, pdf_sha256(pdf))
                 if existing:
                     doc_id = str(existing).rsplit("/", 1)[-1]
@@ -224,14 +218,13 @@ def run(
                 if hit.category not in doc_classes:
                     console.print(f"  [yellow]unknown category '{hit.category}' — skipping save[/yellow]")
                     return
-                if not dry_run:
-                    append_result(
-                        results_ttl, pdf, hit,
-                        model=model, method="agent",
-                        doc_class_uri=doc_classes[hit.category].uri,
-                    )
-                    # Sync results_graph so subsequent PDFs can find_entity against it.
-                    results_graph.parse(results_ttl)
+                append_result(
+                    results_ttl, pdf, hit,
+                    model=model, method="agent",
+                    doc_class_uri=doc_classes[hit.category].uri,
+                )
+                # Sync results_graph so subsequent PDFs can find_entity against it.
+                results_graph.parse(results_ttl)
                 console.print(f"  [{hit.category}] extraction complete → {results_ttl}")
 
             console.print("  running agent extraction...")
@@ -255,16 +248,15 @@ def run(
                 if hit.category not in doc_classes:
                     continue  # already warned in _on_extracted
 
-                if not dry_run:
-                    violations = validate(results_ttl, self_cfg.graph)
-                    if violations:
-                        console.print(f"  [yellow]SHACL[/yellow] {len(violations)} violation(s):")
-                        for v in violations:
-                            node = v.focus_node.split("/")[-1]
-                            path = v.result_path.split("#")[-1] if v.result_path else "—"
-                            console.print(f"    [{('red' if v.severity == 'violation' else 'yellow')}]{v.severity}[/] {node}  {path}  {v.message}")
-                    else:
-                        console.print(f"  [green]SHACL[/green] conforms")
+                violations = validate(results_ttl, self_cfg.graph)
+                if violations:
+                    console.print(f"  [yellow]SHACL[/yellow] {len(violations)} violation(s):")
+                    for v in violations:
+                        node = v.focus_node.split("/")[-1]
+                        path = v.result_path.split("#")[-1] if v.result_path else "—"
+                        console.print(f"    [{('red' if v.severity == 'violation' else 'yellow')}]{v.severity}[/] {node}  {path}  {v.message}")
+                else:
+                    console.print(f"  [green]SHACL[/green] conforms")
 
             if accepted_hits:
                 cats_str = ", ".join(
@@ -283,9 +275,6 @@ def run(
             console.print(f"  [dim]{traceback.format_exc().strip()}[/dim]\n")
 
     console.print(table)
-
-    if dry_run:
-        console.print("\n[dim]Dry run — no files were written.[/dim]")
 
 
 if __name__ == "__main__":

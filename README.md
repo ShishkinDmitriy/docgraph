@@ -59,7 +59,6 @@ Options for `run`:
 | `--docgraph` | auto-discovered | Override the registry path explicitly |
 | `--min-confidence` | `0.5` | Skip hits below this threshold |
 | `--force` / `-f` | off | Re-classify already-processed files |
-| `--dry-run` / `-n` | off | Preview without writing results |
 | `--offline` | off | Skip fetching remote ontologies listed in docgraph.ttl |
 | `--note` | — | Free-text hint passed to the classifier |
 | `--debug` | off | Print full prompts and LLM responses |
