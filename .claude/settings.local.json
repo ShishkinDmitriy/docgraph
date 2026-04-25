@@ -8,7 +8,8 @@
       "Bash(wc:*)",
       "Bash(PYTHONPATH=. .venv/bin/pytest:*)",
       "Bash(python3 -m pytest tests/test_find_entity.py -q)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(git -C /home/dimonina/projects/docgraph mv docs/ARCHITECTURE.md ARCHITECTURE.md)"
     ]
   }
 }

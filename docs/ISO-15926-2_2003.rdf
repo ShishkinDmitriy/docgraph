@@ -1,0 +1,4864 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright (c) 2008, POSC Caesar Association 
+  All rights reserved.
+  
+  Redistribution and use in source and binary forms, with or without 
+  modification, are permitted provided that the following conditions are met:
+  
+  * Redistributions of source code must retain the above copyright 
+  notice, this list of conditions and the following disclaimer.
+  * Redistributions in binary form must reproduce the above copyright 
+  notice, this list of conditions and the following disclaimer in the 
+  documentation and/or other materials provided with the distribution.
+  * Neither the name of the POSC Caesar Association nor the names of its 
+  contributors may be used to endorse or promote products derived from 
+  this software without specific prior written permission.
+  
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS 
+  IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED 
+  TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A 
+  PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER 
+  OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, 
+  EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+  PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR 
+  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF 
+  LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING 
+  NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
+  SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+
+<!--
+  According to the WonderWeb OWL Ontology Validator 
+  (http://www.mygrid.org.uk/OWL/Validator), the OWL sublanguage of this 
+  ontology is OWL DL.
+	-->
+
+<!--
+  The translation from EXPRESS to OWL is done in an uniform way. However, there 
+  are exceptions. According to the EXPRESS schema, the contents of the lists in 
+  the attributes corresponding to the ObjectProperties hasPosition in 
+  MultidimensionalObject, and hasParameterPosition and hasOptionalElement in 
+  ClassOfMultidimensionalObject are INTEGERs and BOOLEANs. In the translation 
+  they should, as ISO 10303-28 defines, be expressed as the XSD datatypes 
+  xsd:long and xsd:boolean. However, this exceeds the expressivity of OWL DL 
+  and would force the OWL sublanguage of the ontology to OWL Full. Instead the 
+  contents of these lists are restricted to the classes ExpressInteger and 
+  ExpressBoolean respectively.
+	-->
+
+
+<!DOCTYPE rdf:RDF [
+<!ENTITY part2 "http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003">
+<!ENTITY list "http://www.co-ode.org/ontologies/list.owl" >
+				 ]>
+
+<rdf:RDF xmlns:list="&list;#"
+         xmlns:owl="http://www.w3.org/2002/07/owl#"
+         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+         xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+         xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+         xml:base="http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003">
+	<owl:Ontology rdf:about="">
+		<rdfs:comment>ISO 15926-2:2003: Industrial automation systems and integration -- Integration of life-cycle data for process plants including oil and gas production facilities -- Part 2: Data model.
+
+		This ontology is based on the EXPRESS schema lifecycle_integration_schema.exp, http://www.steptools.com/sc4/archive/oil-and-gas/15926-0002-lifecycle_integration.exp?rev=1.1&amp;content-type=text/vnd.viewcvs-markup, which ISO 15926-2 annex B references.</rdfs:comment>
+		<owl:versionInfo>Generated 2008-02-21T17:29:19.558+01:00</owl:versionInfo>
+		<owl:imports rdf:resource="http://www.co-ode.org/ontologies/lists/2008/09/11/list.owl"/>
+	</owl:Ontology>
+	<owl:Class rdf:ID="AbstractObject">
+		<rdfs:subClassOf rdf:resource="#Thing"/>
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#Class"/>
+					<rdf:Description rdf:about="#MultidimensionalObject"/>
+					<rdf:Description rdf:about="#Relationship"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="Activity">
+		<rdfs:subClassOf rdf:resource="#PossibleIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ActualIndividual">
+		<rdfs:subClassOf rdf:resource="#PossibleIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Approval">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ArithmeticNumber">
+		<rdfs:subClassOf rdf:resource="#ClassOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ArrangedIndividual">
+		<rdfs:subClassOf rdf:resource="#PossibleIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ArrangementOfIndividual">
+		<rdfs:subClassOf rdf:resource="#CompositionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="AssemblyOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ArrangementOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Beginning">
+		<rdfs:subClassOf rdf:resource="#TemporalBounding"/>
+	</owl:Class>
+	<owl:Class rdf:ID="BoundaryOfNumberSpace">
+		<rdfs:subClassOf rdf:resource="#Specialization"/>
+	</owl:Class>
+	<owl:Class rdf:ID="BoundaryOfPropertySpace">
+		<rdfs:subClassOf rdf:resource="#Specialization"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Cardinality">
+		<rdfs:subClassOf rdf:resource="#Class"/>
+	</owl:Class>
+	<owl:Class rdf:ID="CauseOfEvent">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Class">
+		<rdfs:subClassOf rdf:resource="#AbstractObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfAbstractObject">
+		<rdfs:subClassOf rdf:resource="#Class"/>
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfClass"/>
+					<rdf:Description rdf:about="#ClassOfMultidimensionalObject"/>
+					<rdf:Description rdf:about="#ClassOfRelationship"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfActivity">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfApproval">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfApprovalByStatus">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfArrangedIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfArrangementOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfCompositionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfAssemblyOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangementOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfAssertion">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfAtom">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfBiologicalMatter">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfCauseOfBeginningOfClassOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfCauseOfEndingOfClassOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClass">
+		<rdfs:subClassOf rdf:resource="#ClassOfAbstractObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfComposition">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfDefinition">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfDescription">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfIdentification">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfInformationRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfRelationship">
+		<rdfs:subClassOf rdf:resource="#ClassOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfRelationshipWithSignature">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationshipWithSignature"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfRepresentationTranslation">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfResponsibilityForRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassOfUsageOfRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfClassification">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfCompositeMaterial">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfCompositionOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfCompound">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfConnectionOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfDirectConnection"/>
+					<rdf:Description rdf:about="#ClassOfIndirectConnection"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfContainmentOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelativeLocation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfDefinition">
+		<rdfs:subClassOf rdf:resource="#ClassOfRepresentationOfThing"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfDescription">
+		<rdfs:subClassOf rdf:resource="#ClassOfRepresentationOfThing"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfDimensionForShape">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfDirectConnection">
+		<rdfs:subClassOf rdf:resource="#ClassOfConnectionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfEvent">
+		<rdfs:subClassOf rdf:resource="#ClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfExpressInformationRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfInformationRepresentation"/>
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ExpressBinary"/>
+					<rdf:Description rdf:about="#ExpressBoolean"/>
+					<rdf:Description rdf:about="#ExpressInteger"/>
+					<rdf:Description rdf:about="#ExpressLogical"/>
+					<rdf:Description rdf:about="#ExpressReal"/>
+					<rdf:Description rdf:about="#ExpressString"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfFeature">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfFeatureWholePart">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangementOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfFunctionalMapping">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfFunctionalObject">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfIdentification">
+		<rdfs:subClassOf rdf:resource="#ClassOfRepresentationOfThing"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfInanimatePhysicalObject">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfIndirectConnection">
+		<rdfs:subClassOf rdf:resource="#ClassOfConnectionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfIndirectProperty">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfIndividual">
+		<rdfs:subClassOf rdf:resource="#Class"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfIndividualUsedInConnection">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfInformationObject">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfInformationPresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfInformationRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfIntendedRoleAndDomain">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfInvolvementByReference">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfIsomorphicFunctionalMapping">
+		<rdfs:subClassOf rdf:resource="#ClassOfFunctionalMapping"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfLeftNamespace">
+		<rdfs:subClassOf rdf:resource="#ClassOfNamespace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfLifecycleStage">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfMolecule">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfMultidimensionalObject">
+		<rdfs:subClassOf rdf:resource="#ClassOfAbstractObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfNamespace">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfNumber">
+		<rdfs:subClassOf rdf:resource="#ClassOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfOrganism">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfOrganization">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfParticipation">
+		<rdfs:subClassOf rdf:resource="#ClassOfCompositionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfParticulateMaterial">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfPeriodInTime">
+		<rdfs:subClassOf rdf:resource="#ClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfPerson">
+		<rdfs:subClassOf rdf:resource="#ClassOfOrganism"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfPointInTime">
+		<rdfs:subClassOf rdf:resource="#ClassOfEvent"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfPossibleRoleAndDomain">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfProperty">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfPropertySpace">
+		<rdfs:subClassOf rdf:resource="#ClassOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRecognition">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRelationship">
+		<rdfs:subClassOf rdf:resource="#ClassOfAbstractObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRelationshipWithRelatedEnd1">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRelationshipWithRelatedEnd2">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRelationshipWithSignature">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRelativeLocation">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRepresentationOfThing">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRepresentationTranslation">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfResponsibilityForRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfRightNamespace">
+		<rdfs:subClassOf rdf:resource="#ClassOfNamespace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfScale">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfScaleConversion">
+		<rdfs:subClassOf rdf:resource="#ClassOfIsomorphicFunctionalMapping"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfShape">
+		<rdfs:subClassOf rdf:resource="#PropertySpace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfShapeDimension">
+		<rdfs:subClassOf rdf:resource="#ClassOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfSpecialization">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfStatus">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfSubAtomicParticle">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfTemporalSequence">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfTemporalWholePart">
+		<rdfs:subClassOf rdf:resource="#ClassOfCompositionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ClassOfUsageOfRepresentation">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Classification">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ComparisonOfProperty">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="CompositionOfIndividual">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ConnectionOfIndividual">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ContainmentOfIndividual">
+		<rdfs:subClassOf rdf:resource="#RelativeLocation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="CoordinateSystem">
+		<rdfs:subClassOf rdf:resource="#MultidimensionalScale"/>
+	</owl:Class>
+	<owl:Class rdf:ID="CrystallineStructure">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Definition">
+		<rdfs:subClassOf rdf:resource="#RepresentationOfThing"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Description">
+		<rdfs:subClassOf rdf:resource="#RepresentationOfThing"/>
+	</owl:Class>
+	<owl:Class rdf:ID="DifferenceOfSetOfClass">
+		<rdfs:subClassOf rdf:resource="#FunctionalMapping"/>
+	</owl:Class>
+	<owl:Class rdf:ID="DimensionOfIndividual">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="DimensionOfShape">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="DirectConnection">
+		<rdfs:subClassOf rdf:resource="#ConnectionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="DocumentDefinition">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Ending">
+		<rdfs:subClassOf rdf:resource="#TemporalBounding"/>
+	</owl:Class>
+	<owl:Class rdf:ID="EnumeratedNumberSet">
+		<rdfs:subClassOf rdf:resource="#ClassOfNumber"/>
+		<rdfs:subClassOf rdf:resource="#EnumeratedSetOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="EnumeratedPropertySet">
+		<rdfs:subClassOf rdf:resource="#ClassOfProperty"/>
+		<rdfs:subClassOf rdf:resource="#EnumeratedSetOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="EnumeratedSetOfClass">
+		<rdfs:subClassOf rdf:resource="#ClassOfClass"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Event">
+		<rdfs:subClassOf rdf:resource="#PossibleIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ExpressBinary">
+		<rdfs:subClassOf rdf:resource="#ClassOfExpressInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ExpressBoolean">
+		<rdfs:subClassOf rdf:resource="#ClassOfExpressInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ExpressInteger">
+		<rdfs:subClassOf rdf:resource="#ClassOfExpressInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ExpressLogical">
+		<rdfs:subClassOf rdf:resource="#ClassOfExpressInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ExpressReal">
+		<rdfs:subClassOf rdf:resource="#ClassOfExpressInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ExpressString">
+		<rdfs:subClassOf rdf:resource="#ClassOfExpressInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="FeatureWholePart">
+		<rdfs:subClassOf rdf:resource="#ArrangementOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="FunctionalMapping">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="FunctionalPhysicalObject">
+		<rdfs:subClassOf rdf:resource="#PhysicalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Identification">
+		<rdfs:subClassOf rdf:resource="#RepresentationOfThing"/>
+	</owl:Class>
+	<owl:Class rdf:ID="IndirectConnection">
+		<rdfs:subClassOf rdf:resource="#ConnectionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="IndirectProperty">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="IndividualDimension">
+		<rdfs:subClassOf rdf:resource="#ClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="IndividualUsedInConnection">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="IntegerNumber">
+		<rdfs:subClassOf rdf:resource="#ArithmeticNumber"/>
+	</owl:Class>
+	<owl:Class rdf:ID="IntendedRoleAndDomain">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="IntersectionOfSetOfClass">
+		<rdfs:subClassOf rdf:resource="#FunctionalMapping"/>
+	</owl:Class>
+	<owl:Class rdf:ID="InvolvementByReference">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Language">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="LeftNamespace">
+		<rdfs:subClassOf rdf:resource="#Namespace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="LifecycleStage">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="LowerBoundOfNumberRange">
+		<rdfs:subClassOf rdf:resource="#Classification"/>
+	</owl:Class>
+	<owl:Class rdf:ID="LowerBoundOfPropertyRange">
+		<rdfs:subClassOf rdf:resource="#Classification"/>
+	</owl:Class>
+	<owl:Class rdf:ID="MaterializedPhysicalObject">
+		<rdfs:subClassOf rdf:resource="#PhysicalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="MultidimensionalNumber">
+		<rdfs:subClassOf rdf:resource="#ArithmeticNumber"/>
+		<rdfs:subClassOf rdf:resource="#MultidimensionalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="MultidimensionalNumberSpace">
+		<rdfs:subClassOf rdf:resource="#NumberSpace"/>
+		<rdfs:subClassOf rdf:resource="#MultidimensionalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="MultidimensionalObject">
+		<rdfs:subClassOf rdf:resource="#AbstractObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="MultidimensionalProperty">
+		<rdfs:subClassOf rdf:resource="#Property"/>
+		<rdfs:subClassOf rdf:resource="#MultidimensionalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="MultidimensionalPropertySpace">
+		<rdfs:subClassOf rdf:resource="#PropertySpace"/>
+		<rdfs:subClassOf rdf:resource="#MultidimensionalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="MultidimensionalScale">
+		<rdfs:subClassOf rdf:resource="#Scale"/>
+		<rdfs:subClassOf rdf:resource="#MultidimensionalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Namespace">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangementOfIndividual"/>
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#LeftNamespace"/>
+					<rdf:Description rdf:about="#RightNamespace"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="NumberRange">
+		<rdfs:subClassOf rdf:resource="#NumberSpace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="NumberSpace">
+		<rdfs:subClassOf rdf:resource="#ClassOfNumber"/>
+	</owl:Class>
+	<owl:Class rdf:ID="OtherRelationship">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ParticipatingRoleAndDomain">
+		<rdfs:subClassOf rdf:resource="#RoleAndDomain"/>
+		<rdfs:subClassOf rdf:resource="#ClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Participation">
+		<rdfs:subClassOf rdf:resource="#CompositionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PeriodInTime">
+		<rdfs:subClassOf rdf:resource="#PossibleIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Phase">
+		<rdfs:subClassOf rdf:resource="#ClassOfArrangedIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PhysicalObject">
+		<rdfs:subClassOf rdf:resource="#PossibleIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PointInTime">
+		<rdfs:subClassOf rdf:resource="#Event"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PossibleIndividual">
+		<rdfs:subClassOf rdf:resource="#Thing"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PossibleRoleAndDomain">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Property">
+		<rdfs:subClassOf rdf:resource="#ClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PropertyForShapeDimension">
+		<rdfs:subClassOf rdf:resource="#ClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PropertyQuantification">
+		<rdfs:subClassOf rdf:resource="#FunctionalMapping"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PropertyRange">
+		<rdfs:subClassOf rdf:resource="#PropertySpace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PropertySpace">
+		<rdfs:subClassOf rdf:resource="#ClassOfProperty"/>
+	</owl:Class>
+	<owl:Class rdf:ID="PropertySpaceForClassOfShapeDimension">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfRelationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="RealNumber">
+		<rdfs:subClassOf rdf:resource="#ArithmeticNumber"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Recognition">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Relationship">
+		<rdfs:subClassOf rdf:resource="#AbstractObject"/>
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#Approval"/>
+					<rdf:Description rdf:about="#CauseOfEvent"/>
+					<rdf:Description rdf:about="#ClassOfRelationshipWithSignature"/>
+					<rdf:Description rdf:about="#Classification"/>
+					<rdf:Description rdf:about="#ComparisonOfProperty"/>
+					<rdf:Description rdf:about="#CompositionOfIndividual"/>
+					<rdf:Description rdf:about="#ConnectionOfIndividual"/>
+					<rdf:Description rdf:about="#FunctionalMapping"/>
+					<rdf:Description rdf:about="#IndirectProperty"/>
+					<rdf:Description rdf:about="#IndividualUsedInConnection"/>
+					<rdf:Description rdf:about="#IntendedRoleAndDomain"/>
+					<rdf:Description rdf:about="#InvolvementByReference"/>
+					<rdf:Description rdf:about="#LifecycleStage"/>
+					<rdf:Description rdf:about="#OtherRelationship"/>
+					<rdf:Description rdf:about="#PossibleRoleAndDomain"/>
+					<rdf:Description rdf:about="#Recognition"/>
+					<rdf:Description rdf:about="#RelativeLocation"/>
+					<rdf:Description rdf:about="#RepresentationOfThing"/>
+					<rdf:Description rdf:about="#ResponsibilityForRepresentation"/>
+					<rdf:Description rdf:about="#Specialization"/>
+					<rdf:Description rdf:about="#TemporalSequence"/>
+					<rdf:Description rdf:about="#UsageOfRepresentation"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="RelativeLocation">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="RepresentationForm">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="RepresentationOfGregorianDateAndUtcTime">
+		<rdfs:subClassOf rdf:resource="#ClassOfInformationRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:ID="RepresentationOfThing">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ResponsibilityForRepresentation">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="RightNamespace">
+		<rdfs:subClassOf rdf:resource="#Namespace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Role">
+		<rdfs:subClassOf rdf:resource="#RoleAndDomain"/>
+	</owl:Class>
+	<owl:Class rdf:ID="RoleAndDomain">
+		<rdfs:subClassOf rdf:resource="#Class"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Scale">
+		<rdfs:subClassOf rdf:resource="#ClassOfIsomorphicFunctionalMapping"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Shape">
+		<rdfs:subClassOf rdf:resource="#Property"/>
+	</owl:Class>
+	<owl:Class rdf:ID="ShapeDimension">
+		<rdfs:subClassOf rdf:resource="#ClassOfClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="SinglePropertyDimension">
+		<rdfs:subClassOf rdf:resource="#PropertySpace"/>
+	</owl:Class>
+	<owl:Class rdf:ID="SpatialLocation">
+		<rdfs:subClassOf rdf:resource="#PhysicalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Specialization">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="SpecializationByDomain">
+		<rdfs:subClassOf rdf:resource="#Specialization"/>
+	</owl:Class>
+	<owl:Class rdf:ID="SpecializationByRole">
+		<rdfs:subClassOf rdf:resource="#Specialization"/>
+	</owl:Class>
+	<owl:Class rdf:ID="SpecializationOfIndividualDimensionFromProperty">
+		<rdfs:subClassOf rdf:resource="#Specialization"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Status">
+		<rdfs:subClassOf rdf:resource="#ClassOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Stream">
+		<rdfs:subClassOf rdf:resource="#PhysicalObject"/>
+	</owl:Class>
+	<owl:Class rdf:ID="TemporalBounding">
+		<rdfs:subClassOf rdf:resource="#CompositionOfIndividual"/>
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#Beginning"/>
+					<rdf:Description rdf:about="#Ending"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="TemporalSequence">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="TemporalWholePart">
+		<rdfs:subClassOf rdf:resource="#CompositionOfIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:ID="Thing">
+		<owl:equivalentClass>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#AbstractObject"/>
+					<rdf:Description rdf:about="#PossibleIndividual"/>
+				</owl:unionOf>
+			</owl:Class>
+		</owl:equivalentClass>
+	</owl:Class>
+	<owl:Class rdf:ID="UnionOfSetOfClass">
+		<rdfs:subClassOf rdf:resource="#FunctionalMapping"/>
+	</owl:Class>
+	<owl:Class rdf:ID="UpperBoundOfNumberRange">
+		<rdfs:subClassOf rdf:resource="#Classification"/>
+	</owl:Class>
+	<owl:Class rdf:ID="UpperBoundOfPropertyRange">
+		<rdfs:subClassOf rdf:resource="#Classification"/>
+	</owl:Class>
+	<owl:Class rdf:ID="UsageOfRepresentation">
+		<rdfs:subClassOf rdf:resource="#Relationship"/>
+	</owl:Class>
+	<owl:Class rdf:ID="WholeLifeIndividual">
+		<rdfs:subClassOf rdf:resource="#PossibleIndividual"/>
+	</owl:Class>
+	<owl:Class rdf:about="#RealNumber">
+		<owl:disjointWith rdf:resource="#IntegerNumber"/>
+		<owl:disjointWith rdf:resource="#MultidimensionalNumber"/>
+	</owl:Class>
+	<owl:Class rdf:about="#IntegerNumber">
+		<owl:disjointWith rdf:resource="#MultidimensionalNumber"/>
+	</owl:Class>
+	<owl:Class rdf:about="#AssemblyOfIndividual">
+		<owl:disjointWith rdf:resource="#FeatureWholePart"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfAbstractObject"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfAtom">
+		<owl:disjointWith rdf:resource="#ClassOfBiologicalMatter"/>
+		<owl:disjointWith rdf:resource="#ClassOfCompositeMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfCompound"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalObject"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationPresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfMolecule"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfBiologicalMatter">
+		<owl:disjointWith rdf:resource="#ClassOfCompositeMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfCompound"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalObject"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationPresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfMolecule"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfCompositeMaterial">
+		<owl:disjointWith rdf:resource="#ClassOfCompound"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalObject"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationPresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfMolecule"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfCompound">
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalObject"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationPresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfMolecule"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfFunctionalObject">
+		<owl:disjointWith rdf:resource="#ClassOfInformationPresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfInformationRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfMolecule"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfInformationPresentation">
+		<owl:disjointWith rdf:resource="#ClassOfInformationRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfMolecule"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfInformationRepresentation">
+		<owl:disjointWith rdf:resource="#ClassOfMolecule"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfMolecule">
+		<owl:disjointWith rdf:resource="#ClassOfParticulateMaterial"/>
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfParticulateMaterial">
+		<owl:disjointWith rdf:resource="#ClassOfSubAtomicParticle"/>
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfSubAtomicParticle">
+		<owl:disjointWith rdf:resource="#CrystallineStructure"/>
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#CrystallineStructure">
+		<owl:disjointWith rdf:resource="#Phase"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfOrganism">
+		<owl:disjointWith rdf:resource="#ClassOfInanimatePhysicalObject"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfFeatureWholePart">
+		<owl:disjointWith rdf:resource="#ClassOfAssemblyOfIndividual"/>
+		<owl:disjointWith rdf:resource="#Namespace"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfAssemblyOfIndividual">
+		<owl:disjointWith rdf:resource="#Namespace"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ArithmeticNumber">
+		<owl:disjointWith rdf:resource="#ClassOfClassOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRelationship"/>
+		<owl:disjointWith rdf:resource="#ClassOfNumber"/>
+		<owl:disjointWith rdf:resource="#ClassOfPropertySpace"/>
+		<owl:disjointWith rdf:resource="#ClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRelationship"/>
+		<owl:disjointWith rdf:resource="#ClassOfNumber"/>
+		<owl:disjointWith rdf:resource="#ClassOfPropertySpace"/>
+		<owl:disjointWith rdf:resource="#ClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfRelationship">
+		<owl:disjointWith rdf:resource="#ClassOfNumber"/>
+		<owl:disjointWith rdf:resource="#ClassOfPropertySpace"/>
+		<owl:disjointWith rdf:resource="#ClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfNumber">
+		<owl:disjointWith rdf:resource="#ClassOfPropertySpace"/>
+		<owl:disjointWith rdf:resource="#ClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfPropertySpace">
+		<owl:disjointWith rdf:resource="#ClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfInformationRepresentation">
+		<owl:disjointWith rdf:resource="#ClassOfProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfStatus"/>
+		<owl:disjointWith rdf:resource="#ShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfProperty">
+		<owl:disjointWith rdf:resource="#ClassOfStatus"/>
+		<owl:disjointWith rdf:resource="#ShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfStatus">
+		<owl:disjointWith rdf:resource="#ShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#RepresentationForm">
+		<owl:disjointWith rdf:resource="#Language"/>
+		<owl:disjointWith rdf:resource="#DocumentDefinition"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Language">
+		<owl:disjointWith rdf:resource="#DocumentDefinition"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfComposition">
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfDimensionForShape"/>
+		<owl:disjointWith rdf:resource="#ClassOfNamespace"/>
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfRelationshipWithSignature">
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfDimensionForShape"/>
+		<owl:disjointWith rdf:resource="#ClassOfNamespace"/>
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfRepresentation">
+		<owl:disjointWith rdf:resource="#ClassOfClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfDimensionForShape"/>
+		<owl:disjointWith rdf:resource="#ClassOfNamespace"/>
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfRepresentationTranslation">
+		<owl:disjointWith rdf:resource="#ClassOfClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfDimensionForShape"/>
+		<owl:disjointWith rdf:resource="#ClassOfNamespace"/>
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfResponsibilityForRepresentation">
+		<owl:disjointWith rdf:resource="#ClassOfClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfDimensionForShape"/>
+		<owl:disjointWith rdf:resource="#ClassOfNamespace"/>
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassOfUsageOfRepresentation">
+		<owl:disjointWith rdf:resource="#ClassOfDimensionForShape"/>
+		<owl:disjointWith rdf:resource="#ClassOfNamespace"/>
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfDimensionForShape">
+		<owl:disjointWith rdf:resource="#ClassOfNamespace"/>
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfNamespace">
+		<owl:disjointWith rdf:resource="#ClassOfScale"/>
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfScale">
+		<owl:disjointWith rdf:resource="#DimensionOfShape"/>
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#DimensionOfShape">
+		<owl:disjointWith rdf:resource="#PropertySpaceForClassOfShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfArrangementOfIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfTemporalWholePart"/>
+		<owl:disjointWith rdf:resource="#ClassOfParticipation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfTemporalWholePart">
+		<owl:disjointWith rdf:resource="#ClassOfParticipation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfDirectConnection">
+		<owl:disjointWith rdf:resource="#ClassOfIndirectConnection"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressString">
+		<owl:disjointWith rdf:resource="#ExpressInteger"/>
+		<owl:disjointWith rdf:resource="#ExpressReal"/>
+		<owl:disjointWith rdf:resource="#ExpressLogical"/>
+		<owl:disjointWith rdf:resource="#ExpressBoolean"/>
+		<owl:disjointWith rdf:resource="#ExpressBinary"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressInteger">
+		<owl:disjointWith rdf:resource="#ExpressReal"/>
+		<owl:disjointWith rdf:resource="#ExpressLogical"/>
+		<owl:disjointWith rdf:resource="#ExpressBoolean"/>
+		<owl:disjointWith rdf:resource="#ExpressBinary"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressReal">
+		<owl:disjointWith rdf:resource="#ExpressLogical"/>
+		<owl:disjointWith rdf:resource="#ExpressBoolean"/>
+		<owl:disjointWith rdf:resource="#ExpressBinary"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressLogical">
+		<owl:disjointWith rdf:resource="#ExpressBoolean"/>
+		<owl:disjointWith rdf:resource="#ExpressBinary"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressBoolean">
+		<owl:disjointWith rdf:resource="#ExpressBinary"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfEvent">
+		<owl:disjointWith rdf:resource="#ClassOfArrangedIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfPeriodInTime"/>
+		<owl:disjointWith rdf:resource="#IndividualDimension"/>
+		<owl:disjointWith rdf:resource="#Property"/>
+		<owl:disjointWith rdf:resource="#Status"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfArrangedIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfPeriodInTime"/>
+		<owl:disjointWith rdf:resource="#IndividualDimension"/>
+		<owl:disjointWith rdf:resource="#Property"/>
+		<owl:disjointWith rdf:resource="#Status"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfPeriodInTime">
+		<owl:disjointWith rdf:resource="#IndividualDimension"/>
+		<owl:disjointWith rdf:resource="#Property"/>
+		<owl:disjointWith rdf:resource="#Status"/>
+	</owl:Class>
+	<owl:Class rdf:about="#IndividualDimension">
+		<owl:disjointWith rdf:resource="#Property"/>
+		<owl:disjointWith rdf:resource="#Status"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Property">
+		<owl:disjointWith rdf:resource="#Status"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfExpressInformationRepresentation">
+		<owl:disjointWith rdf:resource="#RepresentationOfGregorianDateAndUtcTime"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Scale">
+		<owl:disjointWith rdf:resource="#ClassOfScaleConversion"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfLeftNamespace">
+		<owl:disjointWith rdf:resource="#ClassOfRightNamespace"/>
+	</owl:Class>
+	<owl:Class rdf:about="#NumberSpace">
+		<owl:disjointWith rdf:resource="#EnumeratedNumberSet"/>
+	</owl:Class>
+	<owl:Class rdf:about="#PropertySpace">
+		<owl:disjointWith rdf:resource="#EnumeratedPropertySet"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfApproval">
+		<owl:disjointWith rdf:resource="#ClassOfApprovalByStatus"/>
+		<owl:disjointWith rdf:resource="#ClassOfCauseOfBeginningOfClassOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfCauseOfEndingOfClassOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassification"/>
+		<owl:disjointWith rdf:resource="#ClassOfCompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfApprovalByStatus">
+		<owl:disjointWith rdf:resource="#ClassOfCauseOfBeginningOfClassOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfCauseOfEndingOfClassOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassification"/>
+		<owl:disjointWith rdf:resource="#ClassOfCompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfCauseOfBeginningOfClassOfIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfCauseOfEndingOfClassOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfClassification"/>
+		<owl:disjointWith rdf:resource="#ClassOfCompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfCauseOfEndingOfClassOfIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfClassification"/>
+		<owl:disjointWith rdf:resource="#ClassOfCompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfClassification">
+		<owl:disjointWith rdf:resource="#ClassOfCompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfCompositionOfIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfConnectionOfIndividual">
+		<owl:disjointWith rdf:resource="#ClassOfFunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfFunctionalMapping">
+		<owl:disjointWith rdf:resource="#ClassOfIndirectProperty"/>
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfIndirectProperty">
+		<owl:disjointWith rdf:resource="#ClassOfIndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfIndividualUsedInConnection">
+		<owl:disjointWith rdf:resource="#ClassOfIntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfIntendedRoleAndDomain">
+		<owl:disjointWith rdf:resource="#ClassOfInvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfInvolvementByReference">
+		<owl:disjointWith rdf:resource="#ClassOfLifecycleStage"/>
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfLifecycleStage">
+		<owl:disjointWith rdf:resource="#ClassOfAssertion"/>
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfAssertion">
+		<owl:disjointWith rdf:resource="#ClassOfPossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfPossibleRoleAndDomain">
+		<owl:disjointWith rdf:resource="#ClassOfRecognition"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRecognition">
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRelationshipWithSignature">
+		<owl:disjointWith rdf:resource="#ClassOfRelativeLocation"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRelativeLocation">
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRepresentationOfThing">
+		<owl:disjointWith rdf:resource="#ClassOfRepresentationTranslation"/>
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRepresentationTranslation">
+		<owl:disjointWith rdf:resource="#ClassOfResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfResponsibilityForRepresentation">
+		<owl:disjointWith rdf:resource="#ClassOfSpecialization"/>
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfSpecialization">
+		<owl:disjointWith rdf:resource="#ClassOfTemporalSequence"/>
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfTemporalSequence">
+		<owl:disjointWith rdf:resource="#ClassOfUsageOfRepresentation"/>
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfUsageOfRepresentation">
+		<owl:disjointWith rdf:resource="#DimensionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#DimensionOfIndividual">
+		<owl:disjointWith rdf:resource="#PropertyForShapeDimension"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRelationshipWithRelatedEnd1">
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithRelatedEnd2"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ArrangementOfIndividual">
+		<owl:disjointWith rdf:resource="#TemporalWholePart"/>
+		<owl:disjointWith rdf:resource="#Participation"/>
+		<owl:disjointWith rdf:resource="#TemporalBounding"/>
+	</owl:Class>
+	<owl:Class rdf:about="#TemporalWholePart">
+		<owl:disjointWith rdf:resource="#Participation"/>
+		<owl:disjointWith rdf:resource="#TemporalBounding"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Participation">
+		<owl:disjointWith rdf:resource="#TemporalBounding"/>
+	</owl:Class>
+	<owl:Class rdf:about="#DirectConnection">
+		<owl:disjointWith rdf:resource="#IndirectConnection"/>
+	</owl:Class>
+	<owl:Class rdf:about="#MultidimensionalPropertySpace">
+		<owl:disjointWith rdf:resource="#MultidimensionalNumber"/>
+		<owl:disjointWith rdf:resource="#MultidimensionalProperty"/>
+		<owl:disjointWith rdf:resource="#MultidimensionalNumberSpace"/>
+		<owl:disjointWith rdf:resource="#MultidimensionalScale"/>
+	</owl:Class>
+	<owl:Class rdf:about="#MultidimensionalNumber">
+		<owl:disjointWith rdf:resource="#MultidimensionalProperty"/>
+		<owl:disjointWith rdf:resource="#MultidimensionalNumberSpace"/>
+		<owl:disjointWith rdf:resource="#MultidimensionalScale"/>
+	</owl:Class>
+	<owl:Class rdf:about="#MultidimensionalProperty">
+		<owl:disjointWith rdf:resource="#MultidimensionalNumberSpace"/>
+		<owl:disjointWith rdf:resource="#MultidimensionalScale"/>
+	</owl:Class>
+	<owl:Class rdf:about="#MultidimensionalNumberSpace">
+		<owl:disjointWith rdf:resource="#MultidimensionalScale"/>
+	</owl:Class>
+	<owl:Class rdf:about="#RightNamespace">
+		<owl:disjointWith rdf:resource="#LeftNamespace"/>
+	</owl:Class>
+	<owl:Class rdf:about="#NumberRange">
+		<owl:disjointWith rdf:resource="#MultidimensionalNumberSpace"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Approval">
+		<owl:disjointWith rdf:resource="#CauseOfEvent"/>
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#Classification"/>
+		<owl:disjointWith rdf:resource="#ComparisonOfProperty"/>
+		<owl:disjointWith rdf:resource="#CompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#FunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#CauseOfEvent">
+		<owl:disjointWith rdf:resource="#ClassOfRelationshipWithSignature"/>
+		<owl:disjointWith rdf:resource="#Classification"/>
+		<owl:disjointWith rdf:resource="#ComparisonOfProperty"/>
+		<owl:disjointWith rdf:resource="#CompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#FunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRelationshipWithSignature">
+		<owl:disjointWith rdf:resource="#Classification"/>
+		<owl:disjointWith rdf:resource="#ComparisonOfProperty"/>
+		<owl:disjointWith rdf:resource="#CompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#FunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Classification">
+		<owl:disjointWith rdf:resource="#ComparisonOfProperty"/>
+		<owl:disjointWith rdf:resource="#CompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#FunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ComparisonOfProperty">
+		<owl:disjointWith rdf:resource="#CompositionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#ConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#FunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#CompositionOfIndividual">
+		<owl:disjointWith rdf:resource="#ConnectionOfIndividual"/>
+		<owl:disjointWith rdf:resource="#FunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ConnectionOfIndividual">
+		<owl:disjointWith rdf:resource="#FunctionalMapping"/>
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#FunctionalMapping">
+		<owl:disjointWith rdf:resource="#IndirectProperty"/>
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#IndirectProperty">
+		<owl:disjointWith rdf:resource="#IndividualUsedInConnection"/>
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#IndividualUsedInConnection">
+		<owl:disjointWith rdf:resource="#IntendedRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#IntendedRoleAndDomain">
+		<owl:disjointWith rdf:resource="#InvolvementByReference"/>
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#InvolvementByReference">
+		<owl:disjointWith rdf:resource="#LifecycleStage"/>
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#LifecycleStage">
+		<owl:disjointWith rdf:resource="#OtherRelationship"/>
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#OtherRelationship">
+		<owl:disjointWith rdf:resource="#PossibleRoleAndDomain"/>
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#PossibleRoleAndDomain">
+		<owl:disjointWith rdf:resource="#Recognition"/>
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Recognition">
+		<owl:disjointWith rdf:resource="#RelativeLocation"/>
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#RelativeLocation">
+		<owl:disjointWith rdf:resource="#RepresentationOfThing"/>
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#RepresentationOfThing">
+		<owl:disjointWith rdf:resource="#ResponsibilityForRepresentation"/>
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#ResponsibilityForRepresentation">
+		<owl:disjointWith rdf:resource="#Specialization"/>
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Specialization">
+		<owl:disjointWith rdf:resource="#TemporalSequence"/>
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#TemporalSequence">
+		<owl:disjointWith rdf:resource="#UsageOfRepresentation"/>
+	</owl:Class>
+	<owl:Class rdf:about="#BoundaryOfNumberSpace">
+		<owl:disjointWith rdf:resource="#BoundaryOfPropertySpace"/>
+		<owl:disjointWith rdf:resource="#SpecializationByDomain"/>
+		<owl:disjointWith rdf:resource="#SpecializationByRole"/>
+		<owl:disjointWith rdf:resource="#SpecializationOfIndividualDimensionFromProperty"/>
+	</owl:Class>
+	<owl:Class rdf:about="#BoundaryOfPropertySpace">
+		<owl:disjointWith rdf:resource="#SpecializationByDomain"/>
+		<owl:disjointWith rdf:resource="#SpecializationByRole"/>
+		<owl:disjointWith rdf:resource="#SpecializationOfIndividualDimensionFromProperty"/>
+	</owl:Class>
+	<owl:Class rdf:about="#SpecializationByDomain">
+		<owl:disjointWith rdf:resource="#SpecializationByRole"/>
+		<owl:disjointWith rdf:resource="#SpecializationOfIndividualDimensionFromProperty"/>
+	</owl:Class>
+	<owl:Class rdf:about="#SpecializationByRole">
+		<owl:disjointWith rdf:resource="#SpecializationOfIndividualDimensionFromProperty"/>
+	</owl:Class>
+	<owl:Class rdf:about="#Ending">
+		<owl:disjointWith rdf:resource="#Beginning"/>
+	</owl:Class>
+	<owl:Class rdf:about="#PossibleIndividual">
+		<owl:disjointWith rdf:resource="#AbstractObject"/>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasApproved">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Approval"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Approval">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasApproved"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasApproved"/>
+				<owl:allValuesFrom rdf:resource="#Relationship"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasApprover">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Approval"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Approval">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasApprover"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasApprover"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasCaused">
+		<rdfs:domain>
+			<owl:Class rdf:about="#CauseOfEvent"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#CauseOfEvent">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCaused"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCaused"/>
+				<owl:allValuesFrom rdf:resource="#Event"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasCauser">
+		<rdfs:domain>
+			<owl:Class rdf:about="#CauseOfEvent"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#CauseOfEvent">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCauser"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCauser"/>
+				<owl:allValuesFrom rdf:resource="#Activity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfApproved">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfApproval"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfApproval">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfApproved"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfApproved"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfRelationship"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfApprover">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfApproval"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfApproval">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfApprover"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfApprover"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfBegun">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfCauseOfBeginningOfClassOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfCauseOfBeginningOfClassOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfBegun"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfBegun"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfCauser">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfCauseOfBeginningOfClassOfIndividual"/>
+					<rdf:Description rdf:about="#ClassOfCauseOfEndingOfClassOfIndividual"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfCauseOfBeginningOfClassOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfCauser"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfCauser"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfActivity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfCauseOfEndingOfClassOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfCauser"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfCauser"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfActivity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfEnded">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfCauseOfEndingOfClassOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfCauseOfEndingOfClassOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfEnded"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfEnded"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfClassOfPart">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfClassOfComposition"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfComposition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfPart"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfPart"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfClassOfWhole">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfClassOfComposition"/>
+					<rdf:Description rdf:about="#ClassOfNamespace"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfComposition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfWhole"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfWhole"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfNamespace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfWhole"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfWhole"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfPattern">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfClassOfRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPattern"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPattern"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfRepresented">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfClassOfRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfRepresented"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfRepresented"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfFirst">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfClassOfRepresentationTranslation"/>
+					<rdf:Description rdf:about="#ClassOfRepresentationTranslation"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfRepresentationTranslation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfFirst"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfFirst"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRepresentationTranslation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfFirst"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfFirst"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfSecond">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfClassOfRepresentationTranslation"/>
+					<rdf:Description rdf:about="#ClassOfRepresentationTranslation"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfRepresentationTranslation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSecond"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSecond"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRepresentationTranslation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSecond"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSecond"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfClassOfControlled">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfClassOfResponsibilityForRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfResponsibilityForRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfControlled"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfControlled"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasController">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfClassOfResponsibilityForRepresentation"/>
+					<rdf:Description rdf:about="#ClassOfResponsibilityForRepresentation"/>
+					<rdf:Description rdf:about="#ResponsibilityForRepresentation"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfResponsibilityForRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasController"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasController"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfResponsibilityForRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasController"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasController"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ResponsibilityForRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasController"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasController"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfClassOfUsed">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfClassOfUsageOfRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfUsageOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfUsed"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassOfUsed"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClassOfRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasUser">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfClassOfUsageOfRepresentation"/>
+					<rdf:Description rdf:about="#ClassOfUsageOfRepresentation"/>
+					<rdf:Description rdf:about="#UsageOfRepresentation"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassOfUsageOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUser"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUser"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfUsageOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUser"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUser"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#UsageOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUser"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUser"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfClassified">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfClassification"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassification">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassified"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassified"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfClassifier">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfClassification"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfClassification">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassifier"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfClassifier"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClass"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfPart">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfCompositionOfIndividual"/>
+					<rdf:Description rdf:about="#ClassOfNamespace"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfCompositionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPart"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPart"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfNamespace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPart"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPart"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfWhole">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfCompositionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfCompositionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfWhole"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfWhole"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfSide1">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfConnectionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfConnectionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSide1"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSide1"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfSide2">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfConnectionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfConnectionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSide2"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSide2"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfDimension">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfDimensionForShape"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfDimensionForShape">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfDimension"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfDimension"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfShapeDimension"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfShape">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfDimensionForShape"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfDimensionForShape">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfShape"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfShape"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfShape"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasCodomain">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfFunctionalMapping"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfFunctionalMapping">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCodomain"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCodomain"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasDomain">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfFunctionalMapping"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfFunctionalMapping">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDomain"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDomain"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfPossessor">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfIndirectProperty"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfIndirectProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPossessor"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPossessor"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPropertySpace">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfIndirectProperty"/>
+					<rdf:Description rdf:about="#PropertySpaceForClassOfShapeDimension"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfIndirectProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPropertySpace"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPropertySpace"/>
+				<owl:allValuesFrom rdf:resource="#PropertySpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#PropertySpaceForClassOfShapeDimension">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPropertySpace"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPropertySpace"/>
+				<owl:allValuesFrom rdf:resource="#PropertySpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfConnection">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfIndividualUsedInConnection"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfIndividualUsedInConnection">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfConnection"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfConnection"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfConnectionOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfUsage">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfIndividualUsedInConnection"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfIndividualUsedInConnection">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfUsage"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfUsage"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfPlayer">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfIntendedRoleAndDomain"/>
+					<rdf:Description rdf:about="#ClassOfPossibleRoleAndDomain"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfIntendedRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPlayer"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPlayer"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfPossibleRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPlayer"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPlayer"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPlayed">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfIntendedRoleAndDomain"/>
+					<rdf:Description rdf:about="#ClassOfPossibleRoleAndDomain"/>
+					<rdf:Description rdf:about="#IntendedRoleAndDomain"/>
+					<rdf:Description rdf:about="#PossibleRoleAndDomain"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfIntendedRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfPossibleRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#IntendedRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#PossibleRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayed"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfInvolved">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfInvolvementByReference"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfInvolvementByReference">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfInvolved"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfInvolved"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfInvolver">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfInvolvementByReference"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfInvolvementByReference">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfInvolver"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfInvolver"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfActivity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasCardinalities">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfMultidimensionalObject"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfMultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCardinalities"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasOptionalElement">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfMultidimensionalObject"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfMultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasOptionalElement"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasParameters">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfMultidimensionalObject"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfMultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasParameters"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasParameterPosition">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfMultidimensionalObject"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfMultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasParameterPosition"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRoles">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfMultidimensionalObject"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfMultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRoles"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfRecognized">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRecognition"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRecognition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfRecognized"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfRecognized"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfRecognizing">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRecognition"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRecognition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfRecognizing"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfRecognizing"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfActivity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasEnd1Cardinality">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRelationship"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRelationship">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd1Cardinality"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd1Cardinality"/>
+				<owl:allValuesFrom rdf:resource="#Cardinality"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasEnd2Cardinality">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRelationship"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRelationship">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd2Cardinality"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd2Cardinality"/>
+				<owl:allValuesFrom rdf:resource="#Cardinality"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRelated">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfRelationshipWithRelatedEnd1"/>
+					<rdf:Description rdf:about="#ClassOfRelationshipWithRelatedEnd2"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRelationshipWithRelatedEnd1">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRelated"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRelated"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfRelationshipWithRelatedEnd2">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRelated"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRelated"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfEnd1">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRelationshipWithSignature"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRelationshipWithSignature">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfEnd1"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfEnd1"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfEnd2">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRelationshipWithSignature"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRelationshipWithSignature">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfEnd2"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfEnd2"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfLocated">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRelativeLocation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRelativeLocation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfLocated"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfLocated"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfLocator">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRelativeLocation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRelativeLocation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfLocator"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfLocator"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPattern">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfRepresentationOfThing"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRepresentationOfThing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPattern"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPattern"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRepresented">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ClassOfRepresentationOfThing"/>
+					<rdf:Description rdf:about="#RepresentationOfThing"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfRepresentationOfThing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRepresented"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRepresented"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#RepresentationOfThing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRepresented"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRepresented"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfControlled">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfResponsibilityForRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfResponsibilityForRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfControlled"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfControlled"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfRepresentationOfThing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfSubclass">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfSpecialization"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfSpecialization">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSubclass"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSubclass"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClass"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfSuperclass">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfSpecialization"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfSpecialization">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSuperclass"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSuperclass"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfClass"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfPredecessor">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfTemporalSequence"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfTemporalSequence">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPredecessor"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPredecessor"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfSuccessor">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfTemporalSequence"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfTemporalSequence">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSuccessor"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfSuccessor"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfUsed">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ClassOfUsageOfRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ClassOfUsageOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfUsed"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfUsed"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfRepresentationOfThing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassified">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Classification"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Classification">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassified"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassified"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassifier">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Classification"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Classification">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassifier"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassifier"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasGreaterElement">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ComparisonOfProperty"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ComparisonOfProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasGreaterElement"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasGreaterElement"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasLesserElement">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ComparisonOfProperty"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ComparisonOfProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasLesserElement"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasLesserElement"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPart">
+		<rdfs:domain>
+			<owl:Class rdf:about="#CompositionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#CompositionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPart"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPart"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasWhole">
+		<rdfs:domain>
+			<owl:Class rdf:about="#CompositionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#CompositionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasWhole"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasWhole"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasSide1">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ConnectionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ConnectionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSide1"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSide1"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasSide2">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ConnectionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ConnectionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSide2"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSide2"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasIndividual">
+		<rdfs:domain>
+			<owl:Class rdf:about="#DimensionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#DimensionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasIndividual"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasIndividual"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasIndividualDimension">
+		<rdfs:domain>
+			<owl:Class rdf:about="#DimensionOfIndividual"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#DimensionOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasIndividualDimension"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasIndividualDimension"/>
+				<owl:allValuesFrom rdf:resource="#IndividualDimension"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasDimension">
+		<rdfs:domain>
+			<owl:Class rdf:about="#DimensionOfShape"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#DimensionOfShape">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDimension"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDimension"/>
+				<owl:allValuesFrom rdf:resource="#ShapeDimension"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasShape">
+		<rdfs:domain>
+			<owl:Class rdf:about="#DimensionOfShape"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#DimensionOfShape">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasShape"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasShape"/>
+				<owl:allValuesFrom rdf:resource="#Shape"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasInput">
+		<rdfs:domain>
+			<owl:Class rdf:about="#FunctionalMapping"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#FunctionalMapping">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInput"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInput"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasResult">
+		<rdfs:domain>
+			<owl:Class rdf:about="#FunctionalMapping"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#FunctionalMapping">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasResult"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasResult"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPossessor">
+		<rdfs:domain>
+			<owl:Class rdf:about="#IndirectProperty"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#IndirectProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPossessor"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPossessor"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasProperty">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#IndirectProperty"/>
+					<rdf:Description rdf:about="#PropertyForShapeDimension"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#IndirectProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasProperty"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasProperty"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#PropertyForShapeDimension">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasProperty"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasProperty"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasConnection">
+		<rdfs:domain>
+			<owl:Class rdf:about="#IndividualUsedInConnection"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#IndividualUsedInConnection">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasConnection"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasConnection"/>
+				<owl:allValuesFrom rdf:resource="#ConnectionOfIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasUsage">
+		<rdfs:domain>
+			<owl:Class rdf:about="#IndividualUsedInConnection"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#IndividualUsedInConnection">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUsage"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUsage"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPlayer">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#IntendedRoleAndDomain"/>
+					<rdf:Description rdf:about="#PossibleRoleAndDomain"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#IntendedRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayer"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayer"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#PossibleRoleAndDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayer"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPlayer"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasInvolved">
+		<rdfs:domain>
+			<owl:Class rdf:about="#InvolvementByReference"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#InvolvementByReference">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInvolved"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInvolved"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasInvolver">
+		<rdfs:domain>
+			<owl:Class rdf:about="#InvolvementByReference"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#InvolvementByReference">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInvolver"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInvolver"/>
+				<owl:allValuesFrom rdf:resource="#Activity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasInterest">
+		<rdfs:domain>
+			<owl:Class rdf:about="#LifecycleStage"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#LifecycleStage">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInterest"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInterest"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasInterested">
+		<rdfs:domain>
+			<owl:Class rdf:about="#LifecycleStage"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#LifecycleStage">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInterested"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInterested"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasElements">
+		<rdfs:domain>
+			<owl:Class rdf:about="#MultidimensionalObject"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#MultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasElements"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPosition">
+		<rdfs:domain>
+			<owl:Class rdf:about="#MultidimensionalObject"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#MultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPosition"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasEnd1">
+		<rdfs:domain>
+			<owl:Class rdf:about="#OtherRelationship"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#OtherRelationship">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd1"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd1"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasEnd2">
+		<rdfs:domain>
+			<owl:Class rdf:about="#OtherRelationship"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#OtherRelationship">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd2"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasEnd2"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasShapeDimension">
+		<rdfs:domain>
+			<owl:Class rdf:about="#PropertyForShapeDimension"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#PropertyForShapeDimension">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasShapeDimension"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasShapeDimension"/>
+				<owl:allValuesFrom rdf:resource="#ShapeDimension"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasClassOfShapeDimension">
+		<rdfs:domain>
+			<owl:Class rdf:about="#PropertySpaceForClassOfShapeDimension"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#PropertySpaceForClassOfShapeDimension">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfShapeDimension"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfShapeDimension"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfShapeDimension"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRecognized">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Recognition"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Recognition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecognized"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecognized"/>
+				<owl:allValuesFrom rdf:resource="#Thing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRecognizing">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Recognition"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Recognition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecognizing"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecognizing"/>
+				<owl:allValuesFrom rdf:resource="#Activity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasLocated">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RelativeLocation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#RelativeLocation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasLocated"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasLocated"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasLocator">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RelativeLocation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#RelativeLocation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasLocator"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasLocator"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasSign">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RepresentationOfThing"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#RepresentationOfThing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSign"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSign"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasControlled">
+		<rdfs:domain>
+			<owl:Class rdf:about="#ResponsibilityForRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#ResponsibilityForRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasControlled"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasControlled"/>
+				<owl:allValuesFrom rdf:resource="#RepresentationOfThing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasSubclass">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Specialization"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Specialization">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSubclass"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSubclass"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasSuperclass">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Specialization"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Specialization">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuperclass"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuperclass"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasPredecessor">
+		<rdfs:domain>
+			<owl:Class rdf:about="#TemporalSequence"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#TemporalSequence">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPredecessor"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPredecessor"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasSuccessor">
+		<rdfs:domain>
+			<owl:Class rdf:about="#TemporalSequence"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#TemporalSequence">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuccessor"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuccessor"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRecordCopyCreated">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Thing"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Thing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordCopyCreated"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordCopyCreated"/>
+				<owl:allValuesFrom rdf:resource="#RepresentationOfGregorianDateAndUtcTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRecordCreated">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Thing"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Thing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordCreated"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordCreated"/>
+				<owl:allValuesFrom rdf:resource="#RepresentationOfGregorianDateAndUtcTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRecordCreator">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Thing"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Thing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordCreator"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordCreator"/>
+				<owl:allValuesFrom rdf:resource="#PossibleIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasRecordLogicallyDeleted">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Thing"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Thing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordLogicallyDeleted"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRecordLogicallyDeleted"/>
+				<owl:allValuesFrom rdf:resource="#RepresentationOfGregorianDateAndUtcTime"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasWhyDeleted">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Thing"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#Thing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasWhyDeleted"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasWhyDeleted"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:ObjectProperty rdf:ID="hasUsed">
+		<rdfs:domain>
+			<owl:Class rdf:about="#UsageOfRepresentation"/>
+		</rdfs:domain>
+	</owl:ObjectProperty>
+	<owl:Class rdf:about="#UsageOfRepresentation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUsed"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasUsed"/>
+				<owl:allValuesFrom rdf:resource="#RepresentationOfThing"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ArrangementOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasWhole"/>
+				<owl:allValuesFrom rdf:resource="#ArrangedIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#BoundaryOfNumberSpace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSubclass"/>
+				<owl:allValuesFrom rdf:resource="#NumberSpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#BoundaryOfNumberSpace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuperclass"/>
+				<owl:allValuesFrom rdf:resource="#NumberSpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#BoundaryOfPropertySpace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSubclass"/>
+				<owl:allValuesFrom rdf:resource="#PropertySpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#BoundaryOfPropertySpace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuperclass"/>
+				<owl:allValuesFrom rdf:resource="#PropertySpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfArrangementOfIndividual">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfWhole"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfArrangedIndividual"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfDefinition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRepresented"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfParticipation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPart"/>
+				<owl:allValuesFrom rdf:resource="#ParticipatingRoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfParticipation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfWhole"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfActivity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfScaleConversion">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCodomain"/>
+				<owl:allValuesFrom rdf:resource="#Scale"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfScaleConversion">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDomain"/>
+				<owl:allValuesFrom rdf:resource="#Scale"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#Definition">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRepresented"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#DifferenceOfSetOfClass">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInput"/>
+				<owl:allValuesFrom rdf:resource="#EnumeratedSetOfClass"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#DifferenceOfSetOfClass">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasResult"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#IntersectionOfSetOfClass">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInput"/>
+				<owl:allValuesFrom rdf:resource="#EnumeratedSetOfClass"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#IntersectionOfSetOfClass">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasResult"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#LowerBoundOfNumberRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassified"/>
+				<owl:allValuesFrom rdf:resource="#ArithmeticNumber"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#LowerBoundOfNumberRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassifier"/>
+				<owl:allValuesFrom rdf:resource="#NumberRange"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#LowerBoundOfPropertyRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassified"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#LowerBoundOfPropertyRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassifier"/>
+				<owl:allValuesFrom rdf:resource="#PropertyRange"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#Namespace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfPart"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#Namespace">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassOfWhole"/>
+				<owl:allValuesFrom rdf:resource="#ClassOfInformationRepresentation"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#Participation">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasWhole"/>
+				<owl:allValuesFrom rdf:resource="#Activity"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#PropertyQuantification">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInput"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#PropertyQuantification">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasResult"/>
+				<owl:allValuesFrom rdf:resource="#ArithmeticNumber"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#Scale">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCodomain"/>
+				<owl:allValuesFrom rdf:resource="#NumberSpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#Scale">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDomain"/>
+				<owl:allValuesFrom rdf:resource="#PropertySpace"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#SpecializationByDomain">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSubclass"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#SpecializationByRole">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSubclass"/>
+				<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#SpecializationByRole">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuperclass"/>
+				<owl:allValuesFrom rdf:resource="#Role"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#SpecializationOfIndividualDimensionFromProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSubclass"/>
+				<owl:allValuesFrom rdf:resource="#IndividualDimension"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#SpecializationOfIndividualDimensionFromProperty">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSuperclass"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#TemporalBounding">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPart"/>
+				<owl:allValuesFrom rdf:resource="#Event"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#UnionOfSetOfClass">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasInput"/>
+				<owl:allValuesFrom rdf:resource="#EnumeratedSetOfClass"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#UnionOfSetOfClass">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasResult"/>
+				<owl:allValuesFrom rdf:resource="#Class"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#UpperBoundOfNumberRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassified"/>
+				<owl:allValuesFrom rdf:resource="#ArithmeticNumber"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#UpperBoundOfNumberRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassifier"/>
+				<owl:allValuesFrom rdf:resource="#NumberRange"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#UpperBoundOfPropertyRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassified"/>
+				<owl:allValuesFrom rdf:resource="#Property"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#UpperBoundOfPropertyRange">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasClassifier"/>
+				<owl:allValuesFrom rdf:resource="#PropertyRange"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasMaximumCardinality">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Cardinality"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#Cardinality">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMaximumCardinality"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMaximumCardinality"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasMinimumCardinality">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Cardinality"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#Cardinality">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMinimumCardinality"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMinimumCardinality"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasContent">
+		<rdfs:domain>
+			<owl:Class>
+				<owl:unionOf rdf:parseType="Collection">
+					<rdf:Description rdf:about="#ExpressBinary"/>
+					<rdf:Description rdf:about="#ExpressBoolean"/>
+					<rdf:Description rdf:about="#ExpressInteger"/>
+					<rdf:Description rdf:about="#ExpressLogical"/>
+					<rdf:Description rdf:about="#ExpressReal"/>
+					<rdf:Description rdf:about="#ExpressString"/>
+				</owl:unionOf>
+			</owl:Class>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#ExpressBinary">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#hexBinary"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressBoolean">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#boolean"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressInteger">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressLogical">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:allValuesFrom>
+					<owl:DataRange>
+						<owl:oneOf>
+							<rdf:List>
+								<rdf:first rdf:datatype="http://www.w3.org/2001/XMLSchema#string">true</rdf:first>
+								<rdf:rest>
+									<rdf:List>
+										<rdf:first rdf:datatype="http://www.w3.org/2001/XMLSchema#string">false</rdf:first>
+										<rdf:rest>
+											<rdf:List>
+												<rdf:first rdf:datatype="http://www.w3.org/2001/XMLSchema#string">unknown</rdf:first>
+												<rdf:rest rdf:resource="http://www.w3.org/1999/02/22-rdf-syntax-ns#nil"/>
+											</rdf:List>
+										</rdf:rest>
+									</rdf:List>
+								</rdf:rest>
+							</rdf:List>
+						</owl:oneOf>
+					</owl:DataRange>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressReal">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#double"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ExpressString">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#normalizedString"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasContent"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasYear">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasYear"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasYear"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasMonth">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMonth"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMonth"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasDay">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDay"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasDay"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasHour">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasHour"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasHour"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasMinute">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMinute"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#long"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasMinute"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasSecond">
+		<rdfs:domain>
+			<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#RepresentationOfGregorianDateAndUtcTime">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSecond"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#double"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasSecond"/>
+				<owl:maxCardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:maxCardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:DatatypeProperty rdf:ID="hasId">
+		<rdfs:domain>
+			<owl:Class rdf:about="#Thing"/>
+		</rdfs:domain>
+	</owl:DatatypeProperty>
+	<owl:Class rdf:about="#Thing">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasId"/>
+				<owl:allValuesFrom rdf:resource="http://www.w3.org/2001/XMLSchema#normalizedString"/>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasId"/>
+				<owl:cardinality rdf:datatype="http://www.w3.org/2001/XMLSchema#nonNegativeInteger">1</owl:cardinality>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#ClassOfMultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasCardinalities"/>
+				<owl:allValuesFrom>
+					<owl:Class>
+						<owl:intersectionOf rdf:parseType="Collection">
+							<rdf:Description rdf:about="&list;#OWLList"/>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#hasContents"/>
+								<owl:allValuesFrom rdf:resource="#Cardinality"/>
+							</owl:Restriction>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#isFollowedBy"/>
+								<owl:allValuesFrom>
+									<owl:Class>
+										<owl:intersectionOf rdf:parseType="Collection">
+											<rdf:Description rdf:about="&list;#OWLList"/>
+											<owl:Restriction>
+												<owl:onProperty rdf:resource="&list;#hasContents"/>
+												<owl:allValuesFrom rdf:resource="#Cardinality"/>
+											</owl:Restriction>
+										</owl:intersectionOf>
+									</owl:Class>
+								</owl:allValuesFrom>
+							</owl:Restriction>
+						</owl:intersectionOf>
+					</owl:Class>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasOptionalElement"/>
+				<owl:allValuesFrom>
+					<owl:Class>
+						<owl:intersectionOf rdf:parseType="Collection">
+							<rdf:Description rdf:about="&list;#OWLList"/>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#hasContents"/>
+								<owl:allValuesFrom rdf:resource="#ExpressBoolean"/>
+							</owl:Restriction>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#isFollowedBy"/>
+								<owl:allValuesFrom>
+									<owl:Class>
+										<owl:intersectionOf rdf:parseType="Collection">
+											<rdf:Description rdf:about="&list;#OWLList"/>
+											<owl:Restriction>
+												<owl:onProperty rdf:resource="&list;#hasContents"/>
+												<owl:allValuesFrom rdf:resource="#ExpressBoolean"/>
+											</owl:Restriction>
+										</owl:intersectionOf>
+									</owl:Class>
+								</owl:allValuesFrom>
+							</owl:Restriction>
+						</owl:intersectionOf>
+					</owl:Class>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasParameters"/>
+				<owl:allValuesFrom>
+					<owl:Class>
+						<owl:intersectionOf rdf:parseType="Collection">
+							<rdf:Description rdf:about="&list;#OWLList"/>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#hasContents"/>
+								<owl:allValuesFrom rdf:resource="#Thing"/>
+							</owl:Restriction>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#isFollowedBy"/>
+								<owl:allValuesFrom>
+									<owl:Class>
+										<owl:intersectionOf rdf:parseType="Collection">
+											<rdf:Description rdf:about="&list;#OWLList"/>
+											<owl:Restriction>
+												<owl:onProperty rdf:resource="&list;#hasContents"/>
+												<owl:allValuesFrom rdf:resource="#Thing"/>
+											</owl:Restriction>
+										</owl:intersectionOf>
+									</owl:Class>
+								</owl:allValuesFrom>
+							</owl:Restriction>
+						</owl:intersectionOf>
+					</owl:Class>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasParameterPosition"/>
+				<owl:allValuesFrom>
+					<owl:Class>
+						<owl:intersectionOf rdf:parseType="Collection">
+							<rdf:Description rdf:about="&list;#OWLList"/>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#hasContents"/>
+								<owl:allValuesFrom rdf:resource="#ExpressInteger"/>
+							</owl:Restriction>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#isFollowedBy"/>
+								<owl:allValuesFrom>
+									<owl:Class>
+										<owl:intersectionOf rdf:parseType="Collection">
+											<rdf:Description rdf:about="&list;#OWLList"/>
+											<owl:Restriction>
+												<owl:onProperty rdf:resource="&list;#hasContents"/>
+												<owl:allValuesFrom rdf:resource="#ExpressInteger"/>
+											</owl:Restriction>
+										</owl:intersectionOf>
+									</owl:Class>
+								</owl:allValuesFrom>
+							</owl:Restriction>
+						</owl:intersectionOf>
+					</owl:Class>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasRoles"/>
+				<owl:allValuesFrom>
+					<owl:Class>
+						<owl:intersectionOf rdf:parseType="Collection">
+							<rdf:Description rdf:about="&list;#OWLList"/>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#hasContents"/>
+								<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+							</owl:Restriction>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#isFollowedBy"/>
+								<owl:allValuesFrom>
+									<owl:Class>
+										<owl:intersectionOf rdf:parseType="Collection">
+											<rdf:Description rdf:about="&list;#OWLList"/>
+											<owl:Restriction>
+												<owl:onProperty rdf:resource="&list;#hasContents"/>
+												<owl:allValuesFrom rdf:resource="#RoleAndDomain"/>
+											</owl:Restriction>
+										</owl:intersectionOf>
+									</owl:Class>
+								</owl:allValuesFrom>
+							</owl:Restriction>
+						</owl:intersectionOf>
+					</owl:Class>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+	<owl:Class rdf:about="#MultidimensionalObject">
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasElements"/>
+				<owl:allValuesFrom>
+					<owl:Class>
+						<owl:intersectionOf rdf:parseType="Collection">
+							<rdf:Description rdf:about="&list;#OWLList"/>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#hasContents"/>
+								<owl:allValuesFrom rdf:resource="#Thing"/>
+							</owl:Restriction>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#isFollowedBy"/>
+								<owl:allValuesFrom>
+									<owl:Class>
+										<owl:intersectionOf rdf:parseType="Collection">
+											<rdf:Description rdf:about="&list;#OWLList"/>
+											<owl:Restriction>
+												<owl:onProperty rdf:resource="&list;#hasContents"/>
+												<owl:allValuesFrom rdf:resource="#Thing"/>
+											</owl:Restriction>
+										</owl:intersectionOf>
+									</owl:Class>
+								</owl:allValuesFrom>
+							</owl:Restriction>
+						</owl:intersectionOf>
+					</owl:Class>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+		<rdfs:subClassOf>
+			<owl:Restriction>
+				<owl:onProperty rdf:resource="#hasPosition"/>
+				<owl:allValuesFrom>
+					<owl:Class>
+						<owl:intersectionOf rdf:parseType="Collection">
+							<rdf:Description rdf:about="&list;#OWLList"/>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#hasContents"/>
+								<owl:allValuesFrom rdf:resource="#ExpressInteger"/>
+							</owl:Restriction>
+							<owl:Restriction>
+								<owl:onProperty rdf:resource="&list;#isFollowedBy"/>
+								<owl:allValuesFrom>
+									<owl:Class>
+										<owl:intersectionOf rdf:parseType="Collection">
+											<rdf:Description rdf:about="&list;#OWLList"/>
+											<owl:Restriction>
+												<owl:onProperty rdf:resource="&list;#hasContents"/>
+												<owl:allValuesFrom rdf:resource="#ExpressInteger"/>
+											</owl:Restriction>
+										</owl:intersectionOf>
+									</owl:Class>
+								</owl:allValuesFrom>
+							</owl:Restriction>
+						</owl:intersectionOf>
+					</owl:Class>
+				</owl:allValuesFrom>
+			</owl:Restriction>
+		</rdfs:subClassOf>
+	</owl:Class>
+</rdf:RDF>
