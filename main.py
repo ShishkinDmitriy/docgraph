@@ -1,21 +1,34 @@
 #!/usr/bin/env python3
 """DocGraph CLI."""
 
+import os
 import sys
-import traceback
 from pathlib import Path
 
 import click
+from rdflib import URIRef
 from rich.console import Console
 from rich.table import Table
 
 from src.ingest import TTL_SUFFIXES, IngestError, ingest_ttl, list_sources
+from src.ingest_pdf import ingest_pdf
+from src.llm.anthropic import AnthropicClient
+from src.models import ModelConfig
 from src.project import (
     UNRESOLVED_FILENAME,
     find_project_root,
     graphs_dir,
     init_project,
     reset_sources,
+)
+
+# Hardcoded vision model for PDF→Markdown conversion. Make this configurable
+# (config.ttl in the project, or a CLI flag) once we have more than one option.
+DEFAULT_VISION_MODEL = ModelConfig(
+    uri=URIRef("http://example.org/docgraph/agent/claude-haiku-4-5"),
+    model_id="claude-haiku-4-5",
+    label="Claude Haiku 4.5",
+    provider="anthropic",
 )
 
 console = Console()
@@ -79,12 +92,17 @@ def clean(directory: Path | None, yes: bool):
 
 @cli.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
-def add(input_path: Path):
+@click.option("--note", type=str, default=None, help="Free-text hint passed to the converter.")
+def add(input_path: Path, note: str | None):
     """Ingest a source into the project graph.
 
-    For now only RDF Turtle inputs (.ttl, .n3) are supported — they are
-    symlinked into .docgraph/graphs/ and registered. PDF/text extraction is
-    coming as part of the meta-ontology redesign (see ARCHITECTURE.md step 5).
+    Supported inputs:
+      .ttl/.n3  — symlinked into .docgraph/graphs/ and registered (no LLM).
+      .pdf      — converted to Markdown, registered as a lis:InformationObject
+                  with full PROV-O provenance for the conversion.
+
+    Classification and concept extraction are not wired in yet (steps 4-7 of
+    the pipeline; see ARCHITECTURE.md).
     """
     source = input_path.resolve()
     project_root = find_project_root(source.parent)
@@ -96,17 +114,27 @@ def add(input_path: Path):
     console.print(f"Project root: [dim]{project_root}[/dim]")
 
     suffix = source.suffix.lower()
-    if suffix in TTL_SUFFIXES:
-        try:
+    try:
+        if suffix in TTL_SUFFIXES:
             ingest_ttl(source, project_root, console)
-        except IngestError as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            sys.exit(1)
-        return
+            return
+
+        if suffix == ".pdf":
+            api_key = os.environ.get("ANTHROPIC_API_KEY")
+            if not api_key:
+                console.print("[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.")
+                sys.exit(1)
+            client = AnthropicClient(api_key=api_key)
+            ingest_pdf(source, project_root, console,
+                       client=client, model=DEFAULT_VISION_MODEL, note=note)
+            return
+    except IngestError as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
 
     console.print(
         f"[yellow]Not yet supported:[/yellow] extraction from {suffix!r} files. "
-        "See ARCHITECTURE.md step 5 (PDF pipeline rewrite)."
+        "See ARCHITECTURE.md (extraction pipeline)."
     )
     sys.exit(2)
 

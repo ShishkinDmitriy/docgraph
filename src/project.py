@@ -166,6 +166,10 @@ dg:IngestionRecord a owl:Class ;
 dg:graphFile    a owl:DatatypeProperty ; rdfs:label "graphFile"    ; rdfs:range xsd:string .
 dg:addedAt      a owl:DatatypeProperty ; rdfs:label "addedAt"      ; rdfs:range xsd:dateTime .
 dg:detectedRole a owl:ObjectProperty   ; rdfs:label "detectedRole" .
+
+# ── Software-agent metadata ───────────────────────────────────────────────────
+dg:provider     a owl:DatatypeProperty ; rdfs:label "provider" ; rdfs:range xsd:string .
+dg:modelId      a owl:DatatypeProperty ; rdfs:label "modelId"  ; rdfs:range xsd:string .
 """
 
 _UNRESOLVED_TTL = """\
