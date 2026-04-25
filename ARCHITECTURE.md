@@ -348,7 +348,8 @@ shapes change automatically.
 
 ## Storage layout (file-based, no triplestore yet)
 
-Each source document gets its own named-graph TTL file. A registry tracks all sources.
+**One source document → one TTL file.** Each source gets its own named-graph TTL file
+under `graphs/` so the result is easy to inspect by eye. A registry tracks all sources.
 
 ```
 .docgraph/
@@ -361,6 +362,25 @@ Each source document gets its own named-graph TTL file. A registry tracks all so
 ```
 
 The `lis:` and `dg:` prefixes are pre-bound in every graph file for readability.
+
+### TTL inputs: symlink, don't copy
+
+When the source is already a TTL file, `graphs/<slug>.ttl` is a **symlink** to the
+original, not a copy. Rationale (debugging convenience, not a permanent design choice):
+
+- One file on disk — no copy/drift.
+- Editing the original immediately changes the graph, which is what the user wants
+  while the meta-ontology is being shaped.
+- Cascade-delete just unlinks the symlink; the original is untouched.
+
+Caveats to revisit if/when this becomes a problem:
+- If the original file is moved or deleted, the link dangles. `remove` and `status`
+  must detect this.
+- Edits to the original have no provenance trail. Acceptable while iterating; switch to
+  copy-on-ingest before this is shipped to anyone else.
+
+For PDF / Markdown / other non-TTL inputs, `graphs/<slug>.ttl` is a real file written by
+the extraction pipeline.
 
 ### sources.ttl example
 
@@ -406,10 +426,11 @@ at ingest time. Same provenance and cascade semantics as PDF-derived graphs.
 Because Part 14 is OWL-native, hand-authored OWL TTL maps directly onto our model — no
 translation step is needed. Ingest:
 
-1. Parse the TTL.
+1. Parse the TTL (just to sanity-check it loads and to extract declared URIs).
 2. Sanity-check: does it reuse `lis:` URIs correctly? Does anything collide with already-
    defined URIs in other graphs?
-3. Write into `graphs/<slug>.ttl` and register in `sources.ttl`.
+3. Symlink `graphs/<slug>.ttl` → original file (see "TTL inputs: symlink, don't copy"
+   above) and register in `sources.ttl`.
 
 This means:
 - The existing `data/financial_documents.ttl` can be ingested via `docgraph add` as a
