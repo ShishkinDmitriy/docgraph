@@ -51,10 +51,10 @@ def make_slug(name: str) -> str:
 
 
 def _unique_slug(base: str, graphs: Path) -> str:
-    """Return *base*, or base-2, base-3, ... if base.ttl exists."""
+    """Return *base*, or base-2, base-3, ... if a graph file already uses it."""
     candidate = base
     n = 2
-    while (graphs / f"{candidate}.ttl").exists():
+    while (graphs / f"{candidate}.ttl").exists() or (graphs / f"{candidate}.trig").exists():
         candidate = f"{base}-{n}"
         n += 1
     return candidate
@@ -82,7 +82,62 @@ def _existing_by_hash(reg: Graph, file_hash: str) -> URIRef | None:
     return None
 
 
-def ingest_ttl(source: Path, project_root: Path, console: Console) -> Path:
+def remove_source(project_root: Path, slug: str) -> None:
+    """Delete a source's graph file (real or symlink) and its registry entry."""
+    g_dir = graphs_dir(project_root)
+    graph_file = g_dir / f"{slug}.ttl"
+    if graph_file.is_symlink() or graph_file.exists():
+        graph_file.unlink()
+
+    reg_path = sources_path(project_root)
+    reg = Graph()
+    reg.parse(reg_path, format="turtle")
+    record = URIRef(SOURCE_NS[slug])
+    reg.remove((record, None, None))
+    reg.serialize(destination=str(reg_path), format="turtle")
+
+
+def _check_existing(
+    reg: Graph,
+    project_root: Path,
+    file_hash: str,
+    *,
+    force: bool,
+    console: Console,
+) -> str | None:
+    """If *file_hash* is already registered, either raise or drop the entry.
+
+    Returns the dropped slug when force-removed, else None. The on-disk
+    sources.ttl is updated; callers that hold an in-memory copy must reload.
+    """
+    existing = _existing_by_hash(reg, file_hash)
+    if existing is None:
+        return None
+
+    slug = str(existing).rsplit("/", 1)[-1]
+    existing_path = reg.value(existing, DG.filePath)
+
+    if not force:
+        raise IngestError(
+            f"this file's content is already ingested as {slug!r} "
+            f"(at {existing_path}). Use --force to re-add."
+        )
+
+    console.print(
+        f"  [yellow]--force[/yellow]: dropping existing entry "
+        f"[bold]{slug}[/bold] [dim]({existing_path})[/dim]"
+    )
+    remove_source(project_root, slug)
+    return slug
+
+
+def ingest_ttl(
+    source: Path,
+    project_root: Path,
+    console: Console,
+    *,
+    force: bool = False,
+) -> Path:
     """Ingest a TTL source: validate, symlink into graphs/, register.
 
     Returns the path of the created graph file (symlink).
@@ -98,14 +153,7 @@ def ingest_ttl(source: Path, project_root: Path, console: Console) -> Path:
 
     reg = Graph()
     reg.parse(sources_path(project_root), format="turtle")
-
-    if (existing := _existing_by_hash(reg, file_hash)) is not None:
-        slug = str(existing).rsplit("/", 1)[-1]
-        existing_path = reg.value(existing, DG.filePath)
-        raise IngestError(
-            f"this file's content is already ingested as {slug!r} "
-            f"(at {existing_path}). Run `docgraph clean` to start over."
-        )
+    _check_existing(reg, project_root, file_hash, force=force, console=console)
 
     # Sanity-check parse.
     g = Graph()
@@ -200,11 +248,22 @@ def load_combined(project_root: Path) -> Dataset:
     The default graph holds meta.ttl, lis-14.ttl, prov-o.ttl, and dcterms.ttl
     (the permanent backbone). Each ingested source lives in its own named graph.
     """
-    ds = Dataset()
+    # default_union=True: SPARQL queries without explicit FROM clauses see the
+    # union of every graph in the dataset — needed so subclasses defined in
+    # named graphs (i.e. ingested sources) participate in classification.
+    ds = Dataset(default_union=True)
     ds.parse(meta_path(project_root),    format="turtle")
     ds.parse(lis14_path(project_root),   format="turtle")
     ds.parse(prov_o_path(project_root),  format="turtle")
     ds.parse(dcterms_path(project_root), format="turtle")
-    for f in sorted(graphs_dir(project_root).glob("*.ttl")):
-        ds.graph(URIRef(f"file://{f.resolve()}")).parse(f, format="turtle")
+    g_dir = graphs_dir(project_root)
+    for f in sorted(g_dir.iterdir()):
+        if f.suffix == ".ttl":
+            # Symlinked TTL imports: each file gets its own named graph keyed
+            # by file URI so cascade-delete removes a single named graph.
+            ds.graph(URIRef(f"file://{f.resolve()}")).parse(f, format="turtle")
+        elif f.suffix == ".trig":
+            # PDF-derived sources: the file already declares its own named
+            # graphs (default + extraction). Parse it as a Dataset.
+            ds.parse(f, format="trig")
     return ds

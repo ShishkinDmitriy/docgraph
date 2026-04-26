@@ -170,6 +170,10 @@ dg:detectedRole a owl:ObjectProperty   ; rdfs:label "detectedRole" .
 # ── Software-agent metadata ───────────────────────────────────────────────────
 dg:provider     a owl:DatatypeProperty ; rdfs:label "provider" ; rdfs:range xsd:string .
 dg:modelId      a owl:DatatypeProperty ; rdfs:label "modelId"  ; rdfs:range xsd:string .
+
+# ── Extraction confidence + reason (attached to a prov:Activity or graph entity) ──
+dg:confidence   a owl:DatatypeProperty ; rdfs:label "confidence" ; rdfs:range xsd:decimal .
+dg:reason       a owl:DatatypeProperty ; rdfs:label "reason"     ; rdfs:range xsd:string  .
 """
 
 _UNRESOLVED_TTL = """\

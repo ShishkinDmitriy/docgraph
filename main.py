@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """DocGraph CLI."""
 
+import logging
 import os
 import sys
 from pathlib import Path
@@ -70,7 +71,8 @@ def clean(directory: Path | None, yes: bool):
         sys.exit(1)
 
     g_dir = graphs_dir(project_root)
-    targets = [p for p in sorted(g_dir.glob("*.ttl")) if p.name != UNRESOLVED_FILENAME]
+    targets = sorted(p for p in g_dir.iterdir()
+                     if p.suffix in (".ttl", ".trig") and p.name != UNRESOLVED_FILENAME)
 
     if not targets:
         console.print("[dim]Nothing to clean.[/dim]")
@@ -93,17 +95,32 @@ def clean(directory: Path | None, yes: bool):
 @cli.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--note", type=str, default=None, help="Free-text hint passed to the converter.")
-def add(input_path: Path, note: str | None):
+@click.option("-f", "--force", is_flag=True,
+              help="Re-add even if already ingested. Drops the existing entry "
+                   "and reruns classify + extract; cached markdown is reused.")
+@click.option("--reconvert", is_flag=True,
+              help="Also redo PDF→Markdown conversion (drops cached markdown). "
+                   "Implies --force.")
+@click.option("--debug", is_flag=True, help="Log every LLM prompt and response.")
+def add(input_path: Path, note: str | None, force: bool, reconvert: bool, debug: bool):
     """Ingest a source into the project graph.
 
     Supported inputs:
       .ttl/.n3  — symlinked into .docgraph/graphs/ and registered (no LLM).
       .pdf      — converted to Markdown, registered as a lis:InformationObject
-                  with full PROV-O provenance for the conversion.
+                  with full PROV-O provenance, classified against existing
+                  subclasses of lis:InformationObject, and instance-extracted
+                  for as many properties of the chosen class as the document
+                  supports (one level of object-property nesting).
 
-    Classification and concept extraction are not wired in yet (steps 4-7 of
-    the pipeline; see ARCHITECTURE.md).
+    Pass --debug to log the full prompt and response for every LLM call.
     """
+    logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    if debug:
+        logging.getLogger("src").setLevel(logging.DEBUG)
+
     source = input_path.resolve()
     project_root = find_project_root(source.parent)
     if project_root is None:
@@ -116,7 +133,7 @@ def add(input_path: Path, note: str | None):
     suffix = source.suffix.lower()
     try:
         if suffix in TTL_SUFFIXES:
-            ingest_ttl(source, project_root, console)
+            ingest_ttl(source, project_root, console, force=force or reconvert)
             return
 
         if suffix == ".pdf":
@@ -126,7 +143,8 @@ def add(input_path: Path, note: str | None):
                 sys.exit(1)
             client = AnthropicClient(api_key=api_key)
             ingest_pdf(source, project_root, console,
-                       client=client, model=DEFAULT_VISION_MODEL, note=note)
+                       client=client, model=DEFAULT_VISION_MODEL, note=note,
+                       force=force, reconvert=reconvert)
             return
     except IngestError as exc:
         console.print(f"[red]Error:[/red] {exc}")

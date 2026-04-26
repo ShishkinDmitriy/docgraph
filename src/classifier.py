@@ -5,6 +5,7 @@ import logging
 import re
 
 from .llm import LLMClient
+from .log_panels import log_prompt, log_response
 from .models import ModelConfig
 from .prompts import MARKDOWN_PROMPT
 
@@ -62,6 +63,8 @@ def pdf_to_markdown(
     prompt = MARKDOWN_PROMPT
     if note:
         prompt += f"\n\nNote from user: {note}"
+    meta = f"{model.model_id}  max_tokens=4096  (PDF binary content omitted)"
+    log_prompt("pdf_to_markdown", prompt, logger=logger, metadata=meta)
     response = client.create(
         model_id=model.model_id,
         max_tokens=4096,
@@ -71,7 +74,7 @@ def pdf_to_markdown(
         }],
     )
     raw = response.content[0].text
-    logger.debug("pdf_to_markdown | response:\n%s", raw)
+    log_response("pdf_to_markdown", raw, logger=logger, metadata=meta, as_json=True)
     data = _parse_json_response(raw)
     docs = data.get("documents", [])
     for doc in docs:
