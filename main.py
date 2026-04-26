@@ -101,8 +101,11 @@ def clean(directory: Path | None, yes: bool):
 @click.option("--reconvert", is_flag=True,
               help="Also redo PDF→Markdown conversion (drops cached markdown). "
                    "Implies --force.")
+@click.option("--no-diagram", is_flag=True,
+              help="Skip diagram generation after a successful PDF ingest.")
 @click.option("--debug", is_flag=True, help="Log every LLM prompt and response.")
-def add(input_path: Path, note: str | None, force: bool, reconvert: bool, debug: bool):
+def add(input_path: Path, note: str | None, force: bool, reconvert: bool,
+        no_diagram: bool, debug: bool):
     """Ingest a source into the project graph.
 
     Supported inputs:
@@ -145,6 +148,16 @@ def add(input_path: Path, note: str | None, force: bool, reconvert: bool, debug:
             ingest_pdf(source, project_root, console,
                        client=client, model=DEFAULT_VISION_MODEL, note=note,
                        force=force, reconvert=reconvert)
+
+            if not no_diagram:
+                from src.diagram import DiagramError, make_diagram
+                slug = _resolve_slug(project_root, str(source))
+                try:
+                    make_diagram(project_root, slug, console)
+                except DiagramError as exc:
+                    console.print(f"  [yellow]diagram skipped[/yellow]: {exc}")
+                except Exception as exc:
+                    console.print(f"  [yellow]diagram failed[/yellow]: {exc}")
             return
     except IngestError as exc:
         console.print(f"[red]Error:[/red] {exc}")
