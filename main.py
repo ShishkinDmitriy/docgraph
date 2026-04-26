@@ -157,6 +157,86 @@ def add(input_path: Path, note: str | None, force: bool, reconvert: bool, debug:
     sys.exit(2)
 
 
+def _resolve_slug(project_root: Path, target: str) -> str:
+    """Resolve *target* to a slug. If *target* is an existing file, look it up
+    in sources.ttl by absolute path, then by content hash; otherwise treat it
+    as a literal slug and verify it's registered.
+    """
+    sources = list_sources(project_root)
+    by_slug = {s["slug"]: s for s in sources}
+
+    p = Path(target)
+    if p.exists() and p.is_file():
+        absolute = str(p.resolve())
+        for s in sources:
+            if s["sourcePath"] == absolute:
+                return s["slug"]
+        # Path didn't match — try hash for moved/renamed files.
+        from src.ingest import compute_hash
+        file_hash = compute_hash(p.resolve())
+        for s in sources:
+            if s["fileHash"] == file_hash:
+                return s["slug"]
+        raise click.UsageError(
+            f"{p} is not registered in this project (run `docgraph status` to list sources)."
+        )
+
+    # Not a file — treat as slug.
+    if target in by_slug:
+        return target
+    raise click.UsageError(
+        f"no source registered as {target!r} (run `docgraph status` to list sources)."
+    )
+
+
+@cli.command()
+@click.argument("target", required=False)
+@click.option("--all", "all_sources", is_flag=True,
+              help="Generate diagrams for every source in the project.")
+@click.option("--format", "fmt", type=click.Choice(["svg", "png"]), default="svg",
+              show_default=True, help="Render format (best-effort via plantuml.com).")
+@click.option("--direction", type=click.Choice(["LR", "TB"]), default="LR",
+              show_default=True, help="Diagram layout direction (left-to-right or top-to-bottom).")
+def diagram(target: str | None, all_sources: bool, fmt: str, direction: str):
+    """Generate a PlantUML diagram from a source's extraction named graph.
+
+    TARGET may be either a slug (e.g. `zahnrechnung-2025`) or a path to the
+    original source file (e.g. `~/Documents/Zahnrechnung2025.pdf`); paths are
+    resolved against the project's sources.ttl.
+
+    Pipeline:  graphs/<slug>.trig  →  diagrams/<slug>.puml  →  diagrams/<slug>.svg
+
+    The .puml is always written. Rendering is best-effort over the public
+    PlantUML server; if the network call fails the .puml is still on disk.
+    """
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        console.print("[red]Error:[/red] not a docgraph project (run `docgraph init`).")
+        sys.exit(1)
+
+    if all_sources:
+        slugs = [s["slug"] for s in list_sources(project_root)]
+    elif target:
+        try:
+            slugs = [_resolve_slug(project_root, target)]
+        except click.UsageError as exc:
+            console.print(f"[red]Error:[/red] {exc.message}")
+            sys.exit(1)
+    else:
+        console.print("[red]Error:[/red] specify a slug, a file path, or pass --all.")
+        sys.exit(1)
+
+    from src.diagram import DiagramError, make_diagram
+    for s in slugs:
+        console.print(f"[bold]{s}[/bold]")
+        try:
+            make_diagram(project_root, s, console, render_format=fmt, direction=direction)
+        except DiagramError as exc:
+            console.print(f"  [red]error:[/red] {exc}")
+        except Exception as exc:
+            console.print(f"  [red]unexpected error:[/red] {exc}")
+
+
 @cli.command()
 @click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
 def status(directory: Path | None):
