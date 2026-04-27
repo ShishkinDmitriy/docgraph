@@ -57,10 +57,11 @@ from src.project import (
     DOCGRAPH_DIR, GRAPHS_SUBDIR, cache_dir, graphs_dir, sources_path,
 )
 
-# Form-classification gate: if best embedding similarity to any existing class
-# falls below this, skip classify+extract — the document is outside the
-# ontology's current coverage. Tunable; subject identification (b2) still runs.
-UNCOVERED_THRESHOLD = 0.30
+# Use embedding top-k to narrow classification candidates only when the form
+# scope is at least this big. Below the threshold, we send the whole candidate
+# list to the LLM — simpler, no information loss, no OpenAI dependency for
+# small projects.
+RAG_THRESHOLD = 30
 
 PROV    = Namespace("http://www.w3.org/ns/prov#")
 DCTERMS = Namespace("http://purl.org/dc/terms/")
@@ -100,12 +101,6 @@ def ingest_pdf(
         raise IngestError(f"{source} is not a file")
     if source.suffix.lower() != ".pdf":
         raise IngestError(f"{source.suffix} is not a PDF")
-
-    # Fail fast if OPENAI_API_KEY is missing — before we burn any Anthropic calls.
-    try:
-        emb_client = EmbeddingClient()
-    except EmbeddingError as exc:
-        raise IngestError(str(exc)) from exc
 
     file_hash = compute_hash(source)
     file_size = source.stat().st_size
@@ -179,109 +174,76 @@ def ingest_pdf(
     ds.add((agent_uri, DG.provider, Literal(model.provider)))
     ds.add((agent_uri, DG.modelId,  Literal(model.model_id)))
 
-    # ── Step 4a: classify (embedding-narrowed top-k → LLM final pick) ──
+    # ── Step 4a: classify ──
     combined = load_combined(project_root)
     full_candidates = information_object_subclasses(combined)
     markdown = "\n\n---\n\n".join(d.get("markdown", "") for d in docs)
 
-    emb_path  = project_root / DOCGRAPH_DIR / EMBEDDINGS_FILENAME
-    emb_store = EmbeddingStore.load(emb_path)
-
-    # Embed any new form-scope classes lazily.
-    class_uris = [c.uri for c in full_candidates]
-    indexed = ensure_class_embeddings(emb_store, combined, class_uris, emb_client)
-    if indexed:
-        console.print(f"  embedded [bold]{indexed}[/bold] new class(es)")
-
-    # Embed the document and pull top-k by cosine similarity, restricted to form scope.
-    doc_vec = emb_client.embed([document_text(markdown)])[0]
-    emb_store.upsert_doc(str(pdf_uri), doc_vec)
-    form_scope = {str(c.uri) for c in full_candidates}
-    top_k = cosine_topk(doc_vec, emb_store.class_vectors, emb_store.class_uris,
-                        k=DEFAULT_TOP_K, restrict_to=form_scope)
-
-    nearest_sim = top_k[0][1] if top_k else 0.0
-    console.print(f"  top {len(top_k)} candidate(s) (best similarity {nearest_sim:.3f}):")
-    for uri_str, score in top_k:
-        local = uri_str.rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-        console.print(f"    [{score:.3f}] {local}")
-
-    ds.add((ext_uri, DG.typeNearestSimilarity,
-            Literal(nearest_sim, datatype=XSD.decimal)))
     ds.add((ext_uri, RDF.type,   PROV.Entity))
     ds.add((ext_uri, RDFS.label, Literal(f"LLM-extracted facts about {slug}")))
 
-    classify_uri = None
-    extract_uri  = None
-    added_props  = 0
+    # Pick the candidate set for the LLM. Use embedding top-k as a pre-filter
+    # only when the form scope is large enough that the prompt would be wasteful;
+    # below that, send the whole list — simpler, no OpenAI dep, no info loss.
+    narrowed, nearest_sim = _select_candidates(
+        full_candidates, markdown, combined, project_root, pdf_uri, console
+    )
+    if nearest_sim is not None:
+        ds.add((ext_uri, DG.typeNearestSimilarity,
+                Literal(nearest_sim, datatype=XSD.decimal)))
 
-    if nearest_sim < UNCOVERED_THRESHOLD:
+    classify_uri     = URIRef(ACT_NS[f"classify-{slug}"])
+    classify_started = _now()
+    choice           = classify_document_type(markdown, narrowed, client, model)
+    classify_ended   = _now()
+    _add_activity(ds, classify_uri, "Classify document type",
+                  used=md_uris, agent=agent_uri,
+                  started=classify_started, ended=classify_ended,
+                  confidence=choice.confidence, reason=choice.reason)
+    ds.add((ext_uri, PROV.wasGeneratedBy, classify_uri))
+    ds.add((ext_uri, DG.typeConfidence,
+            Literal(choice.confidence, datatype=XSD.decimal)))
+
+    extract_uri = None
+    added_props = 0
+
+    if choice.uri is not None:
+        extraction_g.add((pdf_uri, RDF.type, choice.uri))
+        local = str(choice.uri).rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+        console.print(f"  classified as [bold]{local}[/bold] "
+                      f"({choice.confidence:.0%}): [dim]{choice.reason}[/dim]")
+
+        # ── Step 7: extract instance properties ──
+        root = class_def(combined, choice.uri)
+        nested = nested_class_defs(combined, root.properties)
+        nested_count = sum(len(c.properties) for c in nested.values())
         console.print(
-            f"  [yellow]uncovered[/yellow] (best similarity "
-            f"{nearest_sim:.2f} < {UNCOVERED_THRESHOLD:.2f}) — "
-            f"skipping classify + extract."
+            f"  extracting [bold]{len(root.properties)}[/bold] direct + "
+            f"[bold]{nested_count}[/bold] nested propert(y/ies)..."
         )
-        extraction_g.add((pdf_uri, DG.status, DG.UncoveredDocument))
-    else:
-        # Narrow classify candidates to top-k.
-        by_uri = {str(c.uri): c for c in full_candidates}
-        narrowed = [by_uri[uri] for uri, _ in top_k if uri in by_uri]
-
-        classify_uri     = URIRef(ACT_NS[f"classify-{slug}"])
-        classify_started = _now()
-        choice           = classify_document_type(markdown, narrowed, client, model)
-        classify_ended   = _now()
-        _add_activity(ds, classify_uri, "Classify document type",
+        extract_uri     = URIRef(ACT_NS[f"extract-{slug}"])
+        extract_started = _now()
+        data            = extract_instance_data(markdown, root, nested, client, model)
+        extract_ended   = _now()
+        _add_activity(ds, extract_uri, "Extract instance properties",
                       used=md_uris, agent=agent_uri,
-                      started=classify_started, ended=classify_ended,
-                      confidence=choice.confidence, reason=choice.reason)
-        ds.add((ext_uri, PROV.wasGeneratedBy, classify_uri))
+                      started=extract_started, ended=extract_ended)
+        added_props = emit_triples(extraction_g, pdf_uri, data, root, nested,
+                                   base_uri=str(pdf_uri))
+        console.print(f"  extracted [bold]{added_props}[/bold] property triple(s)")
+        ds.add((ext_uri, PROV.wasGeneratedBy, extract_uri))
 
-        if choice.uri is not None:
-            extraction_g.add((pdf_uri, RDF.type, choice.uri))
-            local = str(choice.uri).rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-            console.print(f"  classified as [bold]{local}[/bold] "
-                          f"({choice.confidence:.0%}): [dim]{choice.reason}[/dim]")
-            ds.add((ext_uri, DG.typeConfidence,
-                    Literal(choice.confidence, datatype=XSD.decimal)))
-
-            # ── Step 7: extract instance properties ──
-            root = class_def(combined, choice.uri)
-            nested = nested_class_defs(combined, root.properties)
-            nested_count = sum(len(c.properties) for c in nested.values())
-            console.print(
-                f"  extracting [bold]{len(root.properties)}[/bold] direct + "
-                f"[bold]{nested_count}[/bold] nested propert(y/ies)..."
-            )
-            extract_uri     = URIRef(ACT_NS[f"extract-{slug}"])
-            extract_started = _now()
-            data            = extract_instance_data(markdown, root, nested, client, model)
-            extract_ended   = _now()
-            _add_activity(ds, extract_uri, "Extract instance properties",
-                          used=md_uris, agent=agent_uri,
-                          started=extract_started, ended=extract_ended)
-            added_props = emit_triples(extraction_g, pdf_uri, data, root, nested,
-                                       base_uri=str(pdf_uri))
-            console.print(f"  extracted [bold]{added_props}[/bold] property triple(s)")
-            ds.add((ext_uri, PROV.wasGeneratedBy, extract_uri))
-
-            # Form coverage: how many of the chosen class's direct properties
-            # got at least one triple on the document?
-            filled, total = form_coverage(extraction_g, pdf_uri, root.properties)
-            if total:
-                ds.add((ext_uri, DG.typeCoverage,
-                        Literal(filled / total, datatype=XSD.decimal)))
-                console.print(f"  form coverage: {filled}/{total} "
-                              f"({filled / total:.0%})")
-        else:
-            console.print(f"  [yellow]no specific type matched[/yellow] "
-                          f"({choice.confidence:.0%}): [dim]{choice.reason}[/dim]")
-            ds.add((ext_uri, DG.typeConfidence,
-                    Literal(choice.confidence, datatype=XSD.decimal)))
-
-    emb_store.save()
-    console.print(f"  embeddings store: [dim]{emb_path.relative_to(project_root)}[/dim] "
-                  f"({len(emb_store.class_uris)} class(es), {len(emb_store.doc_uris)} doc(s))")
+        # Form coverage: how many of the chosen class's direct properties
+        # got at least one triple on the document?
+        filled, total = form_coverage(extraction_g, pdf_uri, root.properties)
+        if total:
+            ds.add((ext_uri, DG.typeCoverage,
+                    Literal(filled / total, datatype=XSD.decimal)))
+            console.print(f"  form coverage: {filled}/{total} "
+                          f"({filled / total:.0%})")
+    else:
+        console.print(f"  [yellow]no specific type matched[/yellow] "
+                      f"({choice.confidence:.0%}): [dim]{choice.reason}[/dim]")
 
     # ── Serialize as TriG ──
     graph_file = g_dir / f"{slug}{GRAPH_SUFFIX}"
@@ -304,6 +266,64 @@ def ingest_pdf(
 
 def _now():
     return datetime.now(timezone.utc).replace(microsecond=0)
+
+
+def _select_candidates(
+    full_candidates,
+    markdown: str,
+    combined,
+    project_root: Path,
+    pdf_uri: URIRef,
+    console: Console,
+):
+    """Choose which candidate classes to send to the classify LLM.
+
+    - When |candidates| < RAG_THRESHOLD: pass-through, no embeddings, no
+      OpenAI dependency. Returns ``(full_candidates, None)``.
+    - When |candidates| ≥ RAG_THRESHOLD: embed any uncached classes + the
+      document, take top-DEFAULT_TOP_K by cosine, persist the store.
+      Returns ``(narrowed_list, best_similarity)``.
+    """
+    n = len(full_candidates)
+    if n < RAG_THRESHOLD:
+        console.print(f"  classifying against [bold]{n}[/bold] candidate(s) "
+                      f"(below RAG threshold of {RAG_THRESHOLD})")
+        return list(full_candidates), None
+
+    try:
+        emb_client = EmbeddingClient()
+    except EmbeddingError as exc:
+        console.print(f"  [yellow]RAG skipped[/yellow]: {exc}; "
+                      f"sending all {n} candidates to the LLM.")
+        return list(full_candidates), None
+
+    emb_path  = project_root / DOCGRAPH_DIR / EMBEDDINGS_FILENAME
+    emb_store = EmbeddingStore.load(emb_path)
+    indexed = ensure_class_embeddings(emb_store, combined,
+                                      [c.uri for c in full_candidates], emb_client)
+    if indexed:
+        console.print(f"  embedded [bold]{indexed}[/bold] new class(es)")
+
+    doc_vec = emb_client.embed([document_text(markdown)])[0]
+    emb_store.upsert_doc(str(pdf_uri), doc_vec)
+
+    form_scope = {str(c.uri) for c in full_candidates}
+    top_k = cosine_topk(doc_vec, emb_store.class_vectors, emb_store.class_uris,
+                        k=DEFAULT_TOP_K, restrict_to=form_scope)
+
+    nearest_sim = top_k[0][1] if top_k else 0.0
+    console.print(f"  RAG: top {len(top_k)} of {n} candidate(s) "
+                  f"(best similarity {nearest_sim:.3f}):")
+    for uri_str, score in top_k:
+        local = uri_str.rsplit("/", 1)[-1].rsplit("#", 1)[-1]
+        console.print(f"    [{score:.3f}] {local}")
+
+    by_uri = {str(c.uri): c for c in full_candidates}
+    narrowed = [by_uri[uri] for uri, _ in top_k if uri in by_uri]
+    emb_store.save()
+    console.print(f"  embeddings store: [dim]{emb_path.relative_to(project_root)}[/dim] "
+                  f"({len(emb_store.class_uris)} class(es), {len(emb_store.doc_uris)} doc(s))")
+    return narrowed, nearest_sim
 
 
 def _bind_prefixes(ds: Dataset) -> None:
