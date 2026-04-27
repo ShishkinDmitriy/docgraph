@@ -290,6 +290,25 @@ def emit_triples(
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+def form_coverage(
+    extraction_g: Graph,
+    subject: URIRef,
+    direct_props: list[PropertyDef],
+) -> tuple[int, int]:
+    """Return (filled, total) for the *direct* properties of the subject's class.
+
+    "Filled" means at least one triple with that predicate exists on *subject*
+    in the extraction graph. Counts only direct properties — nested entities
+    have their own coverage stories and aren't aggregated here.
+    """
+    if not direct_props:
+        return 0, 0
+    on_subject = {p for s, p, o in extraction_g.triples((subject, None, None))
+                  if p != RDF.type}
+    declared = {p.uri for p in direct_props}
+    return len(on_subject & declared), len(declared)
+
+
 def _ancestors(ds: Dataset, class_uri: URIRef) -> set[URIRef]:
     seen: set[URIRef] = set()
     stack = [class_uri]

@@ -89,6 +89,14 @@ def clean(directory: Path | None, yes: bool):
         p.unlink()  # works for both files and symlinks
 
     reset_sources(project_root)
+
+    from src.embeddings import EMBEDDINGS_FILENAME
+    from src.project import DOCGRAPH_DIR
+    emb_path = project_root / DOCGRAPH_DIR / EMBEDDINGS_FILENAME
+    if emb_path.is_file():
+        emb_path.unlink()
+        console.print(f"  also removed [dim]{emb_path.relative_to(project_root)}[/dim]")
+
     console.print(f"[green]Cleaned[/green] {len(targets)} graph(s) and reset sources.ttl")
 
 

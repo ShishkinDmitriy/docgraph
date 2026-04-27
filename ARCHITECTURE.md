@@ -1,6 +1,6 @@
 # DocGraph — Architecture Design Notes
 
-> Session date: 2026-04-15. Last updated: 2026-04-25 (switched upper ontology from ISO 15926 Part 2 to Part 14). Read this file at the start of any session continuing this design.
+> Session date: 2026-04-15. Last updated: 2026-04-27 (added Q1/Q2 classification design; pipeline outline updated to match current implementation). Read this file at the start of any session continuing this design.
 
 ## Vision
 
@@ -440,51 +440,176 @@ This means:
 
 ---
 
+## Classification — two questions (Q1 + Q2)
+
+Classification of an ingested document splits into two independent questions
+asked in order. They have different scopes, different candidate sets, and
+different cost profiles.
+
+### Q1 — Subject: what is this document *about*?
+
+- **Stored as**: `<source> dg:isAbout <UpperClass>, …` (zero or more values).
+- **Candidate scope**: **ISO 15926 Part 14 classes only.**
+  - PROV-O is intentionally excluded — we use it for *metadata/provenance*
+    (`prov:Activity`, `prov:wasGeneratedBy`, …), not as a subject vocabulary.
+    Including it would conflate "what the document is about" with "what
+    happened during ingest."
+  - DCMI Terms is also excluded — its classes overlap with Part 14 and
+    introduce noise.
+- **Set size**: ~30 classes. Cheap enough that we send the whole catalogue to
+  the LLM with no embedding pre-filter. RAG is not used here.
+- **Always runs**, regardless of whether a domain ontology is loaded. This is
+  the question that's *always* answerable: every document is at least
+  intuitively "about" something at the upper-ontology level (an Activity, an
+  Object, a Person, an Organization, a Quality, …).
+- **Examples**:
+  - Zahnrechnung (dental invoice) → `dg:isAbout lis:Activity, lis:Person`
+    (the dental procedure, the participants).
+  - PROV-O ontology document → `dg:isAbout lis:Activity, lis:Object`
+    (it defines activity/entity vocabulary).
+  - Sensor reading → `dg:isAbout lis:Quality`.
+  - Poetry book → `dg:isAbout lis:Object` (vague — and that vagueness is
+    itself the "outside our domain" signal).
+- **Doubles as the uncovered diagnostic**: if Q1 returns only the most
+  generic subjects (`lis:Object` and nothing more specific) with low
+  confidence, the document is outside the upper ontology's resolution.
+  Replaces the earlier `dg:typeNearestSimilarity < 0.3` geometric heuristic
+  with a semantically grounded one.
+
+### Q2 — Form: what *kind of document* is this?
+
+- **Stored as**: `<source> rdf:type <FormClass>` (single value).
+- **Candidate scope**: leaf classes from **user-ingested ontologies only**.
+  - "User-ingested" = declared in a named graph that came from
+    `docgraph add <file>.ttl`. Bundled foundationals (Part 14, PROV-O, DCMI,
+    docgraph meta) don't contribute form candidates — they're scaffolding,
+    not subject matter. (If a user ingests Part 14 a second time
+    deliberately, it joins the candidate pool — opting in is allowed.)
+  - "Leaf" = no other class declares this as its `rdfs:subClassOf` parent
+    in the combined dataset. Abstract intermediates like
+    `fin:FinancialDocument` (which has 4 subclasses) are filtered out — the
+    LLM should always pick the most specific class.
+  - The leaf rule is structural; no per-class annotation is needed.
+- **Set size**: variable. Small (5 in the toy financial example), large in
+  real domain ontologies (200+ in a procurement RDL).
+- **RAG as a count-based optimization**: when there are ≥ 30 candidates,
+  the embedding store narrows to top-30 by cosine similarity before the LLM
+  call; otherwise the candidate list is sent intact. Below 30 the prompt is
+  cheap enough that filtering loses information without saving meaningfully.
+- **Conditionally runs**: when no user ontology is loaded, Q2 is skipped
+  with a clear message ("no domain ontology — `docgraph add <ontology.ttl>`
+  first"), not an opaque "uncovered" gate.
+
+### Why the form-vs-subject distinction matters
+
+A common ontology-design mistake is to flatten form and event into the same
+class hierarchy. The financial ontology in `data/financial_documents.ttl`
+correctly keeps them separate — and is the model for how domain ontologies
+should be authored:
+
+```turtle
+# Form branch — documents (subClassOf lis:InformationObject)
+fin:FinancialDocument     rdfs:subClassOf lis:InformationObject .
+fin:DemandForPayment      rdfs:subClassOf fin:FinancialDocument .
+fin:ConfirmationOfPayment rdfs:subClassOf fin:FinancialDocument .
+fin:Quote                 rdfs:subClassOf fin:FinancialDocument .
+fin:Statement             rdfs:subClassOf fin:FinancialDocument .
+
+# Event branch — financial activities (subClassOf prov:Activity ⊑ lis:Activity)
+fin:Transaction  rdfs:subClassOf prov:Activity .
+fin:Payment      rdfs:subClassOf fin:Transaction .
+fin:Transfer     rdfs:subClassOf fin:Transaction .
+fin:Payout       rdfs:subClassOf fin:Transaction .
+```
+
+A specific Zahnrechnung answers both questions from the right branches:
+- Q1 (subject) → `dg:isAbout lis:Activity` — the underlying payment/treatment.
+- Q2 (form)   → `rdf:type fin:DemandForPayment` — the layout/document kind.
+
+If a domain ontology mixes the two — e.g., declares "Invoice" as both a form
+and an event under one class — both questions return the same answer and the
+distinction collapses. That's a *modelling* failure, not a pipeline failure.
+
+### Q1 narrowing Q2 (deferred)
+
+The natural follow-up question is whether Q1's answer can pre-filter Q2's
+candidate set ("the document is about an Activity → consider only form
+classes structurally related to Activity"). This is a real optimization for
+projects with 100+ form classes, but requires a relevance-mapping mechanism
+between forms and subjects. Three honest options when the time comes:
+
+- Embedding affinity between form and subject `class_text`s.
+- Property analysis: a form is relevant to a subject if any of its declared
+  `rdfs:range`s reference the subject (or a transitive subclass).
+- LLM-judged once at ontology-add: "for each form class, what upper-ontology
+  subject is it most concerned with?" Tag as `dg:concernsSubject`.
+
+For current scales (small handcrafted ontologies), independent Q1 + Q2 is
+sufficient. The cascade is future work; the embedding store is already in
+place to power option 1 when needed.
+
+### Coverage signals
+
+Per ingest, the default graph carries:
+
+```turtle
+<ext/<slug>>
+    dg:subjectConfidence  0.81 ;            # Q1's headline confidence
+    dg:typeConfidence     0.92 ;            # Q2's headline confidence (if Q2 ran)
+    dg:typeCoverage       0.67 ;            # filled-direct-props / total (if Q2 ran)
+    dg:typeNearestSimilarity 0.27 ;         # best Q2 cosine score (if Q2 ran)
+    dg:isAbout            lis:Activity, lis:Person .  # Q1 result (in extraction graph)
+```
+
+Reading them together gives the diagnostics the user wants:
+- High `subjectConfidence` + Q2 didn't run → "we know what it's about; you
+  haven't loaded a form ontology yet."
+- High `subjectConfidence` + low `typeNearestSimilarity` → "we know the
+  general topic; no loaded form fits — the document is outside this
+  project's domain coverage."
+- High `subjectConfidence` + high `typeConfidence` + low `typeCoverage` →
+  "right type, but document is sparse — many of the type's declared
+  properties weren't in the document."
+
+---
+
 ## Extraction pipeline (PDF / text sources)
 
 ```
 docgraph add invoice.pdf
     │
-    ├─ [if .ttl / .n3 / .jsonld / .trig]
-    │   Parse → load into named graph
-    │   Done — no LLM
+    ├─ [if .ttl / .n3 ]
+    │     Parse → symlink into graphs/<slug>.ttl → register in sources.ttl
+    │     No LLM. No conversion. No classification.
     │
-    └─ [if .pdf / .txt / .md / ...]
-        │
-        ├─ Pass 0: PDF → Markdown (existing classifier.py)
-        │
-        ├─ Pass 1: concept extraction
-        │   "What are the main objects/concepts in this document?"
-        │   Returns: [{label, description, raw_context_snippet}, ...]
-        │
-        ├─ Pass 2: meta-classification per concept
-        │   For each concept:
-        │   - Which lis:* class does it map to?
-        │     (lis:InformationObject  — a concrete document/record instance, OR a new
-        │                                 OWL class subClassOf lis:InformationObject for
-        │                                 a document *type*
-        │      lis:Activity            — an event / process step
-        │      lis:Person, lis:Organization, lis:Location — actors and places
-        │      lis:PhysicalObject      — physical things
-        │      lis:Quality / Role / Function / Disposition — aspects
-        │      owl:ObjectProperty / owl:DatatypeProperty — a relation/attribute type)
-        │   - Is this an INSTANCE (rdf:type) or a TYPE (a new OWL class)?
-        │   - Does this document DEFINE it or REFERENCE it?
-        │   - If property: what is its modality (dg:Mandatory/Preferred/Optional/Prohibited)?
-        │   - If property: what are its rdfs:domain and rdfs:range?
-        │
-        ├─ Pass 3: resolution against existing graphs
-        │   DEFINE → mint URI, write to this document's named graph
-        │   REFERENCE → fuzzy-match against URIs in existing graphs
-        │             → if no match: add stub to graphs/_unresolved.ttl
-        │
-        └─ Pass 4: instance property extraction (for individuals only)
-            Use modality triples on the matched class's properties to guide extraction
-            Mandatory  → must find value
-            Optional   → attempt
-            Prohibited → skip
-            (This replaces the current agent.py extraction loop)
+    └─ [if .pdf]
+        ├─ 0. Validate, hash for idempotency, check existing entry
+        ├─ 1. Register file as lis:InformationObject + prov:Entity
+        │     (file metadata: hash, size, mime, pdfinfo: pages, title, ...)
+        ├─ 2. Convert PDF → Markdown via Claude vision (cached)
+        │     Register the markdown derivative + record the conversion
+        │     as a prov:Activity in the default graph.
+        ├─ 3. Q1 — Subject identification
+        │     Candidates: Part 14 classes (~30, sent in full).
+        │     Emit  <source> dg:isAbout <UpperClass>, ...
+        │     Always runs.
+        ├─ 4. Q2 — Form classification
+        │     Candidates: leaves of user-ingested ontologies.
+        │     If ≥ 30: embedding top-k pre-filter; else send all.
+        │     Emit  <source> rdf:type <FormClass>  in the extraction graph.
+        │     Skipped (with clear message) when no domain ontology is loaded.
+        └─ 5. Property extraction
+              For the chosen form class, walk rdfs:subClassOf* ancestors and
+              collect every property whose rdfs:domain matches. Single LLM
+              call returns a nested JSON; we mint URIs for object-typed
+              properties (one level deep), emit triples into the extraction
+              named graph. Coverage signal: filled-direct / total-direct.
 ```
+
+The extraction graph is a separate named graph inside the source's TriG
+file (`<ext/<slug>>`), described as a `prov:Entity` in the default graph and
+generated by Q1's classify activity, Q2's classify activity, and the extract
+activity. See "Provenance via named graphs" above for the cascade story.
 
 ---
 

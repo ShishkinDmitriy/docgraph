@@ -171,9 +171,17 @@ dg:detectedRole a owl:ObjectProperty   ; rdfs:label "detectedRole" .
 dg:provider     a owl:DatatypeProperty ; rdfs:label "provider" ; rdfs:range xsd:string .
 dg:modelId      a owl:DatatypeProperty ; rdfs:label "modelId"  ; rdfs:range xsd:string .
 
-# ── Extraction confidence + reason (attached to a prov:Activity or graph entity) ──
+# ── Extraction confidence + reason (general — attached to a prov:Activity) ───
 dg:confidence   a owl:DatatypeProperty ; rdfs:label "confidence" ; rdfs:range xsd:decimal .
 dg:reason       a owl:DatatypeProperty ; rdfs:label "reason"     ; rdfs:range xsd:string  .
+
+# ── Type / form-classification signals (attached to the extraction graph) ────
+dg:typeConfidence        a owl:DatatypeProperty ; rdfs:label "typeConfidence"        ; rdfs:range xsd:decimal .
+dg:typeCoverage          a owl:DatatypeProperty ; rdfs:label "typeCoverage"          ; rdfs:range xsd:decimal .
+dg:typeNearestSimilarity a owl:DatatypeProperty ; rdfs:label "typeNearestSimilarity" ; rdfs:range xsd:decimal .
+
+# ── Document outside the ontology's coverage (form scope below threshold) ────
+dg:UncoveredDocument a owl:NamedIndividual ; rdfs:label "UncoveredDocument" .
 """
 
 _UNRESOLVED_TTL = """\
