@@ -19,6 +19,7 @@ from rich.console import Console
 from src.project import (
     GRAPHS_SUBDIR,
     dcterms_path,
+    ensure_layout,
     graphs_dir,
     iso15926_annotations_path,
     iso15926_path,
@@ -251,6 +252,9 @@ def load_combined(project_root: Path) -> Dataset:
     prov-o.ttl, and dcterms.ttl (the permanent backbone). Each ingested source
     lives in its own named graph.
     """
+    # Auto-heal stale projects (pre-Part-2 layout) before parsing.
+    ensure_layout(project_root)
+
     # default_union=True: SPARQL queries without explicit FROM clauses see the
     # union of every graph in the dataset — needed so subclasses defined in
     # named graphs (i.e. ingested sources) participate in classification.
@@ -259,7 +263,7 @@ def load_combined(project_root: Path) -> Dataset:
     ds.parse(iso15926_path(project_root),              format="xml")
     ds.parse(iso15926_annotations_path(project_root),  format="xml")
     ds.parse(prov_o_path(project_root),                format="turtle")
-    ds.parse(dcterms_path(project_root),               format="turtle")
+    ds.parse(dcterms_path(project_root), format="turtle")
     g_dir = graphs_dir(project_root)
     for f in sorted(g_dir.iterdir()):
         if f.suffix == ".ttl":

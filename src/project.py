@@ -45,6 +45,9 @@ _BUNDLED_ONTOLOGIES = [
     (_DCTERMS_SOURCE,              DCTERMS_FILENAME,              "DCMI Terms"),
 ]
 
+# Files that may be left over from the pre-Part-2 layout. Removed during migration.
+_STALE_FILES = ("lis-14.ttl",)
+
 
 def find_project_root(start: Path | None = None) -> Path | None:
     """Walk up from *start* (default: cwd) looking for a directory that contains
@@ -217,6 +220,59 @@ _SOURCES_TTL = """\
 def reset_sources(project_root: Path) -> None:
     """Overwrite sources.ttl with an empty registry (header only)."""
     sources_path(project_root).write_text(_SOURCES_TTL)
+
+
+def ensure_layout(project_root: Path, console: Console | None = None) -> None:
+    """Auto-migrate a stale .docgraph/ (pre-Part-2) to the current layout.
+
+    Idempotent. Safe to call before any operation that loads the combined
+    dataset. Does not touch graphs/, sources.ttl, or cache/.
+
+    - Copies any missing bundled ontology files (Part 2 RDF + annotations,
+      PROV-O, DCMI Terms).
+    - If meta.ttl still references Part 14, rewrites it for Part 2.
+    - Removes stale Part-14-era files.
+    """
+    dg_dir = project_root / DOCGRAPH_DIR
+    if not dg_dir.is_dir():
+        return  # not a project root; nothing to migrate
+
+    copied: list[str] = []
+    for source, fname, label in _BUNDLED_ONTOLOGIES:
+        dest = dg_dir / fname
+        if dest.exists():
+            continue
+        if not source.is_file():
+            raise FileNotFoundError(
+                f"Bundled ontology not found at {source} ({label}). "
+                "docgraph install is incomplete."
+            )
+        shutil.copy2(source, dest)
+        copied.append(fname)
+
+    rewrote_meta = False
+    meta = dg_dir / META_FILENAME
+    if meta.exists():
+        text = meta.read_text(encoding="utf-8")
+        if "part14" in text and "ISO-15926-2_2003" not in text:
+            meta.write_text(_META_TTL)
+            rewrote_meta = True
+
+    removed: list[str] = []
+    for stale in _STALE_FILES:
+        path = dg_dir / stale
+        if path.exists():
+            path.unlink()
+            removed.append(stale)
+
+    if console and (copied or rewrote_meta or removed):
+        console.print("[dim]migrated .docgraph layout to ISO 15926 Part 2:[/dim]")
+        for f in copied:
+            console.print(f"  [dim]+ {f}[/dim]")
+        if rewrote_meta:
+            console.print(f"  [dim]~ {META_FILENAME} (Part 2 prefix + imports)[/dim]")
+        for f in removed:
+            console.print(f"  [dim]- {f} (stale)[/dim]")
 
 
 def init_project(target: Path, console: Console, *, force: bool = False) -> None:
