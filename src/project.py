@@ -3,15 +3,16 @@
 Layout (per ARCHITECTURE.md):
 
     .docgraph/
-      meta.ttl           — docgraph extensions, owl:imports the upper ontologies
-      lis-14.ttl         — ISO 15926 Part 14 upper ontology
-      prov-o.ttl         — W3C PROV-O (provenance)
-      dcterms.ttl        — DCMI Terms (bibliographic metadata)
-      sources.ttl        — registry of ingested sources
+      meta.ttl                         — docgraph extensions, owl:imports the upper ontologies
+      iso-15926-2.rdf                  — ISO 15926 Part 2 OWL upper ontology (POSC Caesar)
+      iso-15926-2-annotations.rdf      — Part 2 entity definitions / notes / examples
+      prov-o.ttl                       — W3C PROV-O (provenance)
+      dcterms.ttl                      — DCMI Terms (bibliographic metadata)
+      sources.ttl                      — registry of ingested sources
       graphs/
-        _unresolved.ttl  — stubs for not-yet-defined concepts
-        <slug>.ttl       — one file per source (real file or symlink to TTL input)
-      cache/             — PDF→Markdown cache (unchanged)
+        _unresolved.ttl                — stubs for not-yet-defined concepts
+        <slug>.ttl                     — one file per source (real file or symlink to TTL input)
+      cache/                           — PDF→Markdown cache (unchanged)
 """
 
 import shutil
@@ -19,26 +20,29 @@ from pathlib import Path
 
 from rich.console import Console
 
-DOCGRAPH_DIR        = ".docgraph"
-META_FILENAME       = "meta.ttl"
-LIS14_FILENAME      = "lis-14.ttl"
-PROV_O_FILENAME     = "prov-o.ttl"
-DCTERMS_FILENAME    = "dcterms.ttl"
-SOURCES_FILENAME    = "sources.ttl"
-GRAPHS_SUBDIR       = "graphs"
-UNRESOLVED_FILENAME = "_unresolved.ttl"
-CACHE_SUBDIR        = "cache"
+DOCGRAPH_DIR                     = ".docgraph"
+META_FILENAME                    = "meta.ttl"
+ISO15926_FILENAME                = "iso-15926-2.rdf"
+ISO15926_ANNOTATIONS_FILENAME    = "iso-15926-2-annotations.rdf"
+PROV_O_FILENAME                  = "prov-o.ttl"
+DCTERMS_FILENAME                 = "dcterms.ttl"
+SOURCES_FILENAME                 = "sources.ttl"
+GRAPHS_SUBDIR                    = "graphs"
+UNRESOLVED_FILENAME              = "_unresolved.ttl"
+CACHE_SUBDIR                     = "cache"
 
 # Bundled upper-ontology sources.
-_DOCS_DIR     = Path(__file__).parent.parent / "docs"
-_LIS14_SOURCE   = _DOCS_DIR / "LIS-14.ttl"
-_PROV_O_SOURCE  = _DOCS_DIR / "prov-o.ttl"
-_DCTERMS_SOURCE = _DOCS_DIR / "dcterms.ttl"
+_DOCS_DIR                       = Path(__file__).parent.parent / "docs"
+_ISO15926_SOURCE                = _DOCS_DIR / "ISO-15926-2_2003.rdf"
+_ISO15926_ANNOTATIONS_SOURCE    = _DOCS_DIR / "ISO-15926-2_2003_annotations.rdf"
+_PROV_O_SOURCE                  = _DOCS_DIR / "prov-o.ttl"
+_DCTERMS_SOURCE                 = _DOCS_DIR / "dcterms.ttl"
 
 _BUNDLED_ONTOLOGIES = [
-    (_LIS14_SOURCE,   LIS14_FILENAME,   "ISO 15926 Part 14"),
-    (_PROV_O_SOURCE,  PROV_O_FILENAME,  "W3C PROV-O"),
-    (_DCTERMS_SOURCE, DCTERMS_FILENAME, "DCMI Terms"),
+    (_ISO15926_SOURCE,             ISO15926_FILENAME,             "ISO 15926 Part 2"),
+    (_ISO15926_ANNOTATIONS_SOURCE, ISO15926_ANNOTATIONS_FILENAME, "ISO 15926 Part 2 (annotations)"),
+    (_PROV_O_SOURCE,               PROV_O_FILENAME,               "W3C PROV-O"),
+    (_DCTERMS_SOURCE,              DCTERMS_FILENAME,              "DCMI Terms"),
 ]
 
 
@@ -63,8 +67,12 @@ def meta_path(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / META_FILENAME
 
 
-def lis14_path(project_root: Path) -> Path:
-    return project_root / DOCGRAPH_DIR / LIS14_FILENAME
+def iso15926_path(project_root: Path) -> Path:
+    return project_root / DOCGRAPH_DIR / ISO15926_FILENAME
+
+
+def iso15926_annotations_path(project_root: Path) -> Path:
+    return project_root / DOCGRAPH_DIR / ISO15926_ANNOTATIONS_FILENAME
 
 
 def prov_o_path(project_root: Path) -> Path:
@@ -92,26 +100,26 @@ def cache_dir(project_root: Path) -> Path:
 
 
 _META_TTL = """\
-@prefix dg:      <http://example.org/docgraph/meta#> .
-@prefix lis:     <http://standards.iso.org/iso/15926/part14/> .
-@prefix prov:    <http://www.w3.org/ns/prov#> .
-@prefix dcterms: <http://purl.org/dc/terms/> .
-@prefix owl:     <http://www.w3.org/2002/07/owl#> .
-@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
-@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
-@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix prov:     <http://www.w3.org/ns/prov#> .
+@prefix dcterms:  <http://purl.org/dc/terms/> .
+@prefix owl:      <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:      <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
 
 <http://example.org/docgraph/meta>  a owl:Ontology ;
     rdfs:label   "DocGraph meta-ontology" ;
-    rdfs:comment "Extensions on top of ISO 15926 Part 14, PROV-O, and DCMI Terms." ;
-    owl:imports  <http://standards.iso.org/iso/15926/part14> ,
+    rdfs:comment "Extensions on top of ISO 15926 Part 2, PROV-O, and DCMI Terms." ;
+    owl:imports  <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003> ,
                  <http://www.w3.org/ns/prov-o-20130430> ,
                  <http://purl.org/dc/terms/> .
 
-# ── Light alignment between Part 14 and PROV-O ────────────────────────────────
+# ── Light alignment between Part 2 and PROV-O ─────────────────────────────────
 # (prov:Agent is intentionally not aligned — it spans Person, Organization, SoftwareAgent.)
-prov:Activity  rdfs:subClassOf lis:Activity .
-prov:Entity    rdfs:subClassOf lis:Object .
+prov:Activity  rdfs:subClassOf iso15926:Activity .
+prov:Entity    rdfs:subClassOf iso15926:Thing .
 
 # ── Modality (RFC 2119 / ISO drafting directives) ─────────────────────────────
 dg:Modality   a owl:Class ;
@@ -126,10 +134,12 @@ dg:modality   a owl:ObjectProperty ;
     rdfs:label "modality" ;
     rdfs:range  dg:Modality .
 
-# ── Document subject — what an InformationObject is about ─────────────────────
+# ── Document subject — what a source document is about ───────────────────────
+# Part 2 has no instance-level InformationObject; sources are typed as
+# iso15926:WholeLifeIndividual + an ad-hoc subclass of ClassOfInformationObject.
 dg:isAbout    a owl:ObjectProperty ;
     rdfs:label  "isAbout" ;
-    rdfs:domain lis:InformationObject ;
+    rdfs:domain iso15926:WholeLifeIndividual ;
     rdfs:range  owl:Class .
 
 # ── File metadata ─────────────────────────────────────────────────────────────
@@ -185,21 +195,22 @@ dg:UncoveredDocument a owl:NamedIndividual ; rdfs:label "UncoveredDocument" .
 """
 
 _UNRESOLVED_TTL = """\
-@prefix dg:  <http://example.org/docgraph/meta#> .
-@prefix lis: <http://standards.iso.org/iso/15926/part14/> .
+@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 
 # Stubs for concepts referenced before their defining document was added.
-# Each stub: a class typed as lis:InformationObject with dg:status dg:Unresolved
-# and dg:firstSeenIn pointing to the source that first mentioned it.
+# Each stub: a class typed as iso15926:ClassOfInformationObject with
+# dg:status dg:Unresolved and dg:firstSeenIn pointing to the source that
+# first mentioned it.
 """
 
 _SOURCES_TTL = """\
-@prefix dg:      <http://example.org/docgraph/meta#> .
-@prefix lis:     <http://standards.iso.org/iso/15926/part14/> .
-@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
 
 # Registry of ingested sources. Each record is dual-typed as
-# dg:IngestionRecord (admin) and lis:InformationObject (the file itself).
+# dg:IngestionRecord (admin) and iso15926:WholeLifeIndividual (the file itself).
 """
 
 

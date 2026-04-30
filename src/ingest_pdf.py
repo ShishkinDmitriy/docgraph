@@ -1,30 +1,31 @@
-"""Ingest a PDF source: register file + convert + classify + extract.
+"""Ingest a PDF source: register file + convert + classify.
+
+Source typing follows ISO 15926-2 (POSC Caesar OWL) strict mode. The
+classify step runs the 14-prompt pipeline in `src.classify_part2`; see
+``docs/classify_design.md`` for the design and gating logic.
 
 The graph file is TriG (one file, two contexts):
 
     {                                  # default graph: deterministic metadata
-      <source/<slug>>      a lis:InformationObject, prov:Entity ;
+      <source/<slug>>      a iso15926:WholeLifeIndividual, prov:Entity ;
           dcterms:title "..." ; dg:pageCount N ; prov:generatedAtTime ... .
-      <source/<slug>-md>   a lis:InformationObject, prov:Entity ;
+      <source/<slug>-md>   a iso15926:WholeLifeIndividual, prov:Entity ;
           prov:wasDerivedFrom <source/<slug>> ; dg:fileHash "..." .
       <act/conv-<slug>>    a prov:Activity ;
           prov:used <source/<slug>> ;
           prov:generated <source/<slug>-md> ;
           prov:wasAssociatedWith <agent/...> .
       <act/classify-<slug>> a prov:Activity ;
-          prov:used <source/<slug>-md> ;
-          dg:confidence 0.9 ; dg:reason "..." .
-      <act/extract-<slug>>  a prov:Activity ;
           prov:used <source/<slug>-md> .
       <ext/<slug>>         a prov:Entity ;
-          prov:wasGeneratedBy <act/classify-<slug>>, <act/extract-<slug>> ;
-          dg:confidence 0.9 .
+          dg:scopeCoverage 0.45 ; dg:evidenceCoverage 0.18 ;
+          dg:docKind "maintenance procedure" .
     }
 
-    <ext/<slug>> {                     # named graph: every LLM-derived triple
-      <source/<slug>>  a fin:DemandForPayment ;
-          fin:totalAmount 150.00 ; ... .
-      <source/<slug>/issuer> a foaf:Agent ; fin:legalName "..." ; ... .
+    <ext/<slug>> {                     # named graph: every triple emitted
+      <source/<slug>>  a ext:maintenance-procedure .
+      ext:maintenance-procedure  a iso15926:ClassOfInformationObject .
+      …all activity / individual / class / property / connection triples…
     }
 """
 
@@ -35,20 +36,14 @@ from rdflib import Dataset, Graph, Literal, Namespace, URIRef, RDF, RDFS, XSD
 from rich.console import Console
 
 from src.classifier import pdf_to_markdown
-from src.classify import classify_document_type, information_object_subclasses
-from src.embeddings import (
-    DEFAULT_TOP_K, EMBEDDINGS_FILENAME,
-    EmbeddingClient, EmbeddingError, EmbeddingStore,
-    cosine_topk, document_text, ensure_class_embeddings,
-)
-from src.extract import (
-    class_def, emit_triples, extract_instance_data, form_coverage, nested_class_defs,
-)
+from src.classify_part2 import pipeline as classify_pipeline
+from src.classify_part2.context import ConversionContext
+from src.classify_part2.ns import EXT_NS_FOR
 from src.extractor import extract_pdf
 from src.ingest import (
-    DG, LIS, SOURCE_NS,
+    DG, ISO15926, SOURCE_NS,
     IngestError, _check_existing, _mime_type, _register_source, _unique_slug,
-    compute_hash, load_combined, make_slug,
+    compute_hash, make_slug,
 )
 from src.markdown_io import md_paths_for_pdf, save_markdown
 from src.models import ModelConfig
@@ -56,12 +51,6 @@ from src.pdfinfo import pdfinfo
 from src.project import (
     DOCGRAPH_DIR, GRAPHS_SUBDIR, cache_dir, graphs_dir, sources_path,
 )
-
-# Use embedding top-k to narrow classification candidates only when the form
-# scope is at least this big. Below the threshold, we send the whole candidate
-# list to the LLM — simpler, no information loss, no OpenAI dependency for
-# small projects.
-RAG_THRESHOLD = 30
 
 PROV    = Namespace("http://www.w3.org/ns/prov#")
 DCTERMS = Namespace("http://purl.org/dc/terms/")
@@ -83,13 +72,13 @@ def ingest_pdf(
     force: bool = False,
     reconvert: bool = False,
 ) -> Path:
-    """Ingest a PDF source: validate, convert, classify, extract, write the graph file.
+    """Ingest a PDF source: validate, convert, classify, write the graph file.
 
     Returns the path of the created graph file (TriG).
 
     *force*       — drop any existing entry for this file (keyed by hash) and
-                    re-do classify + extract. Cached markdown is reused if
-                    present (saves a vision-model call).
+                    re-run conversion + classify. Cached markdown is reused
+                    if present (saves a vision-model call).
     *reconvert*   — implies *force*; also drops the cached markdown so the
                     PDF→Markdown conversion runs again.
     """
@@ -144,7 +133,7 @@ def ingest_pdf(
     extraction_g = ds.graph(ext_uri)
 
     # PDF-specific metadata in DEFAULT graph
-    ds.add((pdf_uri, RDF.type, LIS.InformationObject))
+    ds.add((pdf_uri, RDF.type, ISO15926.WholeLifeIndividual))
     ds.add((pdf_uri, RDF.type, PROV.Entity))
     _add_pdfinfo_triples(ds, pdf_uri, info)
 
@@ -154,7 +143,7 @@ def ingest_pdf(
         md_uri = URIRef(SOURCE_NS[f"{slug}-md-{i}"]) if len(md_files) > 1 \
                  else URIRef(SOURCE_NS[f"{slug}-md"])
         md_uris.append(md_uri)
-        ds.add((md_uri, RDF.type,    LIS.InformationObject))
+        ds.add((md_uri, RDF.type,    ISO15926.WholeLifeIndividual))
         ds.add((md_uri, RDF.type,    PROV.Entity))
         ds.add((md_uri, RDFS.label,  Literal(md_path.name)))
         ds.add((md_uri, DG.filePath, Literal(str(md_path.relative_to(project_root)))))
@@ -174,76 +163,34 @@ def ingest_pdf(
     ds.add((agent_uri, DG.provider, Literal(model.provider)))
     ds.add((agent_uri, DG.modelId,  Literal(model.model_id)))
 
-    # ── Step 4a: classify ──
-    combined = load_combined(project_root)
-    full_candidates = information_object_subclasses(combined)
-    markdown = "\n\n---\n\n".join(d.get("markdown", "") for d in docs)
-
+    # ── Classify pipeline (14 prompts → Part 2 graph) ──
     ds.add((ext_uri, RDF.type,   PROV.Entity))
     ds.add((ext_uri, RDFS.label, Literal(f"LLM-extracted facts about {slug}")))
 
-    # Pick the candidate set for the LLM. Use embedding top-k as a pre-filter
-    # only when the form scope is large enough that the prompt would be wasteful;
-    # below that, send the whole list — simpler, no OpenAI dep, no info loss.
-    narrowed, nearest_sim = _select_candidates(
-        full_candidates, markdown, combined, project_root, pdf_uri, console
+    markdown = "\n\n---\n\n".join(d.get("markdown", "") for d in docs)
+    ctx = ConversionContext(
+        source_uri=pdf_uri,
+        source_slug=slug,
+        ext_ns=EXT_NS_FOR(slug),
     )
-    if nearest_sim is not None:
-        ds.add((ext_uri, DG.typeNearestSimilarity,
-                Literal(nearest_sim, datatype=XSD.decimal)))
+    result = classify_pipeline.classify(
+        markdown=markdown, ctx=ctx,
+        client=client, model=model, console=console,
+    )
 
-    classify_uri     = URIRef(ACT_NS[f"classify-{slug}"])
-    classify_started = _now()
-    choice           = classify_document_type(markdown, narrowed, client, model)
-    classify_ended   = _now()
-    _add_activity(ds, classify_uri, "Classify document type",
+    # Merge the pipeline's triples into the source's named extraction graph.
+    for triple in result.graph:
+        extraction_g.add(triple)
+
+    classify_uri = URIRef(ACT_NS[f"classify-{slug}"])
+    _add_activity(ds, classify_uri, "Classify document (ISO 15926-2 pipeline)",
                   used=md_uris, agent=agent_uri,
-                  started=classify_started, ended=classify_ended,
-                  confidence=choice.confidence, reason=choice.reason)
+                  started=result.started, ended=result.ended)
     ds.add((ext_uri, PROV.wasGeneratedBy, classify_uri))
-    ds.add((ext_uri, DG.typeConfidence,
-            Literal(choice.confidence, datatype=XSD.decimal)))
-
-    extract_uri = None
-    added_props = 0
-
-    if choice.uri is not None:
-        extraction_g.add((pdf_uri, RDF.type, choice.uri))
-        local = str(choice.uri).rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-        console.print(f"  classified as [bold]{local}[/bold] "
-                      f"({choice.confidence:.0%}): [dim]{choice.reason}[/dim]")
-
-        # ── Step 7: extract instance properties ──
-        root = class_def(combined, choice.uri)
-        nested = nested_class_defs(combined, root.properties)
-        nested_count = sum(len(c.properties) for c in nested.values())
-        console.print(
-            f"  extracting [bold]{len(root.properties)}[/bold] direct + "
-            f"[bold]{nested_count}[/bold] nested propert(y/ies)..."
-        )
-        extract_uri     = URIRef(ACT_NS[f"extract-{slug}"])
-        extract_started = _now()
-        data            = extract_instance_data(markdown, root, nested, client, model)
-        extract_ended   = _now()
-        _add_activity(ds, extract_uri, "Extract instance properties",
-                      used=md_uris, agent=agent_uri,
-                      started=extract_started, ended=extract_ended)
-        added_props = emit_triples(extraction_g, pdf_uri, data, root, nested,
-                                   base_uri=str(pdf_uri))
-        console.print(f"  extracted [bold]{added_props}[/bold] property triple(s)")
-        ds.add((ext_uri, PROV.wasGeneratedBy, extract_uri))
-
-        # Form coverage: how many of the chosen class's direct properties
-        # got at least one triple on the document?
-        filled, total = form_coverage(extraction_g, pdf_uri, root.properties)
-        if total:
-            ds.add((ext_uri, DG.typeCoverage,
-                    Literal(filled / total, datatype=XSD.decimal)))
-            console.print(f"  form coverage: {filled}/{total} "
-                          f"({filled / total:.0%})")
-    else:
-        console.print(f"  [yellow]no specific type matched[/yellow] "
-                      f"({choice.confidence:.0%}): [dim]{choice.reason}[/dim]")
+    classify_pipeline.attach_pipeline_metrics(ds, ext_uri=ext_uri, nat=result.nature)
+    if result.ran:
+        console.print(f"  ran [bold]{len(result.ran)}[/bold] prompt(s); "
+                      f"skipped [dim]{len(result.skipped)}[/dim]")
 
     # ── Serialize as TriG ──
     graph_file = g_dir / f"{slug}{GRAPH_SUFFIX}"
@@ -268,67 +215,9 @@ def _now():
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-def _select_candidates(
-    full_candidates,
-    markdown: str,
-    combined,
-    project_root: Path,
-    pdf_uri: URIRef,
-    console: Console,
-):
-    """Choose which candidate classes to send to the classify LLM.
-
-    - When |candidates| < RAG_THRESHOLD: pass-through, no embeddings, no
-      OpenAI dependency. Returns ``(full_candidates, None)``.
-    - When |candidates| ≥ RAG_THRESHOLD: embed any uncached classes + the
-      document, take top-DEFAULT_TOP_K by cosine, persist the store.
-      Returns ``(narrowed_list, best_similarity)``.
-    """
-    n = len(full_candidates)
-    if n < RAG_THRESHOLD:
-        console.print(f"  classifying against [bold]{n}[/bold] candidate(s) "
-                      f"(below RAG threshold of {RAG_THRESHOLD})")
-        return list(full_candidates), None
-
-    try:
-        emb_client = EmbeddingClient()
-    except EmbeddingError as exc:
-        console.print(f"  [yellow]RAG skipped[/yellow]: {exc}; "
-                      f"sending all {n} candidates to the LLM.")
-        return list(full_candidates), None
-
-    emb_path  = project_root / DOCGRAPH_DIR / EMBEDDINGS_FILENAME
-    emb_store = EmbeddingStore.load(emb_path)
-    indexed = ensure_class_embeddings(emb_store, combined,
-                                      [c.uri for c in full_candidates], emb_client)
-    if indexed:
-        console.print(f"  embedded [bold]{indexed}[/bold] new class(es)")
-
-    doc_vec = emb_client.embed([document_text(markdown)])[0]
-    emb_store.upsert_doc(str(pdf_uri), doc_vec)
-
-    form_scope = {str(c.uri) for c in full_candidates}
-    top_k = cosine_topk(doc_vec, emb_store.class_vectors, emb_store.class_uris,
-                        k=DEFAULT_TOP_K, restrict_to=form_scope)
-
-    nearest_sim = top_k[0][1] if top_k else 0.0
-    console.print(f"  RAG: top {len(top_k)} of {n} candidate(s) "
-                  f"(best similarity {nearest_sim:.3f}):")
-    for uri_str, score in top_k:
-        local = uri_str.rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-        console.print(f"    [{score:.3f}] {local}")
-
-    by_uri = {str(c.uri): c for c in full_candidates}
-    narrowed = [by_uri[uri] for uri, _ in top_k if uri in by_uri]
-    emb_store.save()
-    console.print(f"  embeddings store: [dim]{emb_path.relative_to(project_root)}[/dim] "
-                  f"({len(emb_store.class_uris)} class(es), {len(emb_store.doc_uris)} doc(s))")
-    return narrowed, nearest_sim
-
-
 def _bind_prefixes(ds: Dataset) -> None:
-    ds.bind("dg",      DG)
-    ds.bind("lis",     LIS)
+    ds.bind("dg",       DG)
+    ds.bind("iso15926", ISO15926)
     ds.bind("prov",    PROV)
     ds.bind("dcterms", DCTERMS)
     ds.bind("src",     SOURCE_NS)

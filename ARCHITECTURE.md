@@ -1,6 +1,6 @@
 # DocGraph — Architecture Design Notes
 
-> Session date: 2026-04-15. Last updated: 2026-04-27 (added Q1/Q2 classification design; pipeline outline updated to match current implementation). Read this file at the start of any session continuing this design.
+> Session date: 2026-04-15. Last updated: 2026-04-27 (unified ingest pipeline: format-specific parsers + common analyzer; rules-as-data normalization; "what does this document define?" replaces binary `detectedRole`). Read this file at the start of any session continuing this design.
 
 ## Vision
 
@@ -24,6 +24,70 @@ Invoice, and a meta-document classifying types of standards — should be a grap
 Removing the EU standard cascades: the `:Invoice` class definition disappears, and the
 individual's `rdf:type :Invoice` triple is rewritten to `rdf:type lis:InformationObject`
 (unclassified, but not lost).
+
+---
+
+## Pipeline shape: format-specific extraction + uniform analyzer
+
+Every ingest is one shape regardless of input format. Format-specific parsers do
+the front half — turn the source into candidate triples in the source's own
+vocabulary. A uniform **analyzer** does the back half — detect what was
+defined, normalize non-canonical idioms, anchor classes to Part 14, emit the
+named graph.
+
+```
+                    ┌────────── format-specific ──────────┐  ┌──────────────────── uniform analyzer ────────────────────┐
+                    │                                      │  │                                                            │
+PDF (any kind) ───► │  PDF → Markdown (cached)             │  │  Phase 1: detect what the source defines                  │
+                    │       └► vision LLM extract triples ─┼──┼─►        (classes? properties? individuals?)                │
+                    │                                      │  │                                                            │
+TTL (any kind) ───► │  parse                              ─┼──┼─►  Phase 2: normalize non-canonical idioms                  │
+                    │                                      │  │           (lift rules — see "Analyzer pipeline")           │
+                    │                                      │  │                                                            │
+… future formats ─► │  …                                  ─┼──┼─►  Phase 3: anchor declared classes to ISO 15926 Part 14    │
+                    │                                      │  │                                                            │
+                    └──────────────────────────────────────┘  │  Phase 4: emit named graph + register in sources.ttl       │
+                                                              │                                                            │
+                                                              └────────────────────────────────────────────────────────────┘
+```
+
+Two consequences:
+
+- **TTL doesn't "skip" extraction** — it has *cheap* extraction (parsing) instead
+  of expensive (PDF → MD → vision LLM). Everything from Phase 1 rightward is
+  identical.
+- **Convergence is approximate, not bit-identical.** A PDF describing schema.org
+  and the schema.org TTL itself ingest to *similar* graphs, not identical: the
+  PDF path is lossier and has to resolve URIs ("an Invoice…" → which Invoice?)
+  the TTL gets for free. Useful as a test target — "the two should overlap on
+  ≥ N% of classes/properties" — not a guaranteed equality.
+
+### What can a document define?
+
+After extraction, Phase 1 of the analyzer asks three independent yes/no
+questions and records the answers as `dg:defines` triples:
+
+| Question | Stored as | Triggered by |
+|---|---|---|
+| Defines classes? | `<source> dg:defines dg:Classes` | `?x a owl:Class`, `rdfs:Class`, `skos:Concept`, … |
+| Defines properties? | `<source> dg:defines dg:Properties` | `?x a owl:ObjectProperty`, `owl:DatatypeProperty`, `rdf:Property`, … |
+| Defines individuals? | `<source> dg:defines dg:Individuals` | `?x a <some-class-not-in-the-meta-vocabulary>` |
+
+Any combination is valid. An ontology TTL with named individuals → all three.
+A receipt PDF → `dg:Individuals` only. A standards PDF defining what an
+Invoice is → `dg:Classes` and `dg:Properties` (and possibly some illustrative
+individuals).
+
+This **replaces** the earlier binary `dg:detectedRole = DefinesTypes |
+AssertsInstances` — the binary was too narrow.
+
+### Subject (Q1) and form (Q2) still apply, separately
+
+The earlier classification questions are orthogonal to the structural "what
+does it define" axis. A document that *defines* `schema:Invoice` is not the
+same as a document that *is* an instance of `schema:Invoice`. Q1/Q2 answer the
+latter; the "defines" axis answers the former. Both can apply to the same
+source. See "Classification" below for Q1/Q2 details.
 
 ---
 
@@ -236,18 +300,18 @@ not to individual triples. The registry (`sources.ttl`) carries this metadata:
 
 The meta backbone (`meta.ttl`) is never touched.
 
-### Translating precompiled TTL files
+### TTL ingest is one parser among several
 
-A hand-authored `.ttl` source uses OWL constructs natively (`rdfs:subClassOf`, `rdf:type`,
-`owl:ObjectProperty`). Because Part 14 is also OWL-native, ingest is **a straight load**
-into the source's named graph — no translation, no reification step. The source becomes
-its own named graph and cascade-deletes cleanly.
+A `.ttl` source goes through the same pipeline as any other input: parse →
+analyzer (Phase 1–4) → named graph. The TTL parser is just *cheaper* than the
+PDF parser (no vision LLM step). For pure-OWL TTLs like
+`data/financial_documents.ttl`, Phase 2 (normalization) and Phase 3 (Part 14
+anchoring) are no-ops — the source already uses canonical predicates and roots
+under `lis:`. For schema.org or SKOS, Phase 2 rewrites idioms via lift rules
+(see "Analyzer pipeline" below).
 
-The ingest does still need to:
-- Resolve any new domain classes against existing concepts (DEFINE vs REFERENCE — see
-  next section).
-- Stamp the registry with `dg:addedAt` and a `dg:detectedRole` (does this source mostly
-  define types, or assert instances?).
+The ingest stamps the registry with `dg:addedAt` and one or more `dg:defines`
+values determined by Phase 1 (Classes, Properties, Individuals).
 
 ---
 
@@ -363,24 +427,17 @@ under `graphs/` so the result is easy to inspect by eye. A registry tracks all s
 
 The `lis:` and `dg:` prefixes are pre-bound in every graph file for readability.
 
-### TTL inputs: symlink, don't copy
+### Graph files are real files
 
-When the source is already a TTL file, `graphs/<slug>.ttl` is a **symlink** to the
-original, not a copy. Rationale (debugging convenience, not a permanent design choice):
+Regardless of input format, `graphs/<slug>.ttl` is a real file written by the
+analyzer (Phase 4) — never a symlink to the source. The analyzer's output is
+the *normalized view* (Phase 2 rewrites + Phase 3 anchors + canonical triples
+the source already had), and that view is rarely byte-identical to the source.
+Storing it as a real file lets cascade-delete drop it cleanly without touching
+the user's original input.
 
-- One file on disk — no copy/drift.
-- Editing the original immediately changes the graph, which is what the user wants
-  while the meta-ontology is being shaped.
-- Cascade-delete just unlinks the symlink; the original is untouched.
-
-Caveats to revisit if/when this becomes a problem:
-- If the original file is moved or deleted, the link dangles. `remove` and `status`
-  must detect this.
-- Edits to the original have no provenance trail. Acceptable while iterating; switch to
-  copy-on-ingest before this is shipped to anyone else.
-
-For PDF / Markdown / other non-TTL inputs, `graphs/<slug>.ttl` is a real file written by
-the extraction pipeline.
+The original TTL/PDF source stays where the user put it; the registry
+references it by path, but the graph is ours.
 
 ### sources.ttl example
 
@@ -389,21 +446,27 @@ the extraction pipeline.
 @prefix dg:  <http://example.org/docgraph/meta#> .
 
 <source/eu-standard.pdf>  a dg:IngestionRecord ;
-    dg:sourcePath   "eu-standard.pdf" ;
-    dg:graphFile    ".docgraph/graphs/eu-standard.ttl" ;
-    dg:addedAt      "2026-04-15"^^xsd:date ;
-    dg:detectedRole dg:DefinesTypes .              # this source mostly defines classes
+    dg:sourcePath "eu-standard.pdf" ;
+    dg:graphFile  ".docgraph/graphs/eu-standard.ttl" ;
+    dg:addedAt    "2026-04-15"^^xsd:date ;
+    dg:defines    dg:Classes, dg:Properties .       # standards doc — defines vocabulary
 
 <source/german-invoice.pdf>  a dg:IngestionRecord ;
-    dg:sourcePath   "german-invoice.pdf" ;
-    dg:graphFile    ".docgraph/graphs/german-invoice.ttl" ;
-    dg:addedAt      "2026-04-15"^^xsd:date ;
-    dg:detectedRole dg:AssertsInstances .          # this source is an instance document
+    dg:sourcePath "german-invoice.pdf" ;
+    dg:graphFile  ".docgraph/graphs/german-invoice.ttl" ;
+    dg:addedAt    "2026-04-15"^^xsd:date ;
+    dg:defines    dg:Individuals .                  # instance document
+
+<source/schemaorg.ttl>    a dg:IngestionRecord ;
+    dg:sourcePath "schemaorg-current-https.ttl" ;
+    dg:graphFile  ".docgraph/graphs/schemaorg.ttl" ;
+    dg:addedAt    "2026-04-27"^^xsd:date ;
+    dg:defines    dg:Classes, dg:Properties, dg:Individuals .  # full vocab
 ```
 
-`dg:IngestionRecord`, `dg:sourcePath`, `dg:graphFile`, `dg:addedAt`, `dg:detectedRole`,
-`dg:DefinesTypes`, `dg:AssertsInstances` are docgraph-specific (no Part 14 equivalent for
-ingestion metadata).
+`dg:IngestionRecord`, `dg:sourcePath`, `dg:graphFile`, `dg:addedAt`, `dg:defines`,
+`dg:Classes`, `dg:Properties`, `dg:Individuals` are docgraph-specific (no Part 14
+equivalent for ingestion metadata).
 
 ### Cascade delete
 
@@ -418,25 +481,107 @@ ingestion metadata).
 
 ---
 
-## TTL files as precompiled sources
+## Analyzer pipeline (Phase 1–4)
 
-A `.ttl` source **skips LLM extraction entirely** — parsed and loaded into a named graph
-at ingest time. Same provenance and cascade semantics as PDF-derived graphs.
+The analyzer is the format-agnostic back half of every ingest. It runs once
+per source, after the format-specific parser has produced candidate triples in
+the source's own vocabulary.
 
-Because Part 14 is OWL-native, hand-authored OWL TTL maps directly onto our model — no
-translation step is needed. Ingest:
+### Phase 1 — detect what the source defines
 
-1. Parse the TTL (just to sanity-check it loads and to extract declared URIs).
-2. Sanity-check: does it reuse `lis:` URIs correctly? Does anything collide with already-
-   defined URIs in other graphs?
-3. Symlink `graphs/<slug>.ttl` → original file (see "TTL inputs: symlink, don't copy"
-   above) and register in `sources.ttl`.
+Walk the candidate triples. Answer the three "defines" questions (Classes,
+Properties, Individuals) by structural inspection — no LLM call needed:
 
-This means:
-- The existing `data/financial_documents.ttl` can be ingested via `docgraph add` as a
-  bootstrap — becoming the first real test of the meta-ontology alignment.
-- Users can author ontology files by hand and add them the same way.
-- The system is symmetric: hand-written TTL and LLM-extracted TTL are both first-class.
+```
+declares ?x a owl:Class | rdfs:Class | skos:Concept …  →  dg:Classes
+declares ?x a owl:ObjectProperty | DatatypeProperty | rdf:Property …  →  dg:Properties
+declares ?x a <C>, where <C> is not in the meta-vocabulary  →  dg:Individuals
+```
+
+Emit `<source> dg:defines …` triples. This drives which subsequent phases need
+to run: a pure instance document skips Phase 2/3 (no classes to normalize or
+anchor); a pure ontology skips downstream individual-extraction.
+
+### Phase 2 — normalize non-canonical idioms
+
+For every declared class and property, check whether its **structural slots**
+are filled with canonical predicates:
+
+- A property declared without `rdfs:domain`/`rdfs:range` but *with*
+  `schema:domainIncludes` or similar → idiom needs a lift rule.
+- A class declared without `rdfs:subClassOf` parent but *with* `skos:broader`
+  → same.
+- A `rdf:Property` declaration with no `owl:DatatypeProperty`/`ObjectProperty`
+  typing, where the range determines which → same.
+
+Pure-OWL inputs have all slots filled canonically and Phase 2 is a no-op. The
+detection is automatic — the user doesn't declare "this needs normalization",
+the analyzer finds it by inspection.
+
+For each idiom predicate that triggered the signal, the analyzer looks up a
+**lift rule** (a SPARQL CONSTRUCT) in two locations:
+
+```
+data/normalization/         ← pre-seeded rules shipped with docgraph
+  schemaorg.rq              ← schema:domainIncludes/rangeIncludes/property typing
+  skos-as-taxonomy.rq       ← skos:broader/narrower → rdfs:subClassOf
+.docgraph/cache/lifts/      ← runtime-discovered rules (LLM-generated, user-approved)
+  <predicate-slug>.rq
+```
+
+Both locations are equal-status. The loader unions all matching rules. There
+is no "deterministic vs LLM" split in code — pre-seeded entries are just LLM-
+work-already-done-at-build-time, in the same on-disk format the runtime cache
+uses. Users can override or delete pre-seeded entries.
+
+If a non-canonical idiom has no rule in either location, Phase 2 prompts the
+LLM with the predicate URI and its `rdfs:label`/`comment` from the source, and
+asks for a CONSTRUCT-shaped rewrite (or "pass through" if it was already
+canonical and Phase 2's heuristic was wrong). Output is shown to the user for
+approval, then cached in `.docgraph/cache/lifts/`. Cache key is the predicate
+URI — predicate semantics are vocabulary-stable, so the same predicate seen in
+the next ingest reuses the rule.
+
+### Phase 3 — anchor declared classes to Part 14
+
+For every class declared in the (now-normalized) source, walk
+`rdfs:subClassOf*` upward. If it terminates at any `lis:` class → no anchor
+needed. If it doesn't, send to the LLM with the Part 14 catalogue (reusing the
+Q1 prompt material — ~30 classes) and get back one of:
+
+- `<class> rdfs:subClassOf lis:<X>` — the closest-fit Part 14 superclass.
+- `<class> dg:noPartFourteenAnchor true` — class has no Part 14 home (e.g.,
+  `schema:PaymentMethod`, an intangible classifier); leave it unrooted.
+
+User reviews. Cached per class URI in `.docgraph/cache/anchors/`. Anchoring
+permits "no anchor" rather than forcing every class up to `lis:Object` —
+otherwise the hierarchy fills with noise.
+
+### Phase 4 — emit named graph
+
+Write the normalized graph (Phase 2 rewrites + Phase 3 anchors + everything
+the source already declared canonically) to `graphs/<slug>.ttl` and register
+in `sources.ttl`. Cascade-delete drops the file and the registry entry.
+
+### Caching summary
+
+Two long-lived caches survive source removal — they're vocabulary-level
+facts, not document-level:
+
+```
+.docgraph/cache/lifts/<predicate-slug>.rq    ← per-predicate lift rule
+.docgraph/cache/anchors/<class-slug>.ttl     ← per-class Part 14 anchor
+```
+
+Same shape as the PDF→Markdown cache (cache the expensive LLM work so it
+doesn't re-run), different key. `docgraph forget-rule <uri>` evicts an entry
+that was approved in error.
+
+### Bootstrap
+
+`data/financial_documents.ttl` is the canonical Phase-2/3 no-op test:
+ingesting it should produce a normalized graph byte-equivalent to the source
+modulo blank-node renaming. If it doesn't, the analyzer is over-rewriting.
 
 ---
 
@@ -445,6 +590,13 @@ This means:
 Classification of an ingested document splits into two independent questions
 asked in order. They have different scopes, different candidate sets, and
 different cost profiles.
+
+These are orthogonal to the structural axis introduced in "Pipeline shape" —
+*what does this document define?* (Classes / Properties / Individuals). Q1/Q2
+ask about the document's subject and form. The structural axis runs in the
+analyzer (Phase 1) by inspecting triples; Q1/Q2 are LLM-driven semantic
+calls. Both result sets land on the same `<source>` IngestionRecord but
+answer different questions.
 
 ### Q1 — Subject: what is this document *about*?
 
@@ -573,43 +725,68 @@ Reading them together gives the diagnostics the user wants:
 
 ---
 
-## Extraction pipeline (PDF / text sources)
+## Extraction pipeline (full sequence)
+
+The unified pipeline that "Pipeline shape" introduces, with concrete steps:
 
 ```
-docgraph add invoice.pdf
+docgraph add <file>
     │
-    ├─ [if .ttl / .n3 ]
-    │     Parse → symlink into graphs/<slug>.ttl → register in sources.ttl
-    │     No LLM. No conversion. No classification.
+    ├─ 0. Validate, hash for idempotency, check existing entry.
     │
-    └─ [if .pdf]
-        ├─ 0. Validate, hash for idempotency, check existing entry
-        ├─ 1. Register file as lis:InformationObject + prov:Entity
-        │     (file metadata: hash, size, mime, pdfinfo: pages, title, ...)
-        ├─ 2. Convert PDF → Markdown via Claude vision (cached)
-        │     Register the markdown derivative + record the conversion
-        │     as a prov:Activity in the default graph.
-        ├─ 3. Q1 — Subject identification
-        │     Candidates: Part 14 classes (~30, sent in full).
-        │     Emit  <source> dg:isAbout <UpperClass>, ...
-        │     Always runs.
-        ├─ 4. Q2 — Form classification
-        │     Candidates: leaves of user-ingested ontologies.
-        │     If ≥ 30: embedding top-k pre-filter; else send all.
-        │     Emit  <source> rdf:type <FormClass>  in the extraction graph.
-        │     Skipped (with clear message) when no domain ontology is loaded.
-        └─ 5. Property extraction
-              For the chosen form class, walk rdfs:subClassOf* ancestors and
-              collect every property whose rdfs:domain matches. Single LLM
-              call returns a nested JSON; we mint URIs for object-typed
-              properties (one level deep), emit triples into the extraction
-              named graph. Coverage signal: filled-direct / total-direct.
+    ├─ 1. Register file as lis:InformationObject + prov:Entity
+    │     (file metadata: hash, size, mime, pdfinfo: pages, title, ...).
+    │
+    ├─ 2. Format-specific extraction (front half).
+    │     ├─ [.ttl / .n3]  Parse → candidate triples (the source's own vocab).
+    │     └─ [.pdf]        PDF → Markdown via Claude vision (cached) →
+    │                      LLM extracts candidate triples from the Markdown.
+    │                      Both PDF→MD and the extract are recorded as
+    │                      prov:Activity in the default graph.
+    │
+    ├─ 3. Analyzer Phase 1 — what does this source define?
+    │     Structural inspection of candidate triples. Emit
+    │     <source> dg:defines dg:Classes/Properties/Individuals.
+    │
+    ├─ 4. Analyzer Phase 2 — normalize non-canonical idioms.
+    │     For each declared class/property with empty structural slots,
+    │     look up lift rules in data/normalization/ + cache/lifts/, prompt
+    │     LLM if missing, apply. Pure-OWL inputs are no-ops.
+    │
+    ├─ 5. Analyzer Phase 3 — anchor declared classes to Part 14.
+    │     For each class without a lis: ancestor, LLM picks closest fit
+    │     from Part 14 catalogue (or "no anchor"). Cached per class URI.
+    │     Skipped if Phase 1 found no Classes.
+    │
+    ├─ 6. Q1 — Subject identification (LLM, semantic).
+    │     Candidates: ~30 Part 14 classes, sent in full.
+    │     Emit <source> dg:isAbout <UpperClass>, …  Always runs.
+    │
+    ├─ 7. Q2 — Form classification (LLM, semantic; only when domain ontology loaded).
+    │     Candidates: leaves of user-ingested ontologies.
+    │     If ≥ 30: embedding top-k pre-filter; else send all.
+    │     Emit <source> rdf:type <FormClass> in the extraction graph.
+    │     Skipped (with clear message) when no domain ontology is loaded.
+    │
+    ├─ 8. Property extraction (only when Q2 ran).
+    │     For the chosen form class, walk rdfs:subClassOf* ancestors and
+    │     collect every property whose rdfs:domain matches. Single LLM
+    │     call returns nested JSON; we mint URIs for object-typed
+    │     properties (one level deep), emit triples into the extraction
+    │     named graph. Coverage signal: filled-direct / total-direct.
+    │
+    └─ 9. Analyzer Phase 4 — emit named graph and register in sources.ttl.
 ```
 
-The extraction graph is a separate named graph inside the source's TriG
-file (`<ext/<slug>>`), described as a `prov:Entity` in the default graph and
-generated by Q1's classify activity, Q2's classify activity, and the extract
-activity. See "Provenance via named graphs" above for the cascade story.
+Steps 3–5 are the analyzer's class/property work; steps 6–8 are subject/form
+classification and per-document property extraction. They share the same
+named graph (`<ext/<slug>>` for the extraction graph; `graphs/<slug>.ttl` for
+the normalized source view).
+
+The extraction graph is described as a `prov:Entity` in the default graph
+and generated by all the LLM activities above (Phase 2 normalization, Phase
+3 anchoring, Q1, Q2, property extraction). See "Provenance via named graphs"
+above for the cascade story.
 
 ---
 
@@ -618,17 +795,38 @@ activity. See "Provenance via named graphs" above for the cascade story.
 After init, `.docgraph/` contains only:
 
 ```
-meta.ttl    ← imports ISO 15926 Part 14 + declares dg: extensions
-              (dg:Modality, dg:Mandatory/Preferred/Optional/Prohibited, dg:modality,
-               dg:status, dg:Unresolved, dg:IngestionRecord, etc.)
-sources.ttl ← empty registry
-graphs/     ← contains only an empty _unresolved.ttl
-cache/      ← empty
+meta.ttl       ← imports ISO 15926 Part 14 + declares dg: extensions
+                 (dg:Modality, dg:Mandatory/Preferred/Optional/Prohibited, dg:modality,
+                  dg:status, dg:Unresolved, dg:IngestionRecord,
+                  dg:defines, dg:Classes/Properties/Individuals,
+                  dg:noPartFourteenAnchor, etc.)
+sources.ttl    ← empty registry
+graphs/        ← contains only an empty _unresolved.ttl
+cache/
+  pdfmd/       ← PDF → Markdown cache (per-document, key = doc hash)
+  lifts/       ← LLM-discovered lift rules (per-predicate, key = predicate URI)
+  anchors/     ← LLM-discovered Part 14 anchors (per-class, key = class URI)
 ```
 
 No `financial_documents.ttl`. No domain classes. The graph is empty except for structure.
 When the combined graph is loaded, `meta.ttl`'s `owl:imports` brings in Part 14 and the
 ~30-class hierarchy is available for classification.
+
+### Pre-seeded normalization rules (shipped with docgraph, not in `.docgraph/`)
+
+The repo ships a small set of lift rules for common vocabularies under
+`data/normalization/`:
+
+```
+data/normalization/
+  schemaorg.rq        ← schema:domainIncludes/rangeIncludes, rdf:Property typing
+  skos-as-taxonomy.rq ← skos:broader/narrower → rdfs:subClassOf
+```
+
+These are pre-seeded equivalents of `cache/lifts/` entries — same on-disk
+format, same code path. The user pays no LLM cost for first-time ingest of
+schema.org or SKOS-shaped vocabularies; everything else still flows through
+the LLM-discovered route.
 
 ---
 
@@ -671,9 +869,25 @@ keep the same graph URI scheme.
    attach it to the *named graph* (registry entry in `sources.ttl`), not to each triple.
    Confirm this is sufficient for the use cases on the table.
 
-7. **Existing `financial_documents.ttl`**: Ingest as a precompiled TTL source — since
-   Part 14 is OWL-native this is a straight load with no translation. First real test of
-   the meta-ontology alignment.
+7. **Existing `financial_documents.ttl`**: ingest via the new analyzer pipeline.
+   Should be a Phase-2/Phase-3 no-op (already canonical OWL, already roots under
+   `lis:`). The bootstrap test for "the analyzer doesn't over-rewrite".
+
+8. **LLM rule approval flow**: Phase 2 lift discovery and Phase 3 anchor discovery
+   both want user review before caching. Bundle into one combined diff at end of
+   ingest ("here's how I translated this source — accept / edit / abort") or two
+   separate prompts? Probably one combined diff.
+
+9. **Pre-seeded vs cached rule conflict**: if a user runs `docgraph add` on a
+   schema.org TTL, gets the pre-seeded lift, later edits `cache/lifts/` to
+   override, then a docgraph upgrade ships a new pre-seeded version — whose wins?
+   Probably the cache (it's user-owned), with a `docgraph diagnose` command to
+   surface the divergence.
+
+10. **"No anchor" surface**: `dg:noPartFourteenAnchor true` is queryable but
+    noisy (every Part-14-foreign class carries the annotation). Alternative:
+    silent (just leave class unrooted) and derive the "outside Part 14" set with
+    a SPARQL query. Convenience-vs-cleanliness call.
 
 ---
 

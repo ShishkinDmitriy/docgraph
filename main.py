@@ -118,11 +118,11 @@ def add(input_path: Path, note: str | None, force: bool, reconvert: bool,
 
     Supported inputs:
       .ttl/.n3  — symlinked into .docgraph/graphs/ and registered (no LLM).
-      .pdf      — converted to Markdown, registered as a lis:InformationObject
-                  with full PROV-O provenance, classified against existing
-                  subclasses of lis:InformationObject, and instance-extracted
-                  for as many properties of the chosen class as the document
-                  supports (one level of object-property nesting).
+      .pdf      — converted to Markdown, registered as a Part 2
+                  iso15926:WholeLifeIndividual with full PROV-O provenance.
+                  Classification + extraction are produced by the new
+                  14-prompt ISO 15926-2 classify pipeline (wired in at
+                  Step 3 of the migration).
 
     Pass --debug to log the full prompt and response for every LLM call.
     """

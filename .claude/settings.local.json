@@ -9,7 +9,11 @@
       "Bash(PYTHONPATH=. .venv/bin/pytest:*)",
       "Bash(python3 -m pytest tests/test_find_entity.py -q)",
       "Bash(pip show:*)",
-      "Bash(git -C /home/dimonina/projects/docgraph mv docs/ARCHITECTURE.md ARCHITECTURE.md)"
+      "Bash(git -C /home/dimonina/projects/docgraph mv docs/ARCHITECTURE.md ARCHITECTURE.md)",
+      "Bash(xargs ls *)",
+      "Bash(pdfinfo \"/home/dimonina/projects/docgraph/docs/2003 - ISO 15926-22003 -- Industrial automation systems .pdf\")",
+      "Bash(pdftotext -layout \"docs/2003 - ISO 15926-22003 -- Industrial automation systems .pdf\" /tmp/iso15926-2.txt)",
+      "Read(//tmp/**)"
     ]
   }
 }

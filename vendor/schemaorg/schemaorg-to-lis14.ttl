@@ -1,0 +1,22 @@
+@prefix schema: <https://schema.org/> .
+@prefix lis:    <http://standards.iso.org/iso/15926/part14/> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+
+<http://example.org/docgraph/bridge/schemaorg-lis14> a owl:Ontology ;
+    rdfs:label "Schema.org → ISO 15926 Part 14 bridge" ;
+    rdfs:comment "Subclass alignment from schema.org receipt/invoice vocabulary to ISO 15926 Part 14 upper classes." ;
+    owl:imports <http://standards.iso.org/iso/15926/part14> .
+
+# Schema.org has no dedicated Receipt type. Per schema.org, schema:Order is
+# "a confirmation of a transaction (a receipt)"; schema:Invoice is "a statement
+# of the money due for goods or services; a bill". Both are documents.
+schema:Invoice  rdfs:subClassOf lis:InformationObject .
+schema:Order    rdfs:subClassOf lis:InformationObject .
+
+schema:Organization rdfs:subClassOf lis:Organization .
+
+# Caveat: schema:Person admits fictional/deceased/undead persons; lis:Person
+# inherits from lis:Organism ⊑ lis:PhysicalObject and so denotes embodied
+# persons. Sound for extracted invoice parties; tighten if needed.
+schema:Person rdfs:subClassOf lis:Person .

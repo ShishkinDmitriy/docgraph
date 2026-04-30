@@ -29,12 +29,13 @@ logger = logging.getLogger(__name__)
 _MARKDOWN_BUDGET = 32_000
 
 # Properties whose URI starts with one of these are foundational vocabulary
-# (docgraph internals, PROV-O, Part 14, DC Terms, OWL/RDF/XSD). The LLM should
-# extract domain content, not provenance / structural / meta-ontology slots.
+# (docgraph internals, PROV-O, ISO 15926 Part 2, DC Terms, OWL/RDF/XSD). The
+# LLM should extract domain content, not provenance / structural /
+# meta-ontology slots.
 _FOUNDATION_PREFIXES = (
     "http://example.org/docgraph/meta#",
     "http://www.w3.org/ns/prov#",
-    "http://standards.iso.org/iso/15926/part14/",
+    "http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#",
     "http://purl.org/dc/terms/",
     "http://www.w3.org/2002/07/owl#",
     "http://www.w3.org/2000/01/rdf-schema#",

@@ -1,10 +1,11 @@
 """Ingest sources into a docgraph project.
 
 For TTL inputs: symlink ``graphs/<slug>.ttl`` to the original file and register
-the source in ``sources.ttl``. No translation step (Part 14 is OWL-native).
+the source in ``sources.ttl``. No translation step (the source vocabulary is
+preserved as-is).
 
-For other formats (PDF, Markdown, etc.) the extraction pipeline will write a
-real TTL file at ``graphs/<slug>.ttl`` — not implemented yet.
+For other formats (PDF, Markdown, etc.) the extraction pipeline writes a
+real TTL/TriG file at ``graphs/<slug>.ttl`` (or ``.trig``).
 """
 
 import hashlib
@@ -19,14 +20,15 @@ from src.project import (
     GRAPHS_SUBDIR,
     dcterms_path,
     graphs_dir,
-    lis14_path,
+    iso15926_annotations_path,
+    iso15926_path,
     meta_path,
     prov_o_path,
     sources_path,
 )
 
 DG = Namespace("http://example.org/docgraph/meta#")
-LIS = Namespace("http://standards.iso.org/iso/15926/part14/")
+ISO15926 = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
 SOURCE_NS = Namespace("http://example.org/docgraph/source/")
 
 TTL_SUFFIXES = {".ttl", ".n3"}
@@ -193,11 +195,11 @@ def _register_source(
     file_size: int,
     mime_type: str,
 ) -> None:
-    """Append a dual-typed (dg:IngestionRecord + lis:InformationObject) entry to sources.ttl."""
+    """Append a dual-typed (dg:IngestionRecord + iso15926:WholeLifeIndividual) entry to sources.ttl."""
     reg_path = sources_path(project_root)
     reg = Graph()
-    reg.bind("dg",  DG)
-    reg.bind("lis", LIS)
+    reg.bind("dg",       DG)
+    reg.bind("iso15926", ISO15926)
     reg.parse(reg_path, format="turtle")
 
     record = URIRef(SOURCE_NS[slug])
@@ -210,7 +212,7 @@ def _register_source(
     now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
     reg.add((record, RDF.type,        DG.IngestionRecord))
-    reg.add((record, RDF.type,        LIS.InformationObject))
+    reg.add((record, RDF.type,        ISO15926.WholeLifeIndividual))
     reg.add((record, RDFS.label,      Literal(source.name)))
     reg.add((record, DG.filePath,     Literal(str(source))))
     reg.add((record, DG.fileHash,     Literal(file_hash)))
@@ -245,17 +247,19 @@ def list_sources(project_root: Path) -> list[dict]:
 def load_combined(project_root: Path) -> Dataset:
     """Load meta + every bundled upper ontology + every graphs/*.ttl into a Dataset.
 
-    The default graph holds meta.ttl, lis-14.ttl, prov-o.ttl, and dcterms.ttl
-    (the permanent backbone). Each ingested source lives in its own named graph.
+    The default graph holds meta.ttl, the ISO 15926 Part 2 OWL + annotations,
+    prov-o.ttl, and dcterms.ttl (the permanent backbone). Each ingested source
+    lives in its own named graph.
     """
     # default_union=True: SPARQL queries without explicit FROM clauses see the
     # union of every graph in the dataset — needed so subclasses defined in
     # named graphs (i.e. ingested sources) participate in classification.
     ds = Dataset(default_union=True)
-    ds.parse(meta_path(project_root),    format="turtle")
-    ds.parse(lis14_path(project_root),   format="turtle")
-    ds.parse(prov_o_path(project_root),  format="turtle")
-    ds.parse(dcterms_path(project_root), format="turtle")
+    ds.parse(meta_path(project_root),                  format="turtle")
+    ds.parse(iso15926_path(project_root),              format="xml")
+    ds.parse(iso15926_annotations_path(project_root),  format="xml")
+    ds.parse(prov_o_path(project_root),                format="turtle")
+    ds.parse(dcterms_path(project_root),               format="turtle")
     g_dir = graphs_dir(project_root)
     for f in sorted(g_dir.iterdir()):
         if f.suffix == ".ttl":
