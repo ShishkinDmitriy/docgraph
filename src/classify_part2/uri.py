@@ -18,9 +18,9 @@ def slugify(s: str) -> str:
 
 
 def mint_ext(ns: Namespace, *, kind: str, ident: str) -> URIRef:
-    """Mint a URI like ``<ext_ns>/<kind>/<ident>``.
+    """Mint a URI like ``<ext_ns><kind>-<ident>``.
 
-    *kind* is a short bucket name ("act", "ind", "cls", "role", "part",
-    "wp", "tseq", "prop", "qty", "rep", "conn", "appr", "ls", "rev").
+    Flat structure keeps Turtle serialization to a single ``e:`` prefix.
+    *kind* is a short bucket name ("act", "ind", "cls", "role", "part", …).
     """
-    return URIRef(f"{ns}{slugify(kind)}/{slugify(ident)}")
+    return URIRef(f"{ns}{slugify(kind)}-{slugify(ident)}")

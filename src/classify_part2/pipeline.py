@@ -146,11 +146,7 @@ def attach_pipeline_metrics(
     ext_uri: URIRef,
     nat: NatureScanResult,
 ) -> None:
-    """Attach coverage metrics from the nature scan to the extraction node.
-
-    Called from ingest_pdf after `classify` returns, so the metrics live
-    in the default graph alongside the rest of the PROV metadata.
-    """
+    """Attach coverage metrics from the nature scan to the extraction node."""
     ds_default.add((ext_uri, DG.scopeCoverage,
                     Literal(nat.scope_coverage,    datatype=XSD.decimal)))
     ds_default.add((ext_uri, DG.evidenceCoverage,

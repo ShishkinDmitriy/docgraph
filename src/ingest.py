@@ -5,7 +5,7 @@ the source in ``sources.ttl``. No translation step (the source vocabulary is
 preserved as-is).
 
 For other formats (PDF, Markdown, etc.) the extraction pipeline writes a
-real TTL/TriG file at ``graphs/<slug>.ttl`` (or ``.trig``).
+real TTL file at ``graphs/<slug>.ttl``.
 """
 
 import hashlib
@@ -265,13 +265,15 @@ def load_combined(project_root: Path) -> Dataset:
     ds.parse(prov_o_path(project_root),                format="turtle")
     ds.parse(dcterms_path(project_root), format="turtle")
     g_dir = graphs_dir(project_root)
+    ext_base = "http://example.org/docgraph/extraction/"
     for f in sorted(g_dir.iterdir()):
         if f.suffix == ".ttl":
-            # Symlinked TTL imports: each file gets its own named graph keyed
-            # by file URI so cascade-delete removes a single named graph.
-            ds.graph(URIRef(f"file://{f.resolve()}")).parse(f, format="turtle")
+            if f.is_symlink():
+                # Imported TTL ontologies: keyed by file URI.
+                ds.graph(URIRef(f"file://{f.resolve()}")).parse(f, format="turtle")
+            else:
+                # PDF-derived sources: load into the extraction named graph.
+                ds.graph(URIRef(f"{ext_base}{f.stem}")).parse(f, format="turtle")
         elif f.suffix == ".trig":
-            # PDF-derived sources: the file already declares its own named
-            # graphs (default + extraction). Parse it as a Dataset.
             ds.parse(f, format="trig")
     return ds

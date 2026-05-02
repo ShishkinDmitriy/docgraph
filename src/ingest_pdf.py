@@ -4,35 +4,26 @@ Source typing follows ISO 15926-2 (POSC Caesar OWL) strict mode. The
 classify step runs the 14-prompt pipeline in `src.classify_part2`; see
 ``docs/classify_design.md`` for the design and gating logic.
 
-The graph file is TriG (one file, two contexts):
+The graph file is Turtle (one file = one named graph, ext/<slug>):
 
-    {                                  # default graph: deterministic metadata
       <source/<slug>>      a iso15926:WholeLifeIndividual, prov:Entity ;
           dcterms:title "..." ; dg:pageCount N ; prov:generatedAtTime ... .
       <source/<slug>-md>   a iso15926:WholeLifeIndividual, prov:Entity ;
           prov:wasDerivedFrom <source/<slug>> ; dg:fileHash "..." .
-      <act/conv-<slug>>    a prov:Activity ;
-          prov:used <source/<slug>> ;
-          prov:generated <source/<slug>-md> ;
-          prov:wasAssociatedWith <agent/...> .
-      <act/classify-<slug>> a prov:Activity ;
-          prov:used <source/<slug>-md> .
+      <act/conv-<slug>>    a prov:Activity ; …
+      <act/classify-<slug>> a prov:Activity ; …
       <ext/<slug>>         a prov:Entity ;
           dg:scopeCoverage 0.45 ; dg:evidenceCoverage 0.18 ;
           dg:docKind "maintenance procedure" .
-    }
-
-    <ext/<slug>> {                     # named graph: every triple emitted
       <source/<slug>>  a ext:maintenance-procedure .
       ext:maintenance-procedure  a iso15926:ClassOfInformationObject .
       …all activity / individual / class / property / connection triples…
-    }
 """
 
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rdflib import Dataset, Graph, Literal, Namespace, URIRef, RDF, RDFS, XSD
+from rdflib import Graph, Literal, Namespace, URIRef, RDF, RDFS, XSD
 from rich.console import Console
 
 from src.classifier import pdf_to_markdown
@@ -58,7 +49,7 @@ ACT_NS   = Namespace("http://example.org/docgraph/activity/")
 AGENT_NS = Namespace("http://example.org/docgraph/agent/")
 EXT_NS   = Namespace("http://example.org/docgraph/extraction/")
 
-GRAPH_SUFFIX = ".trig"
+GRAPH_SUFFIX = ".ttl"
 
 
 def ingest_pdf(
@@ -126,46 +117,42 @@ def ingest_pdf(
     if not md_files:
         raise IngestError("conversion produced no markdown files")
 
-    # ── Build the dataset (default graph + extraction named graph) ──
-    ds = Dataset()
-    _bind_prefixes(ds)
-    ext_uri      = URIRef(EXT_NS[slug])
-    extraction_g = ds.graph(ext_uri)
+    # ── Build a single named graph (all triples in one place) ──
+    g = Graph()
+    _bind_prefixes(g, slug)
+    ext_uri = URIRef(EXT_NS[slug])
 
-    # PDF-specific metadata in DEFAULT graph
-    ds.add((pdf_uri, RDF.type, ISO15926.WholeLifeIndividual))
-    ds.add((pdf_uri, RDF.type, PROV.Entity))
-    _add_pdfinfo_triples(ds, pdf_uri, info)
+    g.add((pdf_uri, RDF.type, ISO15926.WholeLifeIndividual))
+    g.add((pdf_uri, RDF.type, PROV.Entity))
+    _add_pdfinfo_triples(g, pdf_uri, info)
 
-    # Markdown derivative(s) in DEFAULT graph
     md_uris = []
     for i, md_path in enumerate(md_files, 1):
         md_uri = URIRef(SOURCE_NS[f"{slug}-md-{i}"]) if len(md_files) > 1 \
                  else URIRef(SOURCE_NS[f"{slug}-md"])
         md_uris.append(md_uri)
-        ds.add((md_uri, RDF.type,    ISO15926.WholeLifeIndividual))
-        ds.add((md_uri, RDF.type,    PROV.Entity))
-        ds.add((md_uri, RDFS.label,  Literal(md_path.name)))
-        ds.add((md_uri, DG.filePath, Literal(str(md_path.relative_to(project_root)))))
-        ds.add((md_uri, DG.fileHash, Literal(compute_hash(md_path))))
-        ds.add((md_uri, DG.fileSize, Literal(md_path.stat().st_size, datatype=XSD.integer)))
-        ds.add((md_uri, DG.mimeType, Literal(_mime_type(md_path))))
-        ds.add((md_uri, PROV.wasDerivedFrom, pdf_uri))
+        g.add((md_uri, RDF.type,    ISO15926.WholeLifeIndividual))
+        g.add((md_uri, RDF.type,    PROV.Entity))
+        g.add((md_uri, RDFS.label,  Literal(md_path.name)))
+        g.add((md_uri, DG.filePath, Literal(str(md_path.relative_to(project_root)))))
+        g.add((md_uri, DG.fileHash, Literal(compute_hash(md_path))))
+        g.add((md_uri, DG.fileSize, Literal(md_path.stat().st_size, datatype=XSD.integer)))
+        g.add((md_uri, DG.mimeType, Literal(_mime_type(md_path))))
+        g.add((md_uri, PROV.wasDerivedFrom, pdf_uri))
 
-    # Conversion + agent in DEFAULT graph
     conv_uri  = URIRef(ACT_NS[f"conv-{slug}"])
     agent_uri = URIRef(AGENT_NS[make_slug(model.model_id)])
-    _add_activity(ds, conv_uri, "PDF to Markdown conversion",
+    _add_activity(g, conv_uri, "PDF to Markdown conversion",
                   used=[pdf_uri], generated=md_uris, agent=agent_uri,
                   started=conv_started, ended=conv_ended)
-    ds.add((agent_uri, RDF.type,    PROV.SoftwareAgent))
-    ds.add((agent_uri, RDFS.label,  Literal(model.label)))
-    ds.add((agent_uri, DG.provider, Literal(model.provider)))
-    ds.add((agent_uri, DG.modelId,  Literal(model.model_id)))
+    g.add((agent_uri, RDF.type,    PROV.SoftwareAgent))
+    g.add((agent_uri, RDFS.label,  Literal(model.label)))
+    g.add((agent_uri, DG.provider, Literal(model.provider)))
+    g.add((agent_uri, DG.modelId,  Literal(model.model_id)))
 
     # ── Classify pipeline (14 prompts → Part 2 graph) ──
-    ds.add((ext_uri, RDF.type,   PROV.Entity))
-    ds.add((ext_uri, RDFS.label, Literal(f"LLM-extracted facts about {slug}")))
+    g.add((ext_uri, RDF.type,   PROV.Entity))
+    g.add((ext_uri, RDFS.label, Literal(f"LLM-extracted facts about {slug}")))
 
     markdown = "\n\n---\n\n".join(d.get("markdown", "") for d in docs)
     ctx = ConversionContext(
@@ -178,27 +165,25 @@ def ingest_pdf(
         client=client, model=model, console=console,
     )
 
-    # Merge the pipeline's triples into the source's named extraction graph.
     for triple in result.graph:
-        extraction_g.add(triple)
+        g.add(triple)
 
     classify_uri = URIRef(ACT_NS[f"classify-{slug}"])
-    _add_activity(ds, classify_uri, "Classify document (ISO 15926-2 pipeline)",
+    _add_activity(g, classify_uri, "Classify document (ISO 15926-2 pipeline)",
                   used=md_uris, agent=agent_uri,
                   started=result.started, ended=result.ended)
-    ds.add((ext_uri, PROV.wasGeneratedBy, classify_uri))
-    classify_pipeline.attach_pipeline_metrics(ds, ext_uri=ext_uri, nat=result.nature)
+    g.add((ext_uri, PROV.wasGeneratedBy, classify_uri))
+    classify_pipeline.attach_pipeline_metrics(g, ext_uri=ext_uri, nat=result.nature)
     if result.ran:
         console.print(f"  ran [bold]{len(result.ran)}[/bold] prompt(s); "
                       f"skipped [dim]{len(result.skipped)}[/dim]")
 
-    # ── Serialize as TriG ──
+    # ── Serialize as Turtle (one file = named graph ext/<slug>) ──
     graph_file = g_dir / f"{slug}{GRAPH_SUFFIX}"
-    ds.serialize(destination=str(graph_file), format="trig")
-    total_triples = sum(len(g) for g in ds.graphs())
+    g.serialize(destination=str(graph_file), format="turtle")
     console.print(
         f"  wrote   [dim]{GRAPHS_SUBDIR}/{slug}{GRAPH_SUFFIX}[/dim] "
-        f"({total_triples} triples; {len(extraction_g)} in extraction graph)"
+        f"({len(g)} triples)"
     )
 
     _register_source(
@@ -215,19 +200,21 @@ def _now():
     return datetime.now(timezone.utc).replace(microsecond=0)
 
 
-def _bind_prefixes(ds: Dataset) -> None:
-    ds.bind("dg",       DG)
-    ds.bind("iso15926", ISO15926)
-    ds.bind("prov",    PROV)
-    ds.bind("dcterms", DCTERMS)
-    ds.bind("src",     SOURCE_NS)
-    ds.bind("act",     ACT_NS)
-    ds.bind("agent",   AGENT_NS)
-    ds.bind("ext",     EXT_NS)
+def _bind_prefixes(g: Graph, slug: str | None = None) -> None:
+    g.bind("dg",       DG)
+    g.bind("iso15926", ISO15926)
+    g.bind("prov",    PROV)
+    g.bind("dcterms", DCTERMS)
+    g.bind("src",     SOURCE_NS)
+    g.bind("act",     ACT_NS)
+    g.bind("agent",   AGENT_NS)
+    g.bind("ext",     EXT_NS)
+    if slug:
+        g.bind("e", Namespace(f"http://example.org/docgraph/extraction/{slug}/"))
 
 
 def _add_activity(
-    ds: Dataset,
+    g: Graph,
     uri: URIRef,
     label: str,
     *,
@@ -239,49 +226,49 @@ def _add_activity(
     confidence: float | None = None,
     reason: str | None = None,
 ) -> None:
-    """Add a prov:Activity description to the default graph."""
-    ds.add((uri, RDF.type,   PROV.Activity))
-    ds.add((uri, RDFS.label, Literal(label)))
+    """Add a prov:Activity description to the graph."""
+    g.add((uri, RDF.type,   PROV.Activity))
+    g.add((uri, RDFS.label, Literal(label)))
     for u in (used or []):
-        ds.add((uri, PROV.used, u))
-    for g in (generated or []):
-        ds.add((uri, PROV.generated, g))
+        g.add((uri, PROV.used, u))
+    for gen in (generated or []):
+        g.add((uri, PROV.generated, gen))
     if agent is not None:
-        ds.add((uri, PROV.wasAssociatedWith, agent))
+        g.add((uri, PROV.wasAssociatedWith, agent))
     if started is not None:
-        ds.add((uri, PROV.startedAtTime, Literal(started.isoformat(), datatype=XSD.dateTime)))
+        g.add((uri, PROV.startedAtTime, Literal(started.isoformat(), datatype=XSD.dateTime)))
     if ended is not None:
-        ds.add((uri, PROV.endedAtTime,   Literal(ended.isoformat(),   datatype=XSD.dateTime)))
+        g.add((uri, PROV.endedAtTime,   Literal(ended.isoformat(),   datatype=XSD.dateTime)))
     if confidence is not None:
-        ds.add((uri, DG.confidence, Literal(confidence, datatype=XSD.decimal)))
+        g.add((uri, DG.confidence, Literal(confidence, datatype=XSD.decimal)))
     if reason:
-        ds.add((uri, DG.reason, Literal(reason)))
+        g.add((uri, DG.reason, Literal(reason)))
 
 
-def _add_pdfinfo_triples(ds: Dataset, subject: URIRef, info: dict[str, str]) -> None:
+def _add_pdfinfo_triples(g: Graph, subject: URIRef, info: dict[str, str]) -> None:
     """Map pdfinfo's key/value output onto dcterms:/prov:/dg: triples."""
     if not info:
         return
 
     if (title := info.get("Title")):
-        ds.add((subject, DCTERMS.title, Literal(title)))
+        g.add((subject, DCTERMS.title, Literal(title)))
     if (author := info.get("Author")):
-        ds.add((subject, DCTERMS.creator, Literal(author)))
+        g.add((subject, DCTERMS.creator, Literal(author)))
     if (creator := info.get("Creator")):
-        ds.add((subject, DCTERMS.creator, Literal(creator)))
+        g.add((subject, DCTERMS.creator, Literal(creator)))
     if (producer := info.get("Producer")):
-        ds.add((subject, DG.pdfProducer, Literal(producer)))
+        g.add((subject, DG.pdfProducer, Literal(producer)))
 
     pages = info.get("Pages")
     if pages and pages.isdigit():
-        ds.add((subject, DG.pageCount, Literal(int(pages), datatype=XSD.integer)))
+        g.add((subject, DG.pageCount, Literal(int(pages), datatype=XSD.integer)))
 
     for src_key, predicate in (
         ("CreationDate", PROV.generatedAtTime),
         ("ModDate",      DCTERMS.modified),
     ):
         if (raw := info.get(src_key)):
-            ds.add((subject, predicate, Literal(_iso_dateTime(raw), datatype=XSD.dateTime)))
+            g.add((subject, predicate, Literal(_iso_dateTime(raw), datatype=XSD.dateTime)))
 
 
 def _iso_dateTime(s: str) -> str:
