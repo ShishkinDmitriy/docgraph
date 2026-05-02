@@ -95,6 +95,8 @@ def classify(
     )
 
     # ── Doc-kind class for the source document ──
+    # Plain rdf:type only — no reified Classification, since the
+    # classification has no own metadata to carry.
     if nat.doc_kind:
         doc_class = reify.mint_class_of(
             g, ext_ns=ctx.ext_ns, label=nat.doc_kind,
@@ -102,11 +104,6 @@ def classify(
             seen=ctx.classes_minted,
         )
         g.add((ctx.source_uri, RDF.type, doc_class))
-        reify.classification(
-            g, ext_ns=ctx.ext_ns,
-            classifier=doc_class, classified=ctx.source_uri,
-            suffix="source",
-        )
 
     # ── Prompts #2-#14 ──
     gated = nature_scan.gating_decisions(nat)

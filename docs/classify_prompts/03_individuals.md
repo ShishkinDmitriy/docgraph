@@ -78,10 +78,22 @@ Reply with a single JSON object, no prose, no fences:
       "evidence": "...",
       "note": ""
     }
+  ],
+  "locations_of": [
+    {"individual": "<id>", "location": "<id>"}
   ]
 }
 
-If no named individuals are described, return {"individuals": []}.
+`locations_of` connects a non-location individual (a person, organization,
+physical_object, functional_object) to one of the location individuals
+also extracted in this same call. Use it whenever the document associates
+the individual with an address or place — e.g. a person with a home
+address, an organization with a business address, a piece of equipment
+with a building or room. Reference ids exactly as given in the
+`individuals` list. Leave the list empty if no location-of relationships
+are stated.
+
+If no named individuals are described, return {"individuals": [], "locations_of": []}.
 ```
 
 ## Converter mapping

@@ -61,8 +61,11 @@ ROLE_DOMAIN = _p("hasDomain")
 ROLE_PLAYER = _p("hasPlayer")
 
 # RepresentationOfThing and subclasses Identification, Definition,
-# Description (Part 2 §5.2.16).
+# Description (Part 2 §5.2.16). hasSign points at the sign (a
+# possible_individual carrying the actual identifier text); hasRepresented
+# points at the thing the sign refers to.
 REPR_REPRESENTED = _p("hasRepresented")
+REPR_SIGN        = _p("hasSign")
 
 # Property (Part 2 §5.2.26). The bearer is the possessor.
 PROPERTY_POSSESSOR = _p("hasPossessor")

@@ -36,6 +36,15 @@ defines, or describes some thing. The kinds we care about:
 - "identifier"     — a code or tag number assigned to a thing
                      (e.g. "P-101", "ISO 9001:2015", "PO-2024-447",
                      "EN-12345", part numbers, serial numbers).
+                     IMPORTANT: identifiers like IBAN, BIC, email
+                     address, phone number do NOT identify the
+                     organization or person directly — they identify a
+                     *bank account*, a *mailbox*, a *phone line* held
+                     by the entity. If an account / mailbox / line
+                     individual was extracted, point at it; otherwise
+                     point at the closest concrete owner and the model
+                     will improve when intermediate entities are
+                     extracted.
 - "name"           — a formal proper name as opposed to a code
                      (e.g. company name "ACME Corporation Ltd.",
                      project name "Forties Phase 3").
@@ -125,35 +134,41 @@ captured, return {"representations": []}.
 
 ## Converter mapping
 
-| `representation_kind` | Part 2 reification |
+Two emission modes:
+
+**Shortcut path** — `name`, `alias`, `description` are simple labels and
+get a direct triple on the target. No reified node, no separate sign.
+
+| `representation_kind` | Triple emitted on target |
 |---|---|
-| identifier | `Identification` |
-| name | `Identification` + `dg:nameKind "name"` |
-| alias | `Identification` + `dg:nameKind "alias"` (also `skos:altLabel` shortcut) |
-| description | `Description` |
-| definition | `Definition` |
-| cross_reference | `RepresentationOfThing` + `dg:externalRef` literal |
+| name | `target  skos:prefLabel  "value"` |
+| alias | `target  skos:altLabel  "value"` |
+| description | `target  rdfs:comment  "value"` |
+
+**Reified path** — `identifier`, `definition`, `cross_reference` produce
+a full Part 2 representation with a separate sign individual carrying
+the actual text:
 
 ```turtle
-ext:rep-001  a iso15926:Identification ;
-    iso15926:hasRepresented ext:p-101 ;
-    iso15926:representationValue "P-101" ;
-    dg:system "internal_tag" ;
-    dg:evidence "Pump P-101 (tag P-101) was inspected." .
+# 1. The sign — the identifier text as a possible_individual.
+ext:sign-iban-de83  a  iso15926:WholeLifeIndividual,
+                       ext:cls/iban ;
+    rdfs:label "DE83 0060 6010 0065 1388 51" .
 
-ext:rep-002  a iso15926:Identification ;
-    iso15926:hasRepresented ext:iso-9001-standard ;
-    iso15926:representationValue "ISO 9001:2015" ;
-    dg:system "ISO" ;
-    dg:evidence "ISO 9001:2015 specifies requirements…" .
+# 2. The form-class — one shared per `system` value.
+ext:cls/iban  a  iso15926:ClassOfInformationRepresentation ;
+    rdfs:label "iban" .
 
-ext:rep-003  a iso15926:RepresentationOfThing ;
-    iso15926:hasRepresented ext:pressure-vessel-design ;
-    dg:externalRef "EN 13480-3 Section 6.2" ;
-    dg:evidence "Designed to EN 13480-3 Section 6.2." .
+# 3. The Identification relationship.
+ext:rep-iban-de83  a  iso15926:Identification ;
+    iso15926:hasSign         ext:sign-iban-de83 ;
+    iso15926:hasRepresented  <ind/practice-account> ;
+    dg:system "iban" ;
+    dg:evidence "IBAN: DE83…" .
 ```
 
-Exact property names verified against the OWL at converter implementation time.
+Cross-references skip the sign step and keep an `dg:externalRef` literal
+since the target lives outside our graph.
 
 The source document itself gets a default `Identification` entry minted
 by the converter from the registered file metadata (slug + sha hash) —

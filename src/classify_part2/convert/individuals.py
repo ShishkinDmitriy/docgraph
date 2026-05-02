@@ -6,8 +6,17 @@ Each individual gets the strict-Part-2 pair:
 - additionally typed by an ad-hoc subclass of the broad ClassOf*
   (one shared subclass per kind, e.g. ext:cls/person  a ClassOfPerson).
 
-A reified ``Classification`` ties the individual to the class.
-Aliases get ``skos:altLabel`` triples.
+The class membership is asserted by plain ``rdf:type`` — no reified
+``Classification`` node, since the classification has no metadata of
+its own. Reification is reserved for cases where the relationship
+itself carries information (third-party assertions, dated
+classifications, …).
+
+Aliases become ``skos:altLabel`` triples on the individual itself.
+
+A separate ``locations_of`` list lets the LLM connect already-extracted
+individuals to spatial-location individuals (so addresses don't end up
+as orphans).
 
 JSON shape::
 
@@ -15,7 +24,10 @@ JSON shape::
         {"id":..., "label":..., "kind": "person"|"organization"|...,
          "aliases":[...], "summary":..., "evidence":..., "note":...},
         ...
-    ]}
+     ],
+     "locations_of": [
+        {"individual":"<id>", "location":"<id>"}, ...
+     ]}
 """
 
 from __future__ import annotations
@@ -46,6 +58,8 @@ def convert(data: dict, ctx: ConversionContext) -> Graph:
     g.bind("skos", SKOS)
     for entry in data.get("individuals") or []:
         _emit_individual(g, entry, ctx)
+    for link in data.get("locations_of") or []:
+        _emit_location_link(g, link, ctx)
     return g
 
 
@@ -72,7 +86,8 @@ def _emit_individual(g: Graph, entry: dict, ctx: ConversionContext) -> None:
     if (note := entry.get("note")):
         g.add((uri, DG.note, Literal(note)))
 
-    # Mint (or reuse) the broad ClassOf* for this kind.
+    # Mint (or reuse) the broad ClassOf* for this kind. Plain rdf:type
+    # is sufficient — no reified Classification needed.
     kind_class = reify.mint_class_of(
         g,
         ext_ns=ctx.ext_ns,
@@ -80,16 +95,7 @@ def _emit_individual(g: Graph, entry: dict, ctx: ConversionContext) -> None:
         metaclass=metaclass,
         seen=ctx.classes_minted,
     )
-
-    # Reified Classification: the individual belongs to the kind-class.
     g.add((uri, RDF.type, kind_class))
-    reify.classification(
-        g,
-        ext_ns=ctx.ext_ns,
-        classifier=kind_class,
-        classified=uri,
-        suffix=iid,
-    )
 
     if kind == "other":
         g.add((uri, DG.status, DG.Unresolved))
@@ -103,3 +109,21 @@ def _emit_individual(g: Graph, entry: dict, ctx: ConversionContext) -> None:
         id=iid, kind="individual", uri=uri, label=label,
         subkind=kind,
     ))
+
+
+def _emit_location_link(g: Graph, link: dict, ctx: ConversionContext) -> None:
+    """Connect an individual to a spatial-location individual.
+
+    Uses the docgraph shortcut ``dg:locatedAt`` rather than reifying a
+    ``ContainmentOfIndividual`` (Part 2 §5.2.21) — addresses are common
+    enough that reification per address would be noisy.
+    """
+    ind_id = link.get("individual")
+    loc_id = link.get("location")
+    if not (ind_id and loc_id):
+        return
+    ind = ctx.get(ind_id)
+    loc = ctx.get(loc_id)
+    if ind is None or loc is None:
+        return
+    g.add((ind.uri, DG.locatedAt, loc.uri))

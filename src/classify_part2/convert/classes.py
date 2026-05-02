@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from rdflib import Graph, Literal, RDF, RDFS, URIRef
 
-from src.classify_part2 import reify
 from src.classify_part2.context import ConversionContext, EntityRef
 from src.classify_part2.ns import DG, ISO15926
 from src.classify_part2.uri import mint_ext
@@ -123,16 +122,11 @@ def _link_parent_and_instances(
     if (parent := entry.get("parent")) and parent in minted:
         g.add((cls_uri, RDFS.subClassOf, minted[parent]))
 
-    # Instances → typed by this class + a reified Classification.
+    # Instances → typed by this class via plain rdf:type. Reified
+    # Classification is reserved for third-party assertions about
+    # classifications.
     for inst_id in entry.get("instances") or []:
         ref = ctx.get(inst_id)
         if ref is None or ref.kind != instance_kind:
             continue
         g.add((ref.uri, RDF.type, cls_uri))
-        reify.classification(
-            g,
-            ext_ns=ctx.ext_ns,
-            classifier=cls_uri,
-            classified=ref.uri,
-            suffix=f"{cid}-{inst_id}",
-        )
