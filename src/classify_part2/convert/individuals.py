@@ -80,11 +80,11 @@ def _emit_individual(g: Graph, entry: dict, ctx: ConversionContext) -> None:
     g.add((uri, RDFS.label, Literal(label)))
 
     if (summary := entry.get("summary")):
-        g.add((uri, DG.summary, Literal(summary)))
+        g.add((uri, RDFS.comment, Literal(summary)))
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
     if (note := entry.get("note")):
-        g.add((uri, DG.note, Literal(note)))
+        g.add((uri, RDFS.comment, Literal(note)))
 
     # Mint (or reuse) the broad ClassOf* for this kind. Plain rdf:type
     # is sufficient — no reified Classification needed.

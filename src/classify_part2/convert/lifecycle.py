@@ -1,11 +1,17 @@
 """Convert prompt #14 (Lifecycle & approvals).
 
-Three parallel lists (approvals, lifecycle_stages, revisions). Each
-produces a small reified node:
+Three parallel lists:
 
-- ``Approval`` + ``hasApprover`` + ``hasApproved`` + ``ClassOfApprovalByStatus``
-- ``LifecycleStage`` + ``hasInterest`` + ``ClassOfLifecycleStage``
-- ``Identification`` + ``dg:supersedes`` (no Part 2 Revision class)
+- ``Approval`` + ``hasApprover`` + ``hasApproved`` + ``rdf:type`` of the
+  status-class (a ``ClassOfApprovalByStatus`` minted per status label).
+- ``LifecycleStage`` + ``hasInterest`` + ``rdf:type`` of the stage-class
+  (a ``ClassOfLifecycleStage`` minted per stage label).
+- ``Identification`` + sign individual carrying the version label, plus
+  ``dg:supersedes`` for the prior version. Part 2 has no Revision class.
+
+Timestamps on these relationships stay on ``dg:atTime`` (as docgraph
+metadata about the assertion) rather than minting a ``PointInTime`` per
+relationship — these are not Beginning/Ending bounds, they're stamps.
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ from src.classify_part2 import owl_props as P
 from src.classify_part2 import reify
 from src.classify_part2.context import ConversionContext, EntityRef
 from src.classify_part2.ns import DG, ISO15926
-from src.classify_part2.uri import mint_ext
+from src.classify_part2.uri import mint_ext, slugify
 
 _ISO_DATE_RE     = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _ISO_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T")
@@ -51,13 +57,14 @@ def _emit_approval(g: Graph, entry: dict, ctx: ConversionContext) -> None:
     g.add((uri, P.APPROVAL_APPROVED, subject.uri))
 
     # Status as a ClassOfApprovalByStatus subclass keyed by label.
+    # The Approval is typed by it directly — no separate dg:approvalStatus.
     status_uri = reify.mint_class_of(
         g, ext_ns=ctx.ext_ns,
         label=status.capitalize(),
         metaclass=ISO15926.ClassOfApprovalByStatus,
         seen=ctx.classes_minted,
     )
-    g.add((uri, DG.approvalStatus, status_uri))
+    g.add((uri, RDF.type, status_uri))
 
     if (by_id := entry.get("by")):
         by_ref = ctx.get(by_id)
@@ -66,7 +73,7 @@ def _emit_approval(g: Graph, entry: dict, ctx: ConversionContext) -> None:
 
     _add_when(g, uri, entry.get("when"))
     if (desc := entry.get("description")):
-        g.add((uri, DG.summary, Literal(desc)))
+        g.add((uri, RDFS.comment, Literal(desc)))
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
 
@@ -98,7 +105,7 @@ def _emit_lifecycle(g: Graph, entry: dict, ctx: ConversionContext) -> None:
 
     _add_when(g, uri, entry.get("when"))
     if (desc := entry.get("description")):
-        g.add((uri, DG.summary, Literal(desc)))
+        g.add((uri, RDFS.comment, Literal(desc)))
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
 
@@ -119,15 +126,28 @@ def _emit_revision(g: Graph, entry: dict, ctx: ConversionContext) -> None:
     uri = mint_ext(ctx.ext_ns, kind="rev", ident=rid)
     g.add((uri, RDF.type, ISO15926.Identification))
     g.add((uri, P.REPR_REPRESENTED, subject.uri))
-    g.add((uri, DG.value, Literal(str(version))))
-    g.add((uri, DG.system, Literal("revision_label")))
+
+    # Sign carrying the version label, classified by the
+    # revision-label form-class (shared across all revisions).
+    sign_uri = mint_ext(ctx.ext_ns, kind="sign", ident=f"revision-label-{slugify(str(version))}")
+    g.add((sign_uri, RDF.type, ISO15926.WholeLifeIndividual))
+    g.add((sign_uri, P.HAS_CONTENT, Literal(str(version))))
+    g.add((sign_uri, RDFS.label,    Literal(str(version))))
+    form_cls = reify.mint_class_of(
+        g, ext_ns=ctx.ext_ns,
+        label="revision-label",
+        metaclass=ISO15926.ClassOfInformationRepresentation,
+        seen=ctx.classes_minted,
+    )
+    g.add((sign_uri, RDF.type, form_cls))
+    g.add((uri, P.REPR_SIGN, sign_uri))
 
     if (sup := entry.get("supersedes")):
         g.add((uri, DG.supersedes, Literal(str(sup))))
 
     _add_when(g, uri, entry.get("when"))
     if (desc := entry.get("description")):
-        g.add((uri, DG.summary, Literal(desc)))
+        g.add((uri, RDFS.comment, Literal(desc)))
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
 
@@ -136,6 +156,13 @@ def _emit_revision(g: Graph, entry: dict, ctx: ConversionContext) -> None:
 
 
 def _add_when(g: Graph, uri: URIRef, when: str | None) -> None:
+    """Stamp the relationship with its assertion time.
+
+    Approvals / lifecycle stages / revisions are not temporal individuals
+    themselves — they're relationships that *happen* at a time. We carry
+    that on ``dg:atTime`` rather than minting a PointInTime, which is
+    reserved for the temporal-bounding pattern in prompt #2.
+    """
     if not when:
         return
     s = when.strip()

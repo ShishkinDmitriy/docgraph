@@ -83,13 +83,15 @@ def _emit(g: Graph, entry: dict, ctx: ConversionContext) -> None:
         # external pointer as a literal rather than minting a sign.
         g.add((uri, DG.externalRef, Literal(str(value))))
     else:
+        # Sign-side mints a possible_individual carrying the actual
+        # text (Part 2 §5.2.16). Its form-class (e.g. ext:cls/iban)
+        # encodes the naming system — no separate dg:system literal
+        # needed.
         sign_uri = _emit_sign(g, ctx, value=str(value), system=entry.get("system"))
         g.add((uri, P.REPR_SIGN, sign_uri))
 
-    if (system := entry.get("system")):
-        g.add((uri, DG.system, Literal(system)))
     if (desc := entry.get("description")):
-        g.add((uri, DG.summary, Literal(desc)))
+        g.add((uri, RDFS.comment, Literal(desc)))
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
 
@@ -106,9 +108,11 @@ def _emit_sign(g: Graph, ctx: ConversionContext, *, value: str, system: str | No
     by every IBAN in the document; one ``steuernummer`` shared by every
     German tax number; etc.).
     """
-    sign_uri = mint_ext(ctx.ext_ns, kind="sign", ident=f"{slugify(system or 'sign')}-{slugify(value)}")
+    sign_ident = f"{slugify(system)}-{slugify(value)}" if system else slugify(value)
+    sign_uri = mint_ext(ctx.ext_ns, kind="sign", ident=sign_ident)
     g.add((sign_uri, RDF.type, ISO15926.WholeLifeIndividual))
-    g.add((sign_uri, RDFS.label, Literal(value)))
+    g.add((sign_uri, P.HAS_CONTENT, Literal(value)))
+    g.add((sign_uri, RDFS.label,    Literal(value)))
 
     if system:
         form_cls = reify.mint_class_of(

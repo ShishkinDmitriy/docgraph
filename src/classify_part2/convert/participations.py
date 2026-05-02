@@ -13,7 +13,7 @@ concept itself stays a ``ClassOfPossibleRoleAndDomain`` (per Part 2
 
 from __future__ import annotations
 
-from rdflib import Graph, Literal, RDF
+from rdflib import Graph, Literal, RDF, RDFS
 
 from src.classify_part2 import owl_props as P
 from src.classify_part2.context import ConversionContext, EntityRef
@@ -40,7 +40,7 @@ def convert(data: dict, ctx: ConversionContext) -> Graph:
         g.add((uri, P.COMPOSITION_WHOLE, act.uri))
         g.add((uri, P.COMPOSITION_PART,  ind.uri))
         if (desc := entry.get("description")):
-            g.add((uri, DG.summary, Literal(desc)))
+            g.add((uri, RDFS.comment, Literal(desc)))
         if (evidence := entry.get("evidence")):
             g.add((uri, DG.evidence, Literal(evidence)))
 

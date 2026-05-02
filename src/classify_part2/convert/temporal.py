@@ -9,7 +9,7 @@ causes → ``iso15926:CauseOfEvent``.
 
 from __future__ import annotations
 
-from rdflib import Graph, Literal, RDF
+from rdflib import Graph, Literal, RDF, RDFS
 
 from src.classify_part2 import owl_props as P
 from src.classify_part2.context import ConversionContext, EntityRef
@@ -56,7 +56,7 @@ def convert(data: dict, ctx: ConversionContext) -> Graph:
                 g.add((uri, DG.overlap, Literal(rel_kind)))
 
         if (desc := entry.get("description")):
-            g.add((uri, DG.summary, Literal(desc)))
+            g.add((uri, RDFS.comment, Literal(desc)))
         if (evidence := entry.get("evidence")):
             g.add((uri, DG.evidence, Literal(evidence)))
 

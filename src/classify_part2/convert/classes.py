@@ -95,7 +95,7 @@ def _emit_class(
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
     if (note := entry.get("note")):
-        g.add((uri, DG.note, Literal(note)))
+        g.add((uri, RDFS.comment, Literal(note)))
     ctx.register(EntityRef(
         id=cid, kind=kind_tag, uri=uri, label=label,
         subkind=entry.get("kind") or entry.get("iso_class") or "",

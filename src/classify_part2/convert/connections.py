@@ -9,7 +9,7 @@ context first.
 
 from __future__ import annotations
 
-from rdflib import Graph, Literal, RDF
+from rdflib import Graph, Literal, RDF, RDFS
 
 from src.classify_part2 import owl_props as P
 from src.classify_part2.context import ConversionContext, EntityRef
@@ -42,8 +42,8 @@ def convert(data: dict, ctx: ConversionContext) -> Graph:
 
         uri = mint_ext(ctx.ext_ns, kind="conn", ident=cid)
         g.add((uri, RDF.type, cls))
-        g.add((uri, DG.fromEndpoint, a.uri))
-        g.add((uri, DG.toEndpoint,   b.uri))
+        g.add((uri, P.CONNECTION_SIDE1, a.uri))
+        g.add((uri, P.CONNECTION_SIDE2, b.uri))
 
         if (nature := entry.get("nature")):
             g.add((uri, DG.nature, Literal(nature)))
@@ -51,7 +51,7 @@ def convert(data: dict, ctx: ConversionContext) -> Graph:
         if direction != "unspecified":
             g.add((uri, DG.direction, Literal(direction)))
         if (desc := entry.get("description")):
-            g.add((uri, DG.summary, Literal(desc)))
+            g.add((uri, RDFS.comment, Literal(desc)))
         if (evidence := entry.get("evidence")):
             g.add((uri, DG.evidence, Literal(evidence)))
 

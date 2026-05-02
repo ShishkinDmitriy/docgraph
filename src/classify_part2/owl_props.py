@@ -69,3 +69,12 @@ REPR_SIGN        = _p("hasSign")
 
 # Property (Part 2 §5.2.26). The bearer is the possessor.
 PROPERTY_POSSESSOR = _p("hasPossessor")
+
+# ConnectionOfIndividual (Part 2 §5.2.21) — two endpoints.
+CONNECTION_SIDE1 = _p("hasSide1")
+CONNECTION_SIDE2 = _p("hasSide2")
+
+# Generic datatype property — Part 2's flexible "the literal content of an
+# information representation / a number / a time". Used for sign content,
+# numeric values, time strings, etc.
+HAS_CONTENT = _p("hasContent")

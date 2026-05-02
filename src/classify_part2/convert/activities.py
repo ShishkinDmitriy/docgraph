@@ -1,5 +1,18 @@
 """Convert prompt #2 (Activities & events) JSON output to Part 2 Turtle.
 
+Each begin/end produces three nodes per Part 2 §5.2.9:
+
+  <act/X>           a iso15926:Activity ; rdfs:label "..." .
+  <tb/X-begin>      a iso15926:Beginning ;          # IS-A CompositionOfIndividual
+                    iso15926:hasWhole <act/X> ;     # the activity bounded
+                    iso15926:hasPart  <time/X-begin> .  # the time it occurs
+  <time/X-begin>    a iso15926:PointInTime ;
+                    iso15926:hasContent "2025-01-17"^^xsd:date .
+
+Natural-language times that don't parse to ISO-8601 produce a
+``PeriodInTime`` instead of ``PointInTime`` and get ``dg:status
+dg:Unresolved`` so callers can find them.
+
 JSON shape::
 
     {"activities": [
@@ -15,11 +28,12 @@ from __future__ import annotations
 import re
 from datetime import date, datetime
 
-from rdflib import BNode, Graph, Literal, RDF, RDFS, URIRef, XSD
+from rdflib import Graph, Literal, RDF, RDFS, URIRef, XSD
 
+from src.classify_part2 import owl_props as P
 from src.classify_part2.context import ConversionContext, EntityRef
 from src.classify_part2.ns import DG, ISO15926
-from src.classify_part2.uri import mint_ext
+from src.classify_part2.uri import mint_ext, slugify
 
 _ISO_DATE_RE     = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _ISO_DATETIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T")
@@ -49,7 +63,7 @@ def _emit_activity(g: Graph, entry: dict, ctx: ConversionContext) -> None:
     g.add((uri, RDFS.label, Literal(label)))
 
     if (summary := entry.get("summary")):
-        g.add((uri, DG.summary, Literal(summary)))
+        g.add((uri, RDFS.comment, Literal(summary)))
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
 
@@ -71,22 +85,30 @@ def _attach_temporal_bound(
     *,
     suffix: str,
 ) -> None:
-    """Reify a Beginning / Ending bound from a raw begin/end string."""
+    """Mint a Beginning/Ending + PointInTime/PeriodInTime per Part 2 §5.2.9.
+
+    Beginning ``rdfs:subClassOf`` CompositionOfIndividual: the bound's
+    *whole* is the activity, the *part* is the time individual.
+    """
     if not raw:
         return
 
     bound_uri = mint_ext(ctx.ext_ns, kind="tb", ident=suffix)
     g.add((bound_uri, RDF.type, bound_class))
+    g.add((bound_uri, P.COMPOSITION_WHOLE, activity_uri))
 
+    time_uri = mint_ext(ctx.ext_ns, kind="time", ident=f"{suffix}-{slugify(raw)}")
     typed = _typed_temporal_literal(raw)
     if typed is not None:
-        g.add((bound_uri, DG.atTime, typed))
+        g.add((time_uri, RDF.type, ISO15926.PointInTime))
+        g.add((time_uri, P.HAS_CONTENT, typed))
     else:
-        # Natural-language date — preserve verbatim, mark unresolved.
-        g.add((bound_uri, DG.atTime, Literal(raw)))
-        g.add((bound_uri, DG.status, DG.Unresolved))
+        # Natural-language phrase — preserve verbatim, mark unresolved.
+        g.add((time_uri, RDF.type, ISO15926.PeriodInTime))
+        g.add((time_uri, P.HAS_CONTENT, Literal(raw)))
+        g.add((time_uri, DG.status, DG.Unresolved))
 
-    g.add((activity_uri, DG.hasBound, bound_uri))
+    g.add((bound_uri, P.COMPOSITION_PART, time_uri))
 
 
 def _typed_temporal_literal(raw: str) -> Literal | None:

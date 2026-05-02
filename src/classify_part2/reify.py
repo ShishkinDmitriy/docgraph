@@ -116,12 +116,12 @@ def add_property_range(
     if minimum is not None:
         lo = mint_ext(ext_ns, kind="lb", ident=str(prop).rsplit("/", 1)[-1])
         g.add((lo, RDF.type, ISO15926.LowerBoundOfPropertyRange))
-        g.add((lo, DG.numericValue, Literal(minimum)))
+        g.add((lo, ISO15926.hasContent, Literal(minimum)))
         g.add((rng, DG.lowerBound, lo))
     if maximum is not None:
         hi = mint_ext(ext_ns, kind="ub", ident=str(prop).rsplit("/", 1)[-1])
         g.add((hi, RDF.type, ISO15926.UpperBoundOfPropertyRange))
-        g.add((hi, DG.numericValue, Literal(maximum)))
+        g.add((hi, ISO15926.hasContent, Literal(maximum)))
         g.add((rng, DG.upperBound, hi))
 
     return rng

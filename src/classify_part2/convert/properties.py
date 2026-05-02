@@ -50,9 +50,8 @@ def convert_qualitative(data: dict, ctx: ConversionContext) -> Graph:
         g.add((uri, RDF.type, cls_uri))
         g.add((uri, P.PROPERTY_POSSESSOR, bearer.uri))
         g.add((uri, RDFS.label, Literal(str(value))))
-        g.add((uri, DG.value, Literal(str(value))))
         if (desc := entry.get("description")):
-            g.add((uri, DG.summary, Literal(desc)))
+            g.add((uri, RDFS.comment, Literal(desc)))
         if (evidence := entry.get("evidence")):
             g.add((uri, DG.evidence, Literal(evidence)))
 
@@ -98,7 +97,7 @@ def convert_quantitative(data: dict, ctx: ConversionContext) -> Graph:
         minv  = entry.get("min")
         maxv  = entry.get("max")
         if exact is not None:
-            g.add((uri, DG.numericValue, Literal(str(exact))))
+            g.add((uri, P.HAS_CONTENT, Literal(str(exact))))
         elif minv is not None or maxv is not None:
             rng = reify.add_property_range(
                 g, ext_ns=ctx.ext_ns, prop=uri,
@@ -108,7 +107,7 @@ def convert_quantitative(data: dict, ctx: ConversionContext) -> Graph:
             g.add((uri, DG.hasRange, rng))
 
         if (desc := entry.get("description")):
-            g.add((uri, DG.summary, Literal(desc)))
+            g.add((uri, RDFS.comment, Literal(desc)))
         if (evidence := entry.get("evidence")):
             g.add((uri, DG.evidence, Literal(evidence)))
 

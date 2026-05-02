@@ -58,13 +58,13 @@ def convert(data: dict, ctx: ConversionContext) -> Graph:
         g.add((uri, P.COMPOSITION_WHOLE, whole.uri))
         g.add((uri, P.COMPOSITION_PART,  part.uri))
         if rel_kind == "informational":
-            g.add((uri, DG.note, Literal("informational")))
+            g.add((uri, RDFS.comment, Literal("informational")))
         if rel_kind == "other":
             g.add((uri, DG.status, DG.Unresolved))
             if (note := entry.get("note")):
-                g.add((uri, DG.note, Literal(note)))
+                g.add((uri, RDFS.comment, Literal(note)))
         if (desc := entry.get("description")):
-            g.add((uri, DG.summary, Literal(desc)))
+            g.add((uri, RDFS.comment, Literal(desc)))
         if (evidence := entry.get("evidence")):
             g.add((uri, DG.evidence, Literal(evidence)))
 
