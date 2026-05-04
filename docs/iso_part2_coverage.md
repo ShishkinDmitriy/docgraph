@@ -53,7 +53,7 @@
 | 5.2.13 | Roles and domains | 7 | | 1 | | 6 | | |
 | 5.2.14 | Classes of class of relationship | 3 | | | | 3 | | |
 | 5.2.15 | Functions | 3 | | | | 3 | | |
-| 5.2.16 | Representations of things | 6 | 3 | 1 | | 2 | | |
+| 5.2.16 | Representations of things | 6 | 5 | 1 | | 0 | | |
 | 5.2.17 | Classes of representation | 8 | 1 | | | 7 | | |
 | 5.2.18 | EXPRESS and UTC representations | 8 | | | 1 | | | 7 |
 | 5.2.19 | Classes of class of representation | 11 | | | | 11 | | |
@@ -275,8 +275,8 @@ Mathematical mappings between domains. Engineering "function the part performs" 
 | 5.2.16.2 | `description` | P12 | 🔁 | when `representation_kind="description"`, code skips reification and writes plain `rdfs:comment` (`convert/identifiers.py:71`) |
 | 5.2.16.3 | `identification` | P12/P14 | ✅ | per identifier (P12), per revision/version label (P14) |
 | 5.2.16.4 | `representation_of_thing` | P12 | ✅ | when `representation_kind="cross_reference"` |
-| 5.2.16.5 | `responsibility_for_representation` | P12 | ❌ | "ACME assigned tag P-101" — prompt-12 captures the *what* but not the *who-assigned-it* |
-| 5.2.16.6 | `usage_of_representation` | P12 | ❌ | "the operations team uses tag P-101" — same gap as 5.2.16.5 |
+| 5.2.16.5 | `responsibility_for_representation` | P12 | ✅ | when P12 sets `assigned_by` to an already-extracted org/person; emits a sibling reified node alongside the Identification (`convert/identifiers.py:99–105`) |
+| 5.2.16.6 | `usage_of_representation` | P12 | ✅ | when P12 sets `used_by` to an already-extracted org/person; same shape as 5.2.16.5 |
 
 ## 5.2.17 Classes of representation
 

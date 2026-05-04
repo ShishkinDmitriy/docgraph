@@ -85,6 +85,16 @@ For each representation:
 - system:              optional — the naming or identification system
                        (e.g. "ISO", "ANSI", "internal_tag", "url",
                        "doi", "iec"), or "" if not stated
+- assigned_by:         optional — id of an already-extracted organization
+                       or person who took responsibility for assigning
+                       this representation (e.g. "ACME assigned tag
+                       P-101", "Crossref assigned this DOI", "ISO
+                       maintains this standard"). Leave "" when not stated.
+- used_by:             optional — id of an already-extracted organization
+                       or person who uses this representation (without
+                       necessarily being responsible for it). Distinct
+                       from assigned_by — usage does not imply
+                       responsibility. Leave "" when not stated.
 - description:         one short phrase of context, or ""
 - evidence:            verbatim quote from the document
 
@@ -122,6 +132,8 @@ Reply with a single JSON object, no prose, no fences:
                              "cross_reference",
       "value":               "...",
       "system":              "",
+      "assigned_by":         "",
+      "used_by":             "",
       "description":         "",
       "evidence":            "..."
     }
@@ -169,6 +181,20 @@ ext:rep-iban-de83  a  iso15926:Identification ;
 
 Cross-references skip the sign step and keep an `dg:externalRef` literal
 since the target lives outside our graph.
+
+When `assigned_by` is set, a sibling
+`iso15926:ResponsibilityForRepresentation` node is minted alongside the
+representation:
+
+```turtle
+ext:resp-rep-iban-de83  a iso15926:ResponsibilityForRepresentation ;
+    iso15926:hasControlled ext:rep-iban-de83 ;
+    iso15926:hasController ext:org-acme-bank .
+```
+
+`used_by` mints a parallel `iso15926:UsageOfRepresentation` (`hasUsed` /
+`hasUser`). Both are independent of the Identification node and either,
+both, or neither may be present.
 
 The source document itself gets a default `Identification` entry minted
 by the converter from the registered file metadata (slug + sha hash) —

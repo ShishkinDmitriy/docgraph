@@ -67,6 +67,14 @@ ROLE_PLAYER = _p("hasPlayer")
 REPR_REPRESENTED = _p("hasRepresented")
 REPR_SIGN        = _p("hasSign")
 
+# ResponsibilityForRepresentation (Part 2 §5.2.16.5) — controller administers
+# the controlled representation. UsageOfRepresentation (§5.2.16.6) — user
+# uses the used representation. Different relationships, same-shape pair.
+RESP_CONTROLLED = _p("hasControlled")
+RESP_CONTROLLER = _p("hasController")
+USAGE_USED      = _p("hasUsed")
+USAGE_USER      = _p("hasUser")
+
 # Property (Part 2 §5.2.26). The bearer is the possessor.
 PROPERTY_POSSESSOR = _p("hasPossessor")
 

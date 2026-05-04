@@ -95,6 +95,24 @@ def _emit(g: Graph, entry: dict, ctx: ConversionContext) -> None:
     if (evidence := entry.get("evidence")):
         g.add((uri, DG.evidence, Literal(evidence)))
 
+    # Part 2 §5.2.16.5 / §5.2.16.6 — responsibility and usage of the
+    # representation. Both sit alongside the Identification/Definition node;
+    # neither replaces it.
+    if (controller_id := entry.get("assigned_by")):
+        controller = ctx.get(controller_id)
+        if controller is not None:
+            resp = mint_ext(ctx.ext_ns, kind="resp", ident=rid)
+            g.add((resp, RDF.type, ISO15926.ResponsibilityForRepresentation))
+            g.add((resp, P.RESP_CONTROLLED, uri))
+            g.add((resp, P.RESP_CONTROLLER, controller.uri))
+    if (user_id := entry.get("used_by")):
+        user = ctx.get(user_id)
+        if user is not None:
+            use = mint_ext(ctx.ext_ns, kind="use", ident=rid)
+            g.add((use, RDF.type, ISO15926.UsageOfRepresentation))
+            g.add((use, P.USAGE_USED, uri))
+            g.add((use, P.USAGE_USER, user.uri))
+
     ctx.register(EntityRef(id=rid, kind="representation", uri=uri,
                            label=f"{rep_kind}: {value}"))
 
