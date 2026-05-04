@@ -46,10 +46,34 @@ For each individual:
 - id:        short slug (lowercase, hyphenated, unique within this doc)
 - label:     short human-readable name as it appears in the document
 - kind:      one of the categories above
+- existence: "actual" or "possible" — see below; default "actual"
 - aliases:   other names the document uses for the same individual ([] if none)
 - summary:   one-sentence description (or "" if none warranted)
 - evidence:  verbatim quote
 - note:      free-text only when needed (e.g. for "other")
+
+`existence` distinguishes things the document describes as **real, in-service,
+observed, or already-happened** (`"actual"`) from things described as
+**planned, designed, proposed, specified-but-not-yet-built, requested,
+or hypothetical** (`"possible"`).
+
+Default `"actual"`. Choose `"possible"` only when the document is clearly
+forward-looking or hypothetical about *this specific* individual.
+
+Examples — `"actual"`:
+- "Pump P-101 was inspected on 2024-03-15"          (already happened)
+- "ACME Corporation"                                 (a real org)
+- "John Smith signed the purchase order"             (a person who acted)
+- "the existing feed line"                           (in-service)
+
+Examples — `"possible"`:
+- "the proposed Phase-2 expansion will include …"    (planned)
+- "P-201 (TBD): replacement for P-101"               (designed, not built)
+- "this specification covers a future control valve" (forward-looking)
+- "in the design, V-103 is sized for 50 m³/h"        (hypothetical / on paper)
+
+If the document mixes — e.g. "Pump P-101 (existing) and Pump P-201 (planned
+2026 retrofit)" — emit two entries with different `existence` values.
 
 Deduplicate: if "P-101" and "pump P-101" refer to the same thing, emit one
 entry with both names in `label`/`aliases`.
@@ -73,6 +97,7 @@ Reply with a single JSON object, no prose, no fences:
       "label": "...",
       "kind": "person" | "organization" | "physical_object" |
               "functional_object" | "location" | "stream" | "other",
+      "existence": "actual" | "possible",
       "aliases": ["..."],
       "summary": "...",
       "evidence": "...",
@@ -98,6 +123,19 @@ If no named individuals are described, return {"individuals": [], "locations_of"
 
 ## Converter mapping
 
+Every individual is typed by **a stack** of classes, not just one:
+
+1. **Modal axis** — chosen by `existence`:
+   - `"actual"`   → `iso15926:ActualIndividual`
+   - `"possible"` → `iso15926:PossibleIndividual`
+2. **Perspective axis** — always `iso15926:WholeLifeIndividual` (P03 has no
+   time-slice semantics; every extracted individual is the whole-life view).
+3. **Kind axis** — chosen by `kind` (the table below).
+4. **Specific class** — the minted `ClassOf*` subclass (column 3).
+
+When two axes pick the same class (e.g. `kind="person"` whose kind class is
+also `WholeLifeIndividual`), it is emitted only once.
+
 | `kind` | Part 2 individual class | Default classifier (ClassOf*) |
 |---|---|---|
 | person | `WholeLifeIndividual` | `ClassOfPerson` |
@@ -106,11 +144,14 @@ If no named individuals are described, return {"individuals": [], "locations_of"
 | functional_object | `FunctionalPhysicalObject` | `ClassOfFunctionalObject` |
 | location | `SpatialLocation` | (none unless prompt #5 supplies one) |
 | stream | `Stream` | (none unless prompt #5 supplies one) |
-| other | `ActualIndividual` | `dg:status dg:Unresolved` |
+| other | (none — only the modal class above) | `dg:status dg:Unresolved` |
 
-The "default classifier" is the broad Part 2 kind. **Specific** classes
-(e.g. "centrifugal pump") come from prompt #5; this prompt only attaches
-the broad kind.
+When the kind class would equal the modal class (the legacy `kind="other"`
+fallback), the converter dedupes — only the modal triple is emitted in
+that case.
+
+**Specific** classes (e.g. "centrifugal pump") come from prompt #5; this
+prompt only attaches the broad kind.
 
 Aliases become `skos:altLabel` triples on the individual.
 

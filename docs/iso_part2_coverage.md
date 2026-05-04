@@ -16,10 +16,22 @@
 | **Code** | verified state in the converter code: |
 |   `✅` | code emits this exact `iso15926:X` `rdf:type` triple |
 |   `🔁` | code emits a docgraph shortcut (`dg:locatedAt`, `dg:hasRole`, `rdfs:subClassOf`, `skos:altLabel`, `rdfs:comment`, …) instead of the Part 2 reified node |
-|   `📝` | encoded as a typed literal (xsd:date, xsd:dateTime) rather than a Part 2 node |
+|   `⚠️` | code emits the class but uses it semantically wrong (e.g. modal class used as kind fallback) — see Finding 4 |
+|   `📝` | encoded as a typed literal (xsd:date, xsd:dateTime, xsd:integer, xsd:decimal). Part 2 strictly says every number is its own individual; we accept the literal form as a deliberate trade-off. |
 |   `❌` | declared by a prompt but no converter emits it — **either an aspirational prompt-doc claim or a real implementation gap** |
 |   `meta` | Part 2 root / supertype; never expected as instance |
-|   `—` | intentionally out of scope (e.g. EXPRESS primitive types) |
+|   `—` | parked — no decision yet (e.g. EXPRESS primitive types) or intentionally out of scope |
+
+## Decisions captured 2026-05-03
+
+- **Numbers as `xsd:integer` / `xsd:decimal` literals — accepted**. ISO Part 2 strictly says "2 is an individual, 3 is an individual, …" — we knowingly diverge. §5.2.5 rows marked 📝 are *not* gaps.
+- **EXPRESS_xxx (5.2.18.1–7) — parked**. No decision yet; left as `—`.
+- **Modal × perspective × identity classes must stack — current converter conflates them** (defect, see Finding 4):
+  - **Modal axis (§5.2.6.1, §5.2.6.11)**: `ActualIndividual` = "really exists in the world"; `PossibleIndividual` = "planned / designed / not yet existing". Every individual should carry exactly one of these. Today: never emitted.
+  - **Perspective axis (§5.2.6.15, §5.2.6.14)**: `WholeLifeIndividual` = "this URI denotes the whole life of the entity"; `TemporalWholePart` = "this URI denotes a specific time-slice". Almost every individual is a `WholeLifeIndividual` view by default. Today: emitted only for `kind=person` / `kind=organization` and used *as the kind*, not as a perspective.
+  - **Identity / kind axis (§5.2.6.7, §5.2.6.10, §5.2.6.12, §5.2.6.13, …)**: `PhysicalObject`, `FunctionalPhysicalObject`, `SpatialLocation`, `Stream`, etc. — the "what is it". Today: emitted, but for persons/orgs it's *replaced* by the perspective class.
+  - **Specific class axis (5.2.8.*)**: the minted `ClassOf*` (e.g. `:cls/centrifugal-pump`). Today: emitted.
+  - Correct stacking for "the centrifugal pump P-101": `iso:FunctionalPhysicalObject` (kind) + `iso:ActualIndividual` (modal) + `iso:WholeLifeIndividual` (perspective) + `:cls/centrifugal-pump` (specific). Currently we emit only the first and last.
 | **Trigger / notes** | what kind of source content actually causes this concept to appear in the graph (or, for `❌`/`TBD`, what would have to change). |
 
 ## Coverage summary
@@ -31,7 +43,7 @@
 | 5.2.3  | Classes of class | 4 | | | | 4 | | |
 | 5.2.4  | Multidimensional objects | 2 | | | | 2 | | |
 | 5.2.5  | Numbers | 12 | | | 4 | 4 | | 4 |
-| 5.2.6  | Possible individuals | 15 | 9 | | | 6 | | |
+| 5.2.6  | Possible individuals | 15 | 11 | | | 4 | | |
 | 5.2.7  | Classes of individual | 13 | 4 | 2 | | 7 | | |
 | 5.2.8  | Classes of arranged individual | 18 | 9 | | | 9 | | |
 | 5.2.9  | Activities and events | 10 | 7 | | | 3 | | |
@@ -118,7 +130,7 @@ P03 dispatches by `kind` to emit one of `WholeLifeIndividual` / `PhysicalObject`
 
 | § | Concept | Prompt | Code | Trigger / notes |
 |---|---|---|---|---|
-| 5.2.6.1 | `actual_individual` | P03 | ✅ | when `kind="other"` — the catch-all path; also marks `dg:status dg:Unresolved` |
+| 5.2.6.1 | `actual_individual` | P03 | ✅ | emitted as the modal axis on every individual whose P03 entry has `existence != "possible"` (default). |
 | 5.2.6.2 | `arranged_individual` | P03 | ❌ | the "structured individual" supertype; code uses concrete subclasses |
 | 5.2.6.3 | `arrangement_of_individual` | P08 | ❌ | composition reifier; code maps every relation_kind to `CompositionOfIndividual` / `TemporalWholePart` / `FeatureWholePart`, never `ArrangementOfIndividual` |
 | 5.2.6.4 | `assembly_of_individual` | P08 | ❌ | as 5.2.6.3 |
@@ -128,11 +140,11 @@ P03 dispatches by `kind` to emit one of `WholeLifeIndividual` / `PhysicalObject`
 | 5.2.6.8 | `materialized_physical_object` | P03 | ❌ | not in the `_KIND_MAP` — gap; "there is matter making it up" is rarely a primary fact |
 | 5.2.6.9 | `period_in_time` | P02 | ✅ | when a begin/end phrase fails ISO-8601 parse (e.g. "Q3 2025") — also marked `dg:status dg:Unresolved` |
 | 5.2.6.10 | `physical_object` | P03 | ✅ | when `kind="physical_object"` |
-| 5.2.6.11 | `possible_individual` | P03 | ❌ | the supertype; code never types directly to this |
+| 5.2.6.11 | `possible_individual` | P03 | ✅ | emitted as the modal axis when P03 sets `existence: "possible"` (planned / designed / proposed / forward-looking). |
 | 5.2.6.12 | `spatial_location` | P03 | ✅ | when `kind="location"` — named places |
 | 5.2.6.13 | `stream` | P03 | ✅ | when `kind="stream"` — named flows |
-| 5.2.6.14 | `temporal_whole_part` | P08 | ✅ | when `relation_kind="temporal"` — sub-activity |
-| 5.2.6.15 | `whole_life_individual` | P03/P12 | ✅ | when `kind="person"` or `"organization"`, and as the *sign* in P12 reified identifiers |
+| 5.2.6.14 | `temporal_whole_part` | P08 | ✅ | when `relation_kind="temporal"` — today only sub-activity composition. Object-during-period ("Pump P-101 during Q3 2024") is a real Part 2 use of this class but no current path; design notes in `08_whole_parts.md` § "Future patterns — temporal slices". |
+| 5.2.6.15 | `whole_life_individual` | P03/P12 | ✅ | emitted as the perspective axis on every P03 individual (set-based dedup means `kind="person"` / `"organization"` get one triple, not two). Also the sign in P12 reified identifiers. |
 
 ## 5.2.7 Classes of individual
 
@@ -457,6 +469,40 @@ These are concepts with no prompt and no converter, but they should arguably exi
 ### 3. Reasonable-but-unverified — classes present in `_KIND_MAP` but never tested
 
 Several `_INDIVIDUAL_KINDS` entries (`organism`, `feature`, `material`) are wired but I haven't confirmed any test or fixture document exercises them. Worth a smoke test.
+
+### 4. Modal × perspective × identity classes are conflated (defect)
+
+Per the Decisions section above, every Part 2 individual is meant to carry a stack of orthogonal classifications:
+
+| Axis | Choice | Tells you |
+|---|---|---|
+| Modal | `ActualIndividual` ↔ `PossibleIndividual` | does it really exist, or is it planned/designed? |
+| Perspective | `WholeLifeIndividual` ↔ `TemporalWholePart` (slice) | are we talking about the whole entity, or one time-slice of it? |
+| Identity / kind | `PhysicalObject`, `FunctionalPhysicalObject`, `SpatialLocation`, `Stream`, … | what category is it? |
+| Specific class | minted `ClassOf*` (e.g. `:cls/centrifugal-pump`) | the concrete class the document defines |
+
+Just one axis is never enough — `ActualIndividual` alone says "real, but real *what*?"; `WholeLifeIndividual` alone says "the whole life of *something*, but of what?"; even both together (`Actual + WholeLife`) still don't say what the thing is.
+
+**Today the converter emits exactly two `rdf:type` triples per individual** (`convert/individuals.py:79–98`):
+1. one of {`PhysicalObject`, `FunctionalPhysicalObject`, `SpatialLocation`, `Stream`, `WholeLifeIndividual`, `ActualIndividual`} — chosen by `_KIND_MAP[kind]`;
+2. the minted `ClassOf*` specific class.
+
+The first column collapses three different axes into one position:
+- For `kind="person"` / `"organization"`: emits `WholeLifeIndividual` (perspective) — so the kind is *only* on the minted `ClassOfPerson` subclass; modal axis is missing entirely.
+- For `kind="other"`: emits `ActualIndividual` (modal) as the kind fallback — so a really-existing pump-of-unknown-type and a planned-pump-of-unknown-type would both look identical.
+- For everything else: emits a kind class (`PhysicalObject` etc.) — but no modal and no perspective.
+
+**Correct shape** for "the centrifugal pump P-101":
+```
+:p101  a  iso15926:ActualIndividual ;            # modal: it really exists
+       a  iso15926:WholeLifeIndividual ;         # perspective: this URI is its whole-life view
+       a  iso15926:FunctionalPhysicalObject ;    # kind
+       a  ext:cls/centrifugal-pump .             # specific
+```
+
+For a planned pump in a design spec, swap `ActualIndividual` for `PossibleIndividual` and the rest stays.
+
+**Action required**: revise `_KIND_MAP` and the `_emit_individual` body to emit modal + perspective alongside the kind, not in place of it. Add a P03 prompt-output field for the modal axis (default `actual`, set `possible` for design / planning / specification language).
 
 ## Next steps
 

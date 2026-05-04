@@ -41,15 +41,17 @@ from src.classify_part2.uri import mint_ext
 
 SKOS = Namespace("http://www.w3.org/2004/02/skos/core#")
 
-# kind → (individual class, default ClassOf* metaclass, default kind label)
-_KIND_MAP: dict[str, tuple[URIRef, URIRef, str]] = {
+# kind → (individual class | None, default ClassOf* metaclass, default kind label).
+# None means "no Part 2 kind class beyond the modal axis" — used for `other`,
+# the catch-all when the LLM can't decide what category the thing is.
+_KIND_MAP: dict[str, tuple[URIRef | None, URIRef, str]] = {
     "person":            (ISO15926.WholeLifeIndividual,    ISO15926.ClassOfPerson,                 "Person"),
     "organization":      (ISO15926.WholeLifeIndividual,    ISO15926.ClassOfOrganization,           "Organization"),
     "physical_object":   (ISO15926.PhysicalObject,         ISO15926.ClassOfInanimatePhysicalObject, "PhysicalObject"),
     "functional_object": (ISO15926.FunctionalPhysicalObject, ISO15926.ClassOfFunctionalObject,    "FunctionalObject"),
     "location":          (ISO15926.SpatialLocation,        ISO15926.ClassOfClassOfIndividual,      "SpatialLocation"),
     "stream":            (ISO15926.Stream,                 ISO15926.ClassOfClassOfIndividual,      "Stream"),
-    "other":             (ISO15926.ActualIndividual,       ISO15926.ClassOfClassOfIndividual,      "Individual"),
+    "other":             (None,                            ISO15926.ClassOfClassOfIndividual,      "Individual"),
 }
 
 
@@ -71,12 +73,25 @@ def _emit_individual(g: Graph, entry: dict, ctx: ConversionContext) -> None:
     kind = entry.get("kind") or "other"
     individual_cls, metaclass, default_label = _KIND_MAP.get(kind, _KIND_MAP["other"])
 
+    # Three orthogonal Part 2 axes stacked on every individual:
+    #   - modal       (§5.2.6.1 ActualIndividual / §5.2.6.11 PossibleIndividual)
+    #   - perspective (§5.2.6.15 WholeLifeIndividual — P03 has no time-slice
+    #                   semantics so every extracted individual is whole-life)
+    #   - kind        (§5.2.6.* concrete subclass from _KIND_MAP, may be None)
+    modal_cls = (
+        ISO15926.PossibleIndividual
+        if entry.get("existence") == "possible"
+        else ISO15926.ActualIndividual
+    )
+    type_set: set[URIRef] = {modal_cls, ISO15926.WholeLifeIndividual}
+    if individual_cls is not None:
+        type_set.add(individual_cls)
+
     label = entry.get("label") or iid
     uri = mint_ext(ctx.ext_ns, kind="ind", ident=iid)
 
-    # Strict Part 2: individual is typed by its broad individual class plus
-    # an ad-hoc ClassOf* subclass that captures the kind label.
-    g.add((uri, RDF.type, individual_cls))
+    for cls in type_set:
+        g.add((uri, RDF.type, cls))
     g.add((uri, RDFS.label, Literal(label)))
 
     if (summary := entry.get("summary")):
