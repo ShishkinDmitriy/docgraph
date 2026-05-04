@@ -59,6 +59,9 @@ LIFECYCLE_INTERESTED  = _p("hasInterested")
 # Roles (Part 2 §5.2.13 / §5.2.24).
 ROLE_DOMAIN = _p("hasDomain")
 ROLE_PLAYER = _p("hasPlayer")
+# IntendedRoleAndDomain / PossibleRoleAndDomain (§5.2.24.3-4) — instance-level
+# relationships linking a player to a played role-and-domain.
+ROLE_PLAYED = _p("hasPlayed")
 
 # RepresentationOfThing and subclasses Identification, Definition,
 # Description (Part 2 §5.2.16). hasSign points at the sign (a

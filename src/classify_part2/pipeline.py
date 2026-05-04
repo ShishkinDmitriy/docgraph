@@ -94,10 +94,16 @@ def classify(
         f"evidence coverage: [bold]{nat.evidence_coverage:.0%}[/bold]"
     )
 
-    # ── Doc-kind class for the source document ──
-    # Plain rdf:type only — no reified Classification, since the
-    # classification has no own metadata to carry.
+    # ── Source document axes ──
+    # Source is an actual, whole-life information-object instance. Stack
+    # the same modal + perspective axes that convert/individuals.py applies
+    # to P03-extracted entities (see iso_part2_coverage.md Finding 4). The
+    # doc-kind class supplies the kind axis when nat.doc_kind is set.
+    g.add((ctx.source_uri, RDF.type, ISO15926.ActualIndividual))
+    g.add((ctx.source_uri, RDF.type, ISO15926.WholeLifeIndividual))
     if nat.doc_kind:
+        # Plain rdf:type only — no reified Classification, since the
+        # classification has no own metadata to carry.
         doc_class = reify.mint_class_of(
             g, ext_ns=ctx.ext_ns, label=nat.doc_kind,
             metaclass=ISO15926.ClassOfInformationObject,

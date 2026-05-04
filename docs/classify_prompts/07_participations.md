@@ -41,12 +41,34 @@ roles, emit two participations.
 
 For each participation:
 - id:          short slug (lowercase, hyphenated, unique within this doc)
-- activity:    id of an activity from the list below
+- intent:      "actual", "intended", or "possible" — see below; default
+               "actual"
+- activity:    id of an activity from the list below. REQUIRED when
+               intent="actual"; OPTIONAL and IGNORED for intent="intended"
+               or "possible" (those don't pin down a specific activity).
 - participant: id of an individual from the list below
-- role:        id of a role from the list below, or null if no role is
-               named for this participation
+- role:        id of a role from the list below, or null. REQUIRED when
+               intent="intended" or "possible"; optional for "actual".
 - description: short phrase describing the participation, or ""
 - evidence:    verbatim quote from the document
+
+`intent` distinguishes:
+
+- `"actual"` — the document describes a participation that happened or
+  is happening: audit logs, "John reviewed the report", "Pump P-101
+  pumped fluid in batch 47". The default.
+- `"intended"` — the document designates a planned/expected participant
+  for a role: contracts, design specs, role assignments.
+  Examples: "the auditor for Q3 will be Jane", "ACME is the contracted
+  supplier", "Pump P-101 is intended as the primary feed pump".
+- `"possible"` — the document describes eligibility / candidacy without
+  commitment.
+  Examples: "qualified bidders include ACME, BetaCo", "P-101 could
+  serve as a backup feed pump".
+
+Default `"actual"`. Choose `"intended"` or `"possible"` only when the
+document is clearly forward-looking or hypothetical about *this specific*
+person/role pairing.
 
 Use the ids from the lists exactly as given. Do not invent activity,
 individual, or role ids.
@@ -72,6 +94,7 @@ Reply with a single JSON object, no prose, no fences:
   "participations": [
     {
       "id":          "...",
+      "intent":      "actual" | "intended" | "possible",
       "activity":    "...",
       "participant": "...",
       "role":        "..." | null,
@@ -86,25 +109,46 @@ If no participations can be supported, return {"participations": []}.
 
 ## Converter mapping
 
+| `intent` | Part 2 class | Properties |
+|---|---|---|
+| `actual` | `iso15926:Participation` (§5.2.9.7) | `hasWhole`=activity, `hasPart`=participant; role attached via `dg:hasRole` shortcut |
+| `intended` | `iso15926:IntendedRoleAndDomain` (§5.2.24.3) | `hasPlayer`=participant, `hasPlayed`=role |
+| `possible` | `iso15926:PossibleRoleAndDomain` (§5.2.24.4) | `hasPlayer`=participant, `hasPlayed`=role |
+
 ```turtle
-ext:p-001  a iso15926:Participation ;
-    iso15926:hasParticipant ext:john-smith ;
-    iso15926:participantInActivity ext:audit-2024-q1 ;
-    iso15926:hasRole ext:lead-auditor-role ;
-    dg:summary "John served as lead auditor of the Q1 2024 audit." ;
+# intent="actual"
+ext:part-001  a iso15926:Participation ;
+    iso15926:hasWhole ext:audit-2024-q1 ;
+    iso15926:hasPart  ext:john-smith ;
+    dg:hasRole ext:role-lead-auditor ;
     dg:evidence "John Smith led the Q1 audit." .
+
+# intent="intended"
+ext:irad-002  a iso15926:IntendedRoleAndDomain ;
+    iso15926:hasPlayer ext:jane-doe ;
+    iso15926:hasPlayed ext:role-auditor ;
+    dg:evidence "The auditor for Q3 will be Jane Doe." .
+
+# intent="possible"
+ext:prad-003  a iso15926:PossibleRoleAndDomain ;
+    iso15926:hasPlayer ext:pump-p101 ;
+    iso15926:hasPlayed ext:role-feed-pump ;
+    dg:evidence "P-101 could serve as a backup feed pump." .
 ```
 
-When a role is set, the converter additionally emits an
-`IntendedRoleAndDomain` reifying that the participant fills the role
-concept in this specific domain. Skipped when `role: null`. Exact property
-names are verified against the OWL at implementation time.
+For `intent="intended"` and `intent="possible"`, the entry is **skipped**
+when `role` is null (these relationships have no meaning without a played
+role concept).
 
 ## Decisions
 
 - One participation per (activity, participant, role) triple. Same pair
   with different roles → two participations. 2026-04-29.
-- `role` is optional. No-role participation is kept (still a real link).
+- `role` is optional for `intent="actual"`, REQUIRED for `intended` /
+  `possible`. No-role actual participation is kept (still a real link).
   2026-04-29.
-- `IntendedRoleAndDomain` reification emitted only when a role is present.
-  2026-04-29.
+- For `intent="actual"`, role attached via `dg:hasRole` shortcut rather
+  than reifying an additional IntendedRoleAndDomain — the Participation's
+  endpoints already carry the same information. 2026-04-29.
+- `intent` axis added 2026-05-04 to distinguish actual / intended /
+  possible role-and-domain relationships per Part 2 §5.2.24.

@@ -61,7 +61,7 @@
 | 5.2.21 | Connections | 8 | 3 | | | 5 | | |
 | 5.2.22 | Relative locations and sequences | 6 | 1 | 1 | | 4 | | |
 | 5.2.23 | Lifecycle stages and approvals | 5 | 4 | | | 1 | | |
-| 5.2.24 | Possible and intended roles | 4 | 1 | 1 | | 2 | | |
+| 5.2.24 | Possible and intended roles | 4 | 3 | | | 1 | | |
 | 5.2.25 | Set operations | 4 | | | | 4 | | |
 | 5.2.26 | Properties | 6 | 1 | | | 5 | | |
 | 5.2.27 | Classes of property | 9 | 4 | | | 5 | | |
@@ -373,10 +373,10 @@ Part 2's `namespace` is reified per-thing. Today docgraph uses RDF/Turtle prefix
 
 | § | Concept | Prompt | Code | Trigger / notes |
 |---|---|---|---|---|
-| 5.2.24.1 | `class_of_intended_role_and_domain` | P06 | ❌ | "the intended buyer is …" the type — no path |
-| 5.2.24.2 | `class_of_possible_role_and_domain` | P06 | ✅ | every prompt-6 entry (the only Part 2 type P06 emits) |
-| 5.2.24.3 | `intended_role_and_domain` | P07 | ❌ | per-instance intended role — never reified |
-| 5.2.24.4 | `possible_role_and_domain` | P07 | 🔁 | `convert/participations.py:50` shortcuts as `dg:hasRole`; no per-participation reified role node |
+| 5.2.24.1 | `class_of_intended_role_and_domain` | P06 | ❌ | the *type* of intended role assignment — class-level, not yet emitted (P06 emits only ClassOfPossibleRoleAndDomain) |
+| 5.2.24.2 | `class_of_possible_role_and_domain` | P06 | ✅ | every prompt-6 entry |
+| 5.2.24.3 | `intended_role_and_domain` | P07 | ✅ | when P07 sets `intent="intended"` and a role is given (`convert/participations.py:_emit_role_and_domain`) |
+| 5.2.24.4 | `possible_role_and_domain` | P07 | ✅ | when P07 sets `intent="possible"` and a role is given. Note: when `intent="actual"` (default), the role is still attached via `dg:hasRole` shortcut on the Participation node, since the Participation's own endpoints carry the same information. |
 
 ## 5.2.25 Set operations
 
