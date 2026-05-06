@@ -1,6 +1,6 @@
 # DocGraph — Architecture Design Notes
 
-> Session date: 2026-04-15. Last updated: **2026-05-06** (groomed: dropped the dead Phase 1–4 analyzer pipeline that the 14-prompt classifier in `src/classify_part2/` replaced; trimmed cascade-delete and SHACL-derivation deep dives; deduped structural-class declarations; pruned open questions; connected the 14-prompt classifier to the template model). Read this file at the start of any session continuing this design.
+> Session date: 2026-04-15. Last updated: **2026-05-06** (groomed: dropped the dead Phase 1–4 analyzer pipeline that the 14-prompt classifier in `src/classify_part2/` replaced; trimmed cascade-delete and SHACL-derivation deep dives; deduped structural-class declarations; pruned open questions; connected the 14-prompt classifier to the template model; split foundational reference material into `docs/architecture/{meta-ontology,information-objects,provenance}.md`; dropped the verbose `tpl:Invocation` sub-template syntax and demoted it to an open question; cleaned `dg:noPart2Anchor` and `cache/{lifts,anchors}/` vestiges of dead Phase pipeline). Read this file at the start of any session continuing this design.
 
 ## Vision
 
@@ -412,19 +412,15 @@ meta.ttl       ← imports ISO 15926 Part 2 + declares dg: and tpl: extensions
                   dg:Modality, dg:Mandatory/Preferred/Optional/Prohibited, dg:modality,
                   dg:status, dg:Unresolved, dg:IngestionRecord,
                   dg:defines, dg:Classes/Properties/Individuals,
-                  dg:noPart2Anchor, dg:text, dg:locator,
+                  dg:text, dg:locator,
                   tpl:Template, tpl:Slot, tpl:slot, tpl:range, tpl:minCount,
                   tpl:maxCount, tpl:lifted, tpl:lowered, tpl:subject,
-                  tpl:definition,
-                  tpl:Invocation, tpl:invokes, tpl:bind, tpl:role, tpl:value,
-                  tpl:wasInstantiatedFrom, etc.)
+                  tpl:definition)
 sources.ttl    ← empty registry
 templates.ttl  ← empty template registry (which template files are loaded)
 graphs/        ← contains only an empty _unresolved.ttl
 cache/
   pdfmd/       ← PDF → Markdown cache (per-document, key = doc hash)
-  lifts/       ← LLM-discovered lift rules (per-predicate, key = predicate URI)
-  anchors/     ← LLM-discovered Part 2 anchors (per-class, key = class URI)
   templates/   ← LLM-discovered templates, user-approved (per-template URI)
 ```
 
@@ -454,7 +450,18 @@ when scale demands it.
    time. Probably yes for instance-form templates (anchor node is natural),
    unclear for pattern-form templates (no anchor).
 
-3. **Templates: versioning & replacement**: When a template definition
+3. **Templates: sub-template composition syntax**: A template's lowered
+   body should be able to invoke another template by name (so leaf
+   templates are the only places raw Part 2 appears, everything else
+   composes leaves). The earlier `tpl:Invocation / tpl:invokes / tpl:bind /
+   tpl:role / tpl:value` proposal was rejected as too verbose. Likely
+   replacement: embed a typed instance of the invoked template directly in
+   the lowered body, with slot bindings as plain properties — but the
+   exact shape (how slot URIs resolve, prefix conventions) is open.
+   Whatever form wins must be recursively expanded at template-load time,
+   with circular-invocation detection.
+
+4. **Templates: versioning & replacement**: When a template definition
    changes (slot added, lowered body restructured) and there are existing
    expanded instances on disk, what's the migration story? Options: (a)
    re-expand all affected sources from cached LLM outputs (requires keeping
@@ -463,7 +470,7 @@ when scale demands it.
    (c) require explicit `docgraph templates migrate <uri>` with diff preview.
    Probably (c) for explicit breaking changes, (b) for additive ones.
 
-4. **Templates: foreign-Part-2 recognition at ingest**: When ingesting a
+5. **Templates: foreign-Part-2 recognition at ingest**: When ingesting a
    TTL that already contains reified Part 2 clusters (not authored as
    templates), should ingest try to recognize known templates and re-author
    as instance-form, or leave the raw reified form? Recognition is cheap
@@ -472,7 +479,7 @@ when scale demands it.
    template instances"). Probably leave-raw by default, with
    `docgraph templates fold <source>` as an explicit pass.
 
-5. **Subject classifier implementation**: The subject-typed filling step
+6. **Subject classifier implementation**: The subject-typed filling step
    needs a fragment-to-Part-2-subject classifier. Options: (a) rule-based on
    extractor cues (table-row → likely Possession; verb-phrase → likely
    Activity); (b) lightweight LLM pass (cheap model, single classification
@@ -481,7 +488,7 @@ when scale demands it.
    descriptor and lowered side a `tpl:subject` annotation. Probably (a)+(b)
    hybrid: rules where they're obvious, LLM fallback otherwise.
 
-6. **Pattern-index signature shape**: How deep should subgraph signatures go
+7. **Pattern-index signature shape**: How deep should subgraph signatures go
    (2-walks vs 3-walks vs bounded-by-reification-cluster)? Type-only or
    predicate-aware? Promotion threshold `k`? Defaults: bounded by the
    enclosing reified cluster (e.g., one full `Description` tuple),
@@ -489,7 +496,7 @@ when scale demands it.
    Risk of the deeper-walk setting: signatures explode combinatorially.
    Risk of shallow: too many spurious matches.
 
-7. **Structural-template extraction scope**: Which document features count
+8. **Structural-template extraction scope**: Which document features count
    as "structural repetition" worth lifting at state-0? Tables yes; numbered
    lists yes; key-value blocks (forms) yes; prose paragraphs no. Edge cases:
    nested tables, tables with merged cells, diagrams with consistent

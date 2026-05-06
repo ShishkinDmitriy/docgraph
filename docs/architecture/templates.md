@@ -2,40 +2,35 @@
 
 Templates are the **universal LLM-emit and storage-grounding mechanism**. Every
 assertion the LLM produces is a template instance; every domain ontology is a
-template library; every Part 2 reified cluster on disk is the *lowered form* of a
-template. The lifted form is the LLM's vocabulary; the lowered form is the canonical
-storage representation. Storage stays uniformly Part 2-shaped because every template's
-lowered body is grounded to Part 2 (or as close as the template's author chose to go).
+template library; every Part 2 reified cluster on disk is the *lowered form* of
+a template. The lifted form is the LLM's vocabulary; the lowered form is the
+canonical storage representation. There is no separate "raw triple" emit path —
+even a one-line datatype assertion (`ext:invoice-001 dom:hasVatNumber "DE…"`)
+is a template instance whose template happens to have a 1-triple lowered body
+(a *pass-through* template; see "The reification spectrum" below).
 
 Three motivations:
 
-1. **Compression at the LLM + human boundary.** A `SourcedAssertion` is one named
-   bundle of {document, quote text, locator, references}; the equivalent reified
-   Part 2 form is ~5 nodes / ~13 triples. The LLM emits the bundle as JSON; the
-   engine expands.
-2. **Domain ontologies as template libraries.** Part 2 has no `dom:hasVatNumber` —
-   the predicate exists only as the lifted form of a template whose lowered body
-   says, in proper Part 2 shape, what the assertion really is. The financial domain,
-   the procurement domain, the equipment domain — each is a directory of templates
-   under `data/templates/`, not a separate OWL ontology with hand-rolled
-   `owl:DatatypeProperty` declarations. See "Domain ontologies as template
-   libraries" below.
+1. **Compression at the LLM + human boundary.** A `SourcedAssertion` is one
+   named bundle of {document, quote text, locator, references}; the equivalent
+   reified Part 2 form is ~5 nodes / ~13 triples. The LLM emits the bundle as
+   JSON; the engine expands.
+2. **Domain ontologies as template libraries.** Part 2 has no
+   `dom:hasVatNumber` — the predicate exists only as the lifted form of a
+   template whose lowered body says, in proper Part 2 shape, what the
+   assertion really is. Each domain (financial, procurement, equipment) is a
+   directory of templates under `data/templates/<domain>/`, not a separate OWL
+   ontology. See "Domain ontologies as template libraries" below.
 3. **Foreign ontologies as bridge libraries.** PROV-O, schema.org, and similar
-   external vocabularies become *bridge templates* whose lifted form is the foreign
-   idiom and whose lowered form is the equivalent reified Part 2 cluster. This
-   subsumes Phase 3 anchors (a 1-triple-↔-1-triple template) and Phase 2 lift rules
-   (a foreign-pattern-↔-canonical-pattern template) as degenerate cases.
+   external vocabularies become *bridge templates* whose lifted form is the
+   foreign idiom and whose lowered form is the equivalent reified Part 2
+   cluster.
 
-Templates are first-class **as definitions** (URIs, files, registry, inspectable,
-version-controlled) but **not as stored instances** — a template-instance is expanded
-to reified Part 2 before being written to a graph file. We can flip to "store as
-templates, materialize Part 2 on demand" later without losing data; starting with
-expanded storage keeps every existing consumer working unchanged.
-
-There is no separate "raw triple" emit path. Even a one-line datatype assertion
-(`ext:invoice-001 dom:hasVatNumber "DE…"`) is a template instance — its template
-just happens to have a 1-triple lowered body (a *pass-through* template; see "The
-reification spectrum" below). Uniformity wins over special-casing.
+Templates are first-class **as definitions** (URIs, files, registry,
+inspectable, version-controlled) but **not as stored instances** — a
+template-instance is expanded to reified Part 2 before being written to a
+graph file. We can flip to "store as templates, materialize Part 2 on demand"
+later without losing data.
 
 ## Lifted vs lowered (Part 7 terminology)
 
@@ -177,9 +172,9 @@ No slot list; matching is direct against the lifted graph pattern. Variables
 (`var:entity`, `var:activity`) are shared across the two named graphs by URI
 identity (post-skolemization).
 
-The fully degenerate case is 1-triple-↔-1-triple (e.g., lifted `var:x a prov:Activity`,
-lowered `var:x a iso15926:Activity`). That's exactly a Phase 3 anchor expressed as a
-template — see "Relationship to existing pipeline phases" below.
+The fully degenerate case is 1-triple-↔-1-triple (e.g., lifted
+`var:x a prov:Activity`, lowered `var:x a iso15926:Activity`) — a Part 2
+anchor expressed as a template.
 
 ## The reification spectrum: pass-through to fully reified
 
@@ -193,11 +188,11 @@ spectrum, not a binary:
 | **Lightly reified** | A 2–3 triple `Identification` or `Description` tuple wrapping the value | When the value carries source/time/authority that should be queryable separately from the value itself |
 | **Fully Part 2-reified** | The complete cluster (`Identification` + `ClassOfInformationRepresentation` carrying the literal + temporal extent + authority) | Strict Part 2 stance, or when the value is itself a sourced/temporal claim |
 
-The decision criterion is the same one already documented in "When to reify, when
-to use plain RDFS — the docgraph rule": reify when the assertion carries
-information that **shouldn't be true at all times** or has a **specific
-source/authority worth preserving beyond the named-graph level**. Otherwise
-pass-through.
+The decision criterion is the same one documented in
+[`meta-ontology.md`](meta-ontology.md) ("When to reify, when to use plain
+RDFS — the docgraph rule"): reify when the assertion carries information
+that **shouldn't be true at all times** or has a **specific source/authority
+worth preserving beyond the named-graph level**. Otherwise pass-through.
 
 **Cost reality.** A typical invoice with 20 datatype-property assertions:
 - All pass-through → 20 triples (cheapest; no Part 2 grounding for those values)
@@ -221,32 +216,25 @@ in the same template trigger SPARQL-style cross-product semantics (`{a,b} × {x,
 → 4 expansions, not 2), which is almost always wrong. If paired multi-values are
 needed, model as a sub-template per pair or as an RDF-list-valued slot.
 
-## Sub-template composition
+## Sub-template composition (syntax TBD)
 
-A template's lowered body can invoke other templates instead of open-coding their
-reified clusters. Leaf templates (e.g., `tpl:CompositionPart`, `tpl:Description`)
-are the only places raw Part 2 reified triples appear; everything else composes
-leaves.
+A template's lowered body should be able to invoke other templates by name
+instead of open-coding their reified clusters — leaf templates (e.g.,
+`tpl:CompositionPart`, `tpl:Description`) become the only places raw Part 2
+appears; everything else composes leaves.
 
-```turtle
-GRAPH var:lowered {
-    var:quote a dg:Quote ; dg:text var:quoteText ; dg:locator var:locator .
+The earlier proposal of `tpl:Invocation` / `tpl:invokes` / `tpl:bind` /
+`tpl:role` / `tpl:value` was rejected as too verbose. A more compact form
+— most likely embedding a typed instance of the invoked template directly
+in the lowered body, with slot bindings as plain properties — is open. See
+the open question in [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
-    [ a tpl:Invocation ; tpl:invokes tpl:CompositionPart ;
-      tpl:bind [ tpl:role "whole" ; tpl:value var:doc ] ,
-               [ tpl:role "part"  ; tpl:value var:quote ] ] .
-
-    [ a tpl:Invocation ; tpl:invokes tpl:Description ;
-      tpl:bind [ tpl:role "sign"        ; tpl:value var:quote ] ,
-               [ tpl:role "represented" ; tpl:value var:references ] ] .
-}
-```
-
-**Resolution is at load time, not runtime.** The template loader recursively expands
-invocations into the final flat lowered body once, when the template is registered.
-The runtime engine never sees `tpl:Invocation` nodes — it only matches/substitutes
-fully-expanded leaf-level Part 2 patterns. Composition is pure authoring convenience
-with no runtime cost or recursion concerns.
+**Resolution must be at load time, not runtime.** Whatever syntax wins, the
+template loader recursively expands invocations into a final flat lowered
+body once, when the template is registered — the runtime engine only
+matches/substitutes fully-expanded leaf-level Part 2 patterns. Load-time
+resolution also requires **circular-invocation detection**: template A
+invoking B which invokes A must be rejected at load.
 
 ## Deterministic URI minting
 
@@ -322,31 +310,6 @@ tests under `tests/fixtures/templates/<stem>.sparql` lock in the exact output
 per template fixture for review. Regenerate after intentional translator
 changes via the one-liner in the test file's header comment.
 
-## Validation — SHACL derived on the fly
-
-Same pattern as modality (see "Modality and SHACL derivation" in
-`ARCHITECTURE.md`): SHACL is **not stored** as part of template definitions.
-When validation is needed (LLM-emitted template instance gets type-checked
-before expansion), a SHACL shape is derived from the slot list at runtime:
-
-```python
-def derive_shacl_for_template(template):
-    for slot in template.slots:
-        yield PropertyShape(
-            path=mint_slot_predicate(template.uri, slot.name),
-            class_=slot.range if slot.is_object else None,
-            datatype=slot.range if slot.is_literal else None,
-            min_count=slot.min_count or 1,
-            max_count=slot.max_count if slot.max_count != 0 else None,
-        )
-```
-
-Slot semantics (`tpl:minCount`, `tpl:maxCount`, `tpl:range`) deliberately mirror
-SHACL's so the bridge is mechanical. Custom vocabulary names are kept rather than
-reusing `sh:` because slots are named by string, not by URI path — `sh:property` /
-`sh:path` would force per-slot predicate URIs at the declaration site, which we
-avoid for authoring lightness.
-
 ## LLM is the template's primary user
 
 The LLM emits a uniform **list of template instances** — there is no separate
@@ -373,18 +336,18 @@ classifications, sourced quotes, relationships) is a template instance:
 
 The first three instances have pass-through lowered bodies (each expands to a
 single triple, identical to its lifted form). The fourth has a fully reified
-lowered body (~13 triples — quote node, composition tuple, description tuple). The
-LLM doesn't see this difference; it just emits template instances. The engine
-handles expansion uniformly.
+lowered body (~13 triples — quote node, composition tuple, description tuple).
+The LLM doesn't see this difference; it just emits template instances. The
+engine handles expansion uniformly.
 
-Prompts include `{template URI, definition string with [slot] placeholders, slot
-list with ranges, examples}` per available template — derived directly from
-template definitions. The LLM never sees lowered bodies; expansion is engine
-territory.
+Prompts include `{template URI, definition string with [slot] placeholders,
+slot list with ranges, examples}` per available template — derived directly
+from template definitions. The LLM never sees lowered bodies; expansion is
+engine territory.
 
-The reliability win: errors become slot-shape errors (validatable via the derived
-SHACL) instead of malformed reifications, and the LLM doesn't need to choose
-between "emit raw triples" and "emit reified clusters" — there's only one path.
+The reliability win: the LLM doesn't need to choose between "emit raw
+triples" and "emit reified clusters" — there's only one path, and errors
+become slot-shape errors instead of malformed reifications.
 
 ## Storage layout
 
@@ -398,14 +361,13 @@ data/templates/                 ← built-in core templates (sourced-assertion,
 data/templates/bridges/         ← bridge ontologies as template libraries
                                    (prov-o/, schemaorg/, sosa/, …)
 .docgraph/cache/templates/      ← LLM-discovered templates, user-approved
-                                   (same gate as cache/lifts/, cache/anchors/)
 .docgraph/templates.ttl         ← registry: which templates are loaded, source
                                    path, version
 ```
 
-Built-ins live in the repo. Bridge libraries live in subdirectories so the user can
-opt into specific bridges (`docgraph templates enable prov-o`). Cache entries are
-per-template, keyed by template URI.
+Built-ins live in the repo. Bridge libraries live in subdirectories so the
+user can opt into specific bridges (`docgraph templates enable prov-o`).
+Cache entries are per-template, keyed by template URI.
 
 One file per template — same logic as one source per `graphs/<slug>.ttl`: easy to
 inspect, diff, add, remove, version-control.
@@ -431,13 +393,13 @@ data/templates/financial/
   …
 ```
 
-Each template carries its own modality and SHACL-derivable constraints (see
-"Modality and SHACL derivation" in `ARCHITECTURE.md` — modality lives on the
-template declaration, not on a separate `owl:DatatypeProperty` declaration). The
-OWL `owl:Class` / `owl:DatatypeProperty` / `rdfs:domain` / `rdfs:range`
-declarations that previously lived in `financial_documents.ttl` are absorbed: a
-template's `tpl:slot` declaration carries the type info; `dom:Invoice` is a class
-*because* it's the lifted-form type of the form-classification template.
+Each template carries its own modality (see "Modality" in
+[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md) — modality lives on the
+template declaration, not on a separate `owl:DatatypeProperty` declaration).
+The OWL `owl:Class` / `owl:DatatypeProperty` / `rdfs:domain` / `rdfs:range`
+declarations that previously lived in `financial_documents.ttl` are absorbed:
+a template's `tpl:slot` declaration carries the type info; `dom:Invoice` is a
+class *because* it's the lifted-form type of the form-classification template.
 
 **For OWL tool compatibility:** the template loader can synthesize the equivalent
 flat OWL triples (`dom:hasVatNumber a owl:DatatypeProperty ; rdfs:domain dom:Invoice ;
@@ -482,13 +444,12 @@ constrained slot-filling:
    activity", "this row is a role assignment", "this attribute is a possession".
 2. **Look up subject-indexed templates**: pull the candidate set for that
    subject (e.g., all activity templates).
-3. **Fill**: the LLM picks one (or a few) and emits slot bindings. The derived
-   SHACL (see "Validation" above) catches errors before expansion.
+3. **Fill**: the LLM picks one (or a few) and emits slot bindings.
 
-The classifier step is cheap, and the payoff is much higher fill accuracy — the
-LLM chooses from the subject-relevant subset rather than the entire template
-registry per fragment. Index shape: `subject → [template URIs]`, built at
-template-load time from each template's `tpl:subject` annotation.
+The classifier step is cheap, and the payoff is much higher fill accuracy —
+the LLM chooses from the subject-relevant subset rather than the entire
+template registry per fragment. Index shape: `subject → [template URIs]`,
+built at template-load time from each template's `tpl:subject` annotation.
 
 ### Bootstrap from document structure (state-0)
 
@@ -560,23 +521,19 @@ filling layer free of unvalidated shapes.
 - **Removing a source that contained template instances** — same cascade as any
   source removal: drop the named graph, drop its expanded Part 2 triples and any
   breadcrumbs.
-- **Replacing a template with a new version** — open question (see "Open questions"
-  in `ARCHITECTURE.md`).
+- **Replacing a template with a new version** — open question (see
+  [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)).
 
-## Relationship to existing pipeline phases
+## What templates subsume
 
-Templates subsume four existing analyzer mechanisms:
+Three existing surfaces become template-shaped under the unified model:
 
-| Existing | Template equivalent |
+| Existing | Template form |
 |---|---|
-| Phase 2 lift rules (`schema:domainIncludes` → `rdfs:domain`, etc.) | Pattern-form template: foreign idiom in lifted, canonical OWL in lowered |
-| Phase 3 Part 2 anchors (`prov:Activity rdfs:subClassOf iso15926:Activity`) | Pattern-form template, 1-triple lifted ↔ 1-triple lowered |
-| Domain ontology declarations (`owl:Class`, `owl:DatatypeProperty`, `rdfs:domain`/`range`) | Template files in `data/templates/<domain>/`, with OWL declarations synthesised at load time for tool compatibility |
-| Step 8 property extraction (flat `{property → value}` JSON per form-class instance) | Each value emission becomes a pass-through template instance; the LLM's emit format is now a uniform list of template instances |
+| Foreign-idiom translation (`schema:domainIncludes` → `rdfs:domain`, `prov:Activity` → `iso15926:Activity`, …) | Bridge templates — pattern-form, foreign idiom in lifted, canonical Part 2 in lowered. The 1-triple ↔ 1-triple degenerate case is a Part 2 anchor. |
+| Domain ontology declarations (`owl:Class`, `owl:DatatypeProperty`, `rdfs:domain`/`range` previously hand-rolled in `financial_documents.ttl`) | Template files in `data/templates/<domain>/`, with OWL declarations synthesised at load time for tool compatibility. |
+| The 14-prompt classifier in `src/classify_part2/` (per-aspect converters that emit reified Part 2 clusters) | Each converter's output **is the lowered body** of a corresponding library template. The 14 prompts are doing template expansion by hand today; migration replaces each per-aspect converter with a template definition under `data/templates/iso/` plus the generic expander. |
 
-Migration is deferred — current Phase 2/3 and the property-extraction step keep
-their implementations until templates land. Once templates exist, the migration
-is mechanical (each lift rule, anchor, domain predicate, and form-class
-declaration becomes a template). Post-migration, Phase 2 and Phase 3 collapse
-into "load applicable templates and expand", and step 8 becomes "ask the LLM to
-emit a list of template instances using the loaded vocabulary".
+Once templates land, foreign-idiom translation collapses into "load
+applicable bridge templates and expand", domain ontologies are just template
+directories, and the 14-prompt converters become a library on disk.
