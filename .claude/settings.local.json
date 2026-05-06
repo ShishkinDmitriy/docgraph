@@ -13,7 +13,8 @@
       "Bash(xargs ls *)",
       "Bash(pdfinfo \"/home/dimonina/projects/docgraph/docs/2003 - ISO 15926-22003 -- Industrial automation systems .pdf\")",
       "Bash(pdftotext -layout \"docs/2003 - ISO 15926-22003 -- Industrial automation systems .pdf\" /tmp/iso15926-2.txt)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "WebFetch(domain:15926.blog)"
     ]
   }
 }

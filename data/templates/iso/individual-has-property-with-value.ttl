@@ -1,0 +1,82 @@
+# 15926.blog template IN-PTYST-100 (IndividualHasPropertyWithValue).
+# Source: https://15926.blog/templates/IN-PTYST-100.xml
+# RDS ID: RD1BD01970ABB411384596BDF26BC2C32  (status UPDATED MAR2023)
+@prefix tpl:      <http://example.org/docgraph/template#> .
+@prefix iso:      <http://example.org/docgraph/iso#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix var:      <urn:tpl-var/> .
+@prefix ex:       <http://example.org/docgraph/example#> .
+@prefix rdl:      <http://data.15926.org/rdl/> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+
+iso:IndividualHasPropertyWithValue a tpl:Template ;
+    rdfs:label "Individual has property with value" ;
+    rdfs:isDefinedBy <https://15926.blog/templates/IN-PTYST-100.xml> ;
+    tpl:definition "[hasPropertyPossessor] has a [hasPropertyType] of [valPropertyValue] [hasScale] (effective [valEffectiveDate])." ;
+    tpl:subject iso15926:Property ;
+    tpl:lifted  var:lifted ;
+    tpl:lowered var:lowered ;
+    tpl:example var:example .
+
+GRAPH var:lifted {
+    var:this a iso:IndividualHasPropertyWithValue ;
+             iso:hasPropertyPossessor var:hasPropertyPossessor ;
+             iso:hasPropertyType      var:hasPropertyType ;
+             iso:valPropertyValue     var:valPropertyValue ;
+             iso:hasScale             var:hasScale ;
+             iso:valEffectiveDate     var:valEffectiveDate .
+}
+
+GRAPH var:lowered {
+    var:hasPropertyPossessor a iso15926:PossibleIndividual .
+    var:hasPropertyType      a iso15926:ClassOfProperty .
+    var:hasScale             a iso15926:Scale .
+
+    var:u1 a iso15926:PossibleIndividual .
+    [ a iso15926:TemporalWholePart ;
+      iso15926:hasWhole var:hasPropertyPossessor ;
+      iso15926:hasPart  var:u1 ] .
+
+    var:u2 a iso15926:Property .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u1 ;
+      iso15926:hasClassifier var:u2 ] .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u2 ;
+      iso15926:hasClassifier var:hasPropertyType ] .
+
+    var:u3 a iso15926:PropertyQuantification ;
+           iso15926:hasInput  var:u2 ;
+           iso15926:hasResult var:u4 .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u3 ;
+      iso15926:hasClassifier var:hasScale ] .
+
+    var:u4 a iso15926:ArithmeticNumber .
+    [ a iso15926:Identification ;
+      iso15926:hasSign        var:valPropertyValue ;
+      iso15926:hasRepresented var:u4 ] .
+
+    var:u5 a iso15926:PointInTime .
+    [ a iso15926:Beginning ;
+      iso15926:hasWhole var:u1 ;
+      iso15926:hasPart  var:u5 ] .
+
+    var:u6 a iso15926:RepresentationOfGregorianDateAndUtcTime ;
+           iso15926:hasContent var:valEffectiveDate .
+    [ a iso15926:Identification ;
+      iso15926:hasSign        var:u6 ;
+      iso15926:hasRepresented var:u5 ] .
+}
+
+GRAPH var:example {
+    # Vessel V-101 has a mass of 30.57 Metric Ton
+    ex:property-V-101-mass-30-57-metric-ton
+        a iso:IndividualHasPropertyWithValue ;
+        iso:hasPropertyPossessor ex:V-101 ;
+        iso:hasPropertyType      rdl:RDS353339 ;       # MASS
+        iso:valPropertyValue     "30.57"^^xsd:decimal ;
+        iso:hasScale             rdl:RDS2229868 ;      # METRIC TON
+        iso:valEffectiveDate     "2021-07-27T10:19:00Z"^^xsd:dateTime .
+}

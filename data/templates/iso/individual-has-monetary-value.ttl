@@ -1,0 +1,82 @@
+# 15926.blog template IN-PTYST-125 (IndividualHasMonetaryValue).
+# Source: https://15926.blog/templates/IN-PTYST-125.xml
+# RDS ID: RFE44BF2291494E97BF081557838E124E  (status UPDATED MAR2023)
+@prefix tpl:      <http://example.org/docgraph/template#> .
+@prefix iso:      <http://example.org/docgraph/iso#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix var:      <urn:tpl-var/> .
+@prefix ex:       <http://example.org/docgraph/example#> .
+@prefix rdl:      <http://data.15926.org/rdl/> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+
+iso:IndividualHasMonetaryValue a tpl:Template ;
+    rdfs:label "Individual has monetary value" ;
+    rdfs:isDefinedBy <https://15926.blog/templates/IN-PTYST-125.xml> ;
+    tpl:definition "[hasPossessor] has [hasCostType] of [valMonetaryValue] [hasCurrency] (effective [valEffectiveDate])." ;
+    tpl:subject iso15926:IndirectProperty ;
+    tpl:lifted  var:lifted ;
+    tpl:lowered var:lowered ;
+    tpl:example var:example .
+
+GRAPH var:lifted {
+    var:this a iso:IndividualHasMonetaryValue ;
+             iso:hasPossessor     var:hasPossessor ;
+             iso:hasCostType      var:hasCostType ;
+             iso:valMonetaryValue var:valMonetaryValue ;
+             iso:hasCurrency      var:hasCurrency ;
+             iso:valEffectiveDate var:valEffectiveDate .
+}
+
+GRAPH var:lowered {
+    var:hasPossessor a iso15926:PossibleIndividual .
+    var:hasCostType  a iso15926:ClassOfIndirectProperty .
+    var:hasCurrency  a iso15926:Scale .
+
+    var:u1 a iso15926:PossibleIndividual .
+    [ a iso15926:TemporalWholePart ;
+      iso15926:hasWhole var:hasPossessor ;
+      iso15926:hasPart  var:u1 ] .
+
+    var:u2 a iso15926:IndirectProperty ;
+           iso15926:hasPossessor var:u1 ;
+           iso15926:hasProperty  var:u3 .
+    var:u3 a iso15926:Property .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u2 ;
+      iso15926:hasClassifier var:hasCostType ] .
+
+    var:u4 a iso15926:PropertyQuantification ;
+           iso15926:hasInput  var:u3 ;
+           iso15926:hasResult var:u5 .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u4 ;
+      iso15926:hasClassifier var:hasCurrency ] .
+
+    var:u5 a iso15926:RealNumber .
+    [ a iso15926:Identification ;
+      iso15926:hasSign        var:valMonetaryValue ;
+      iso15926:hasRepresented var:u5 ] .
+
+    var:u6 a iso15926:PointInTime .
+    [ a iso15926:Beginning ;
+      iso15926:hasWhole var:u1 ;
+      iso15926:hasPart  var:u6 ] .
+
+    var:u7 a iso15926:RepresentationOfGregorianDateAndUtcTime ;
+           iso15926:hasContent var:valEffectiveDate .
+    [ a iso15926:Identification ;
+      iso15926:hasSign        var:u7 ;
+      iso15926:hasRepresented var:u6 ] .
+}
+
+GRAPH var:example {
+    # The labour cost for the maintenance of vessel V-101 is USD 1,875.
+    ex:monetary-V-101-labour-cost-USD-1875
+        a iso:IndividualHasMonetaryValue ;
+        iso:hasPossessor     ex:V-101 ;
+        iso:hasCostType      rdl:RDS2220202 ;          # LABOUR COST
+        iso:valMonetaryValue "1875.00"^^xsd:decimal ;
+        iso:hasCurrency      rdl:RDS2228349 ;          # USD
+        iso:valEffectiveDate "2021-09-21T13:33:00Z"^^xsd:dateTime .
+}

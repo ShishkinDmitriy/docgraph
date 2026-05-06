@@ -176,6 +176,69 @@ The fully degenerate case is 1-triple-↔-1-triple (e.g., lifted
 `var:x a prov:Activity`, lowered `var:x a iso15926:Activity`) — a Part 2
 anchor expressed as a template.
 
+## Pattern-form template — 15926.blog imports
+
+15926.blog publishes ISO 15926 Part 7 templates as XML files (e.g.
+[`IN-CLSIF-100.xml`](https://15926.blog/templates/IN-CLSIF-100.xml) for
+`ClassificationOfIndividual`). Each XML carries a `TemplateSignature`
+(slot list + role types), a `LoweredTemplateInstanceListing`'s
+*Generic Definition* (the flat-predicate shape an LLM would emit), an
+EXAMPLE block (a worked instantiation), and a `LoweredTemplateFOLcode`
+formula (the Part 2 reified semantics).
+
+We import each as a pattern-form TTL under `data/templates/iso/` with
+four constituents:
+
+| Constituent | Source in the XML | TTL location |
+|---|---|---|
+| Provenance | URL + `defaultRdsId` + `Status` | `rdfs:isDefinedBy` triple + comment header |
+| `var:lifted` | the Generic Definition's flat predicates on the instance node | `GRAPH var:lifted { var:this a iso:Foo ; iso:role var:role … }` |
+| `var:lowered` | a literal RDF rendering of the FOL formula's existentials and atomic predicates | `GRAPH var:lowered { … }` (the canonical Part 2 reified storage shape) |
+| `var:example` | the EXAMPLE block, lifted form | `GRAPH var:example { … }` (documentation-only; not consumed by expansion or recognition) |
+
+FOL → RDF translation conventions used across the iso/ imports:
+
+- `PossibleIndividual(x)` etc. — role-type predicates render as
+  `var:x rdf:type iso15926:PossibleIndividual` in the lowered graph,
+  doubling as type-anchoring and a soft range hint.
+- `TemporalWholePartTemplate(part, whole)` — anonymous reified node
+  `[ a iso15926:TemporalWholePart ; iso15926:hasWhole var:whole ; iso15926:hasPart var:part ]`.
+  Same shape for `BeginningTemplate`, `CompositionOfIndividual`, etc.
+- `ClassificationTemplate(individual, classifier)` — anonymous
+  `[ a iso15926:Classification ; iso15926:hasClassified var:individual ; iso15926:hasClassifier var:classifier ]`.
+- `IndirectPropertyTriple(ip, possessor, property)` — named
+  `var:ip a iso15926:IndirectProperty ; iso15926:hasPossessor var:possessor ; iso15926:hasProperty var:property`.
+- `PropertyQuantificationTriple(pq, property, number)` — named
+  `var:pq a iso15926:PropertyQuantification ; iso15926:hasInput var:property ; iso15926:hasResult var:number`.
+- `ClassOfIdentificationTemplate(sign, thing)` — anonymous
+  `[ a iso15926:Identification ; iso15926:hasSign var:sign ; iso15926:hasRepresented var:thing ]`.
+  Note: the source FOL uses the Part 7 *template* name `ClassOfIdentification`
+  (Part 2 §5.2.17.3 — the *kind* of Identification); the actual reified
+  relationship class is `Identification` (§5.2.16.3).
+- Literal-bound roles (`valEffectiveDate`, `valPropertyValue`,
+  `valMonetaryValue`) skip the role-type assertion in the lowered body
+  — `"30.57"^^xsd:decimal a ClassOfExpressInformationRepresentation`
+  would be a literal-as-subject and is malformed RDF. **No separate
+  type metadata is needed** either: the lowered graph already specifies
+  the datatype structurally. `var:valEffectiveDate` appears as the
+  `iso15926:hasContent` of an `iso15926:RepresentationOfGregorianDateAndUtcTime`
+  — that is itself the assertion that bindings to that variable are
+  `xsd:dateTime` literals. `var:valMonetaryValue` is the `hasSign` of
+  an `Identification` whose represented thing is `iso15926:RealNumber`,
+  i.e. `xsd:decimal`. Datatype information is structurally derivable
+  from the typed nodes; the `var:example` graph confirms it concretely
+  (`"2021-07-18T13:59:00Z"^^xsd:dateTime`, `"1875.00"^^xsd:decimal`).
+
+A template is therefore just a **pair of named graphs (lifted +
+lowered) plus minimal metadata** — no `tpl:slot`, no `tpl:range`,
+no per-template predicate declarations. The lifted graph itself acts
+as the slot manifest (the LLM reads which `iso:role var:role` pairs
+appear and emits one binding per pair); the lowered graph carries the
+canonical Part 2 shape. The optional `tpl:example` graph is
+documentation. Per-role cardinality from the source `TemplateSignature`
+is not formally expressed here — worth a separate iteration once we
+hit a real multi-valued case.
+
 ## The reification spectrum: pass-through to fully reified
 
 The lifted form is the LLM's vocabulary; the lowered form is the canonical storage

@@ -35,10 +35,14 @@ tpl:lowered a owl:ObjectProperty ;
     rdfs:domain tpl:Template ;
     rdfs:comment "URI of the named graph holding the lowered (Part 2) form." .
 
+tpl:example a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "URI of the named graph holding a worked instantiation in lifted form. Documentation-only — not consumed by expansion or recognition." .
+
 tpl:subject a owl:ObjectProperty ;
     rdfs:domain tpl:Template ;
     rdfs:comment "Part 2 reified-relationship class this template anchors on (Activity, Possession, Description, ...). Used for subject-typed candidate selection during LLM filling." .
 
 tpl:definition a owl:DatatypeProperty ;
     rdfs:domain tpl:Template ;
-    rdfs:comment "Natural-language sentence with [slot] placeholders. LLM-facing summary." .
+    rdfs:comment "Natural-language sentence with [role] placeholders matching variable names in the lifted graph. LLM-facing summary." .
