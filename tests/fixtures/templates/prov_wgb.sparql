@@ -1,8 +1,0 @@
-PREFIX iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-
-SELECT * WHERE {
-  ?anon_b0 iso15926:hasPart ?entity .
-  ?anon_b0 iso15926:hasWhole ?activity .
-  ?anon_b0 rdf:type iso15926:CompositionOfIndividual .
-}

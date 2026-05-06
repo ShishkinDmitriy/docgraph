@@ -50,7 +50,7 @@ def _graph(ttl_body: str) -> Graph:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
-    "stem", ["passthrough_vat", "sourced_assertion", "prov_wgb"]
+    "stem", ["passthrough_vat", "sourced_assertion", "pdf_converted_to_markdown"]
 )
 def test_to_sparql_matches_golden_fixture(stem):
     template = load_template(FIXTURES / f"{stem}.ttl")
@@ -204,21 +204,48 @@ def test_sourced_assertion_no_match_when_description_tuple_missing():
     assert recognize(t, storage) == []
 
 
-def test_pattern_form_recognizes_prov_wgb():
-    """Pattern-form bridge: bindings keyed by lifted-graph variable name."""
-    t = load_template(FIXTURES / "prov_wgb.ttl")
+def test_pattern_form_recognizes_pdf_conversion():
+    """Pattern-form bridge: source/target/activity bindings from a full conversion cluster."""
+    t = load_template(FIXTURES / "pdf_converted_to_markdown.ttl")
     storage = _graph(
         """
+        ex:conv-1   a iso15926:Activity .
+        ex:pdf-1    a dg:PdfFile .
+        ex:md-1     a dg:MarkdownFile .
         [ a iso15926:CompositionOfIndividual ;
-          iso15926:hasWhole ex:render-job-1 ;
-          iso15926:hasPart  ex:report-1 ] .
+          iso15926:hasWhole ex:conv-1 ;
+          iso15926:hasPart  ex:pdf-1 ] .
+        [ a iso15926:CompositionOfIndividual ;
+          iso15926:hasWhole ex:conv-1 ;
+          iso15926:hasPart  ex:md-1 ] .
         """
     )
 
     matches = recognize(t, storage)
-    assert matches == [
-        {"entity": EX["report-1"], "activity": EX["render-job-1"]}
-    ]
+    assert len(matches) == 1
+    m = matches[0]
+    assert m["source"] == EX["pdf-1"]
+    assert m["target"] == EX["md-1"]
+    assert m["activity"] == EX["conv-1"]
+
+
+def test_pattern_form_pdf_conversion_not_matched_by_generic_composition():
+    """A composition cluster without PdfFile/MarkdownFile typing must not match —
+    the document types are the distinguishing Part 2 semantics."""
+    t = load_template(FIXTURES / "pdf_converted_to_markdown.ttl")
+    storage = _graph(
+        """
+        ex:conv-1 a iso15926:Activity .
+        [ a iso15926:CompositionOfIndividual ;
+          iso15926:hasWhole ex:conv-1 ;
+          iso15926:hasPart  ex:thing-A ] .
+        [ a iso15926:CompositionOfIndividual ;
+          iso15926:hasWhole ex:conv-1 ;
+          iso15926:hasPart  ex:thing-B ] .
+        """
+    )
+
+    assert recognize(t, storage) == []
 
 
 # ---------------------------------------------------------------------------

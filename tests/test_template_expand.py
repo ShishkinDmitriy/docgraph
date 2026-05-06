@@ -167,19 +167,31 @@ def test_sourced_assertion_different_bindings_give_different_urns():
     assert quote_a != quote_b
 
 
-def test_pattern_form_expansion_single_triple():
-    """Pattern-form template — bindings keyed by lifted-graph variable name."""
-    t = load_template(FIXTURES / "prov_wgb.ttl")
+def test_pattern_form_expansion_pdf_conversion():
+    """Pattern-form template — bindings produce typed file nodes + two composition tuples."""
+    t = load_template(FIXTURES / "pdf_converted_to_markdown.ttl")
 
     g = expand(
         t,
-        {"entity": EX["report-1"], "activity": EX["render-job-1"]},
+        {
+            "source": EX["acme.pdf"],
+            "target": EX["acme.md"],
+            "activity": EX["conv-001"],
+        },
     )
 
-    # Lowered body: one composition tuple wrapping (activity → entity).
+    # Type triples for each participant.
+    assert (EX["acme.pdf"], RDF.type, DG.PdfFile) in g
+    assert (EX["acme.md"], RDF.type, DG.MarkdownFile) in g
+    assert (EX["conv-001"], RDF.type, ISO.Activity) in g
+
+    # Two composition tuples, both anchored on the same activity.
     composition_tuples = list(g.subjects(RDF.type, ISO.CompositionOfIndividual))
-    assert len(composition_tuples) == 1
-    comp = composition_tuples[0]
-    assert (comp, ISO.hasWhole, EX["render-job-1"]) in g
-    assert (comp, ISO.hasPart, EX["report-1"]) in g
-    assert len(g) == 3
+    assert len(composition_tuples) == 2
+    parts = {o for comp in composition_tuples for o in g.objects(comp, ISO.hasPart)}
+    assert parts == {EX["acme.pdf"], EX["acme.md"]}
+    for comp in composition_tuples:
+        assert (comp, ISO.hasWhole, EX["conv-001"]) in g
+
+    # 3 type triples + 2 × 3 composition triples = 9 total.
+    assert len(g) == 9

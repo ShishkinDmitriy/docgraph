@@ -28,8 +28,11 @@ def test_slug_pascal_case_to_kebab():
         "invoice-has-vat-number"
     assert slug_from_template_uri(URIRef("http://x#SourcedAssertion")) == \
         "sourced-assertion"
+    # Multi-word PascalCase with abbreviation prefix.
+    assert slug_from_template_uri(URIRef("http://x#PdfConvertedToMarkdown")) == \
+        "pdf-converted-to-markdown"
     # Already-kebab names pass through unchanged.
-    assert slug_from_template_uri(URIRef("urn:tpl/prov-wgb")) == "prov-wgb"
+    assert slug_from_template_uri(URIRef("urn:tpl/already-kebab")) == "already-kebab"
 
 
 def test_passthrough_template_loads_with_two_slots():
@@ -141,25 +144,27 @@ def test_sourced_assertion_load_is_idempotent():
 
 
 def test_pattern_form_loads_explicit_lifted_and_no_slots():
-    t = load_template(FIXTURES / "prov_wgb.ttl")
+    t = load_template(FIXTURES / "pdf_converted_to_markdown.ttl")
 
     assert t.is_instance_form is False
     assert t.slots == []
     assert t.subject == ISO.CompositionOfIndividual
-    assert t.slug == "prov-wgb"
+    assert t.slug == "pdf-converted-to-markdown"
 
+    # Lifted: two PROV triples (wasGeneratedBy + used).
     lifted = list(t.lifted)
-    assert len(lifted) == 1
-    s, p, o = lifted[0]
-    assert p == PROV.wasGeneratedBy
-    assert s == t.var_ns["entity"]
-    assert o == t.var_ns["activity"]
+    assert len(lifted) == 2
+    lifted_preds = {p for _, p, _ in lifted}
+    assert PROV.wasGeneratedBy in lifted_preds
+    assert PROV.used in lifted_preds
 
-    # Lowered: reified composition tuple (3 triples after bnode rewrite).
+    # Lowered: 3 type triples + 2 composition tuples × 3 triples = 9 total.
     lowered = list(t.lowered)
-    assert len(lowered) == 3
-    assert any(p == ISO.hasWhole for _, p, _ in lowered)
-    assert any(p == ISO.hasPart for _, p, _ in lowered)
+    assert len(lowered) == 9
+    assert any(o == DG.PdfFile for _, _, o in lowered)
+    assert any(o == DG.MarkdownFile for _, _, o in lowered)
+    assert any(o == ISO.Activity for _, _, o in lowered)
+    assert sum(1 for _, _, o in lowered if o == ISO.CompositionOfIndividual) == 2
 
 
 def test_missing_lowered_is_an_error(tmp_path):
