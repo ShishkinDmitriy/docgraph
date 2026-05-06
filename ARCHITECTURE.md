@@ -1,74 +1,32 @@
 # DocGraph — Architecture Design Notes
 
-> Session date: 2026-04-15. Last updated: **2026-05-04** (added "Templates — Part 7-style lifted/lowered patterns" as the **universal LLM-emit and storage-grounding mechanism**: every assertion is a template instance, every domain ontology is a template library under `data/templates/<domain>/`, and the lowered body's reification level is a per-template authoring choice ranging from pass-through to fully Part 2-reified. There is no separate raw-triple emit path. Subsumes Phase 2 lift rules, Phase 3 anchors, domain ontology declarations, and step-8 property extraction. Modality moves from property declarations onto template declarations.). Read this file at the start of any session continuing this design.
+> Session date: 2026-04-15. Last updated: **2026-05-06** (groomed: dropped the dead Phase 1–4 analyzer pipeline that the 14-prompt classifier in `src/classify_part2/` replaced; trimmed cascade-delete and SHACL-derivation deep dives; deduped structural-class declarations; pruned open questions; connected the 14-prompt classifier to the template model). Read this file at the start of any session continuing this design.
 
 ## Vision
 
-The current codebase is a financial-document extractor with a hardcoded ontology
-(`financial_documents.ttl`). The goal is to make it fully general:
+DocGraph started as a financial-document extractor with a hardcoded ontology
+(`financial_documents.ttl`). The goal is to be **fully general**: ISO 15926
+Part 2 is the meta-ontology so the system can shift across domains without
+hardcoding any one of them.
 
-- **`docgraph init`** seeds only a meta-ontology — no domain classes.
-- **`docgraph add <file>`** — the LLM figures out what kind of document it is and
-  builds the knowledge graph accordingly.
-- **`docgraph remove <file>`** — cascades: removes concepts the document defined,
-  and degrades any individuals previously classified under those concepts to bare
-  `iso15926:ArrangedIndividual` (unclassified, but not lost).
+- **`docgraph init`** seeds only the meta-ontology — no domain classes.
+- **`docgraph add <file>`** — the LLM figures out what kind of document it is
+  and builds the knowledge graph accordingly.
+- **`docgraph remove <file>`** — drops the source's named graph; references to
+  its concepts are repaired or marked unresolved.
 
-The result after adding three documents — a German invoice, an EU standard
-defining Invoice, and a meta-document classifying types of standards — should be
-a graph with:
-- a class `:Invoice` rooted under `iso15926:ArrangedIndividual` and a
-  matching `ClassOfInformationObject` instance, defined in the EU
-  standard's named graph
-- an individual for the invoice itself, typed as `:Invoice` in its own named
-  graph
-- meta-classification triples from the third document in yet another named
-  graph
-
-Removing the EU standard cascades: the `:Invoice` class definition disappears,
-and the individual's `rdf:type :Invoice` triple is rewritten to
-`rdf:type iso15926:ArrangedIndividual` (unclassified, but not lost).
+The original example (German invoice + EU standard defining Invoice + meta-
+document classifying types of standards) is one of many. **Current focus**:
+classification (Q1/Q2), template-instance recognition, and template discovery
+(see [`docs/architecture/templates.md`](docs/architecture/templates.md)).
 
 ---
 
-## Pipeline shape: format-specific extraction + uniform analyzer
+## What does a document declare?
 
-Every ingest is one shape regardless of input format. Format-specific parsers
-do the front half — turn the source into candidate triples in the source's own
-vocabulary. A uniform **analyzer** does the back half — detect what was
-defined, normalize non-canonical idioms, anchor classes to Part 2, emit the
-named graph.
-
-```
-                    ┌────────── format-specific ──────────┐  ┌──────────────────── uniform analyzer ────────────────────┐
-                    │                                      │  │                                                            │
-PDF (any kind) ───► │  PDF → Markdown (cached)             │  │  Phase 1: detect what the source defines                  │
-                    │       └► vision LLM extract triples ─┼──┼─►        (classes? properties? individuals?)                │
-                    │                                      │  │                                                            │
-TTL (any kind) ───► │  parse                              ─┼──┼─►  Phase 2: normalize non-canonical idioms                  │
-                    │                                      │  │           (lift rules — see "Analyzer pipeline")           │
-                    │                                      │  │                                                            │
-… future formats ─► │  …                                  ─┼──┼─►  Phase 3: anchor declared classes to ISO 15926 Part 2     │
-                    │                                      │  │                                                            │
-                    └──────────────────────────────────────┘  │  Phase 4: emit named graph + register in sources.ttl       │
-                                                              │                                                            │
-                                                              └────────────────────────────────────────────────────────────┘
-```
-
-Two consequences:
-
-- **TTL doesn't "skip" extraction** — it has *cheap* extraction (parsing) instead of
-  expensive (PDF → MD → vision LLM). Everything from Phase 1 rightward is identical.
-- **Convergence is approximate, not bit-identical.** A PDF describing schema.org and the
-  schema.org TTL itself ingest to *similar* graphs, not identical: the PDF path is lossier
-  and has to resolve URIs ("an Invoice…" → which Invoice?) the TTL gets for free. Useful
-  as a test target — "the two should overlap on ≥ N% of classes/properties" — not a
-  guaranteed equality.
-
-### What can a document define?
-
-After extraction, Phase 1 of the analyzer asks three independent yes/no questions and
-records the answers as `dg:defines` triples:
+Independent of *what* a document is about, every source declares some
+combination of classes, properties, and individuals. The ingester records this
+as `<source> dg:defines …` triples:
 
 | Question | Stored as | Triggered by |
 |---|---|---|
@@ -76,20 +34,16 @@ records the answers as `dg:defines` triples:
 | Defines properties? | `<source> dg:defines dg:Properties` | `?x a owl:ObjectProperty`, `owl:DatatypeProperty`, `rdf:Property`, … |
 | Defines individuals? | `<source> dg:defines dg:Individuals` | `?x a <some-class-not-in-the-meta-vocabulary>` |
 
-Any combination is valid. An ontology TTL with named individuals → all three. A receipt
-PDF → `dg:Individuals` only. A standards PDF defining what an Invoice is → `dg:Classes`
-and `dg:Properties` (and possibly some illustrative individuals).
+Any combination is valid. An ontology TTL with named individuals → all three.
+A receipt PDF → `dg:Individuals` only. A standards PDF defining what an
+Invoice is → `dg:Classes` and `dg:Properties` (and possibly some illustrative
+individuals).
 
-This **replaces** the earlier binary `dg:detectedRole = DefinesTypes | AssertsInstances`
-— the binary was too narrow.
-
-### Subject (Q1) and form (Q2) still apply, separately
-
-The earlier classification questions are orthogonal to the structural "what does it
-define" axis. A document that *defines* `schema:Invoice` is not the same as a document
-that *is* an instance of `schema:Invoice`. Q1/Q2 answer the latter; the "defines" axis
-answers the former. Both can apply to the same source. See "Classification" below for
-Q1/Q2 details.
+This **declares-axis** is orthogonal to the **subject (Q1)** and **form (Q2)**
+classification — see "Classification" below. A document that *defines*
+`schema:Invoice` is not the same as a document that *is* an instance of
+`schema:Invoice`; Q1/Q2 answer the latter, the declares-axis answers the
+former. Both can apply to the same source.
 
 ---
 
@@ -404,16 +358,6 @@ under the same document, plus a PROV-O activity recording the conversion process
    Referenced individuals (`ext:ind-acme-q3-revenue`) live in the extraction graph and
    may survive (they get repaired per the cascade-delete rules below).
 
-### Cost
-
-Per evidenced quote: ~5 nodes / ~13 triples. Structural class nodes (`dg:PdfFile`,
-`dg:Document`, `dg:Quote`, etc.) live in `meta.ttl` and aren't paid per-ingest. Domain
-subtypes (`dom:QuarterlyReport`, etc.) live in the defining document's graph and are
-paid once per ontology, not per instance. The deliberate trade vs. the old
-`dg:evidence "..."` literal (1 triple, opaque) — picked because we want
-quote-deduplication, multi-target referencing, page/locator metadata, and a clean
-Part 2-shaped provenance graph that external tools can consume.
-
 ### PDF → Markdown derivation
 
 When the source is a PDF, the markdown produced by the vision LLM is a *second
@@ -562,36 +506,20 @@ reification is used inside the graph (the `mint_classification` helper in
 
 ### Cascade delete
 
-`docgraph remove eu-standard.pdf`:
-
-1. Look up the graph file in `sources.ttl` → `graphs/eu-standard.ttl`.
-2. Parse it; collect every class and property URI defined there (subjects with
-   `rdf:type owl:Class`, `owl:ObjectProperty`, or `owl:DatatypeProperty`).
-3. Show the user what will be removed (concepts + dependent individuals).
-4. On confirm: delete the graph file and remove its registry entry.
-5. Scan the remaining named graphs for triples whose predicate or `rdf:type` referenced
-   a now-undefined concept:
-   - `<x> rdf:type <removed-class>` → rewrite to
-     `rdf:type iso15926:ArrangedIndividual` (if the removed class was a subclass of
-     `ArrangedIndividual`) or remove the triple otherwise.
-   - `<x> <removed-property> _` → remove the triple.
-   - Reified `Classification` / `Specialization` instances whose `hasClassifier` /
-     `hasSubclass` / etc. pointed at the removed concept → drop the reification node
-     entirely.
-
-The meta backbone (`meta.ttl`) is never touched.
+`docgraph remove <source>` drops the source's named graph file and its
+`sources.ttl` entry. Triples in other graphs that referenced concepts the
+source defined get repaired — `<x> rdf:type <removed-class>` rewrites to
+`rdf:type iso15926:ArrangedIndividual` (when applicable) or drops; reified
+relationship nodes pointing at removed concepts are dropped. The meta
+backbone (`meta.ttl`) is never touched.
 
 ### TTL ingest is one parser among several
 
-A `.ttl` source goes through the same pipeline as any other input: parse → analyzer
-(Phase 1–4) → named graph. The TTL parser is just *cheaper* than the PDF parser (no
-vision LLM step). For pure-OWL TTLs like `data/financial_documents.ttl`, Phase 2
-(normalization) and Phase 3 (Part 2 anchoring) are no-ops — the source already uses
-canonical predicates and roots under `iso15926:`. For schema.org or SKOS, Phase 2
-rewrites idioms via lift rules (see "Analyzer pipeline" below).
-
-The ingest stamps the registry with `dg:addedAt` and one or more `dg:defines` values
-determined by Phase 1 (Classes, Properties, Individuals).
+A `.ttl` source goes through the same pipeline as any other input: parse →
+classifier → named graph. The TTL parser is just *cheaper* than the PDF
+parser (no vision LLM step). The ingest stamps the registry with
+`dg:addedAt` and one or more `dg:defines` values from structural inspection
+(Classes, Properties, Individuals).
 
 ---
 
@@ -643,7 +571,7 @@ equivalent for ingestion bookkeeping).
 
 ---
 
-## Modality and SHACL derivation
+## Modality
 
 Modality is extracted directly from normative text and stored as a triple on the
 **template declaration** that defines the predicate (see "Templates" below — every
@@ -689,30 +617,6 @@ Modality is a `dg:`-namespace simplification, not a reified Part 2 chain — mod
 is a structural property of the *template definition*, not an event-with-extent,
 so plain `tpl:modality` is the right shape.
 
-### SHACL as a derived view
-
-SHACL shapes are **not stored** — they are generated on demand from template
-modality + slot declarations (extends the template-validation derivation in
-"Validation — SHACL derived on the fly"):
-
-```python
-def derive_shacl_from_modality(template):
-    if template.modality is None:
-        return
-    for slot in template.value_slots:                # the non-anchor slots
-        path = mint_slot_predicate(template.uri, slot.name)
-        target = template.anchor_slot.range          # e.g. dom:Invoice
-        if template.modality == DG.Mandatory:
-            yield NodeShape(targetClass=target, path=path,
-                            minCount=1, datatype=slot.range)
-        elif template.modality == DG.Prohibited:
-            yield NodeShape(targetClass=target, path=path, maxCount=0)
-```
-
-Removing the template definition file drops the modality declaration → derived
-shapes change automatically. Same cascade story as before; the modality just lives
-on the template now instead of on a separate `owl:DatatypeProperty` declaration.
-
 ---
 
 ## Templates — Part 7-style lifted/lowered patterns
@@ -726,12 +630,30 @@ body is grounded to Part 2.
 The full chapter — lifted/lowered semantics, the `var:` namespace and
 skolemization, instance-form and pattern-form examples, the reification
 spectrum, multi-valued slots, sub-template composition, deterministic URI
-minting, recognition via on-the-fly SPARQL translation, derived SHACL
-validation, the LLM emit format, storage layout, domain libraries as template
-directories, the three-source discovery model (library / structural /
-learned), cascade behaviors, and the migration of existing Phase 2 / Phase 3
-mechanisms onto templates — lives in
-**[`docs/architecture/templates.md`](docs/architecture/templates.md)**.
+minting, recognition via on-the-fly SPARQL translation, the LLM emit format,
+storage layout, domain libraries as template directories, the three-source
+discovery model (library / structural / learned), and cascade behaviors —
+lives in **[`docs/architecture/templates.md`](docs/architecture/templates.md)**.
+
+### 14-prompt classifier as an in-progress template library
+
+The existing pipeline at `src/classify_part2/` runs **14 prompts** (one per
+ISO 15926 Part 2 aspect: activities, classes, connections, identifiers,
+individuals, lifecycle, participations, properties, roles, temporal,
+whole-parts, …). Each prompt's converter
+(`src/classify_part2/convert/<aspect>.py`) takes the LLM's JSON output and
+emits a reified Part 2 cluster.
+
+Mapped onto the template model: **each converter's output is the lowered body
+of a corresponding template** in the library. The 14 prompts are doing
+template expansion by hand today; the migration is mechanical — each
+converter becomes a template definition under `data/templates/iso/`, and the
+generic expander (`src/templates/expand.py`) replaces the per-converter
+Python.
+
+Until that migration lands, the 14-prompt pipeline keeps its current shape;
+the template engine (`src/templates/`) is developed in parallel against
+synthetic and user-supplied templates.
 
 ---
 
@@ -754,14 +676,15 @@ The `iso15926:` and `dg:` prefixes are pre-bound in every graph file for readabi
 
 ### Graph files are real files
 
-Regardless of input format, `graphs/<slug>.ttl` is a real file written by the analyzer
-(Phase 4) — never a symlink to the source. The analyzer's output is the *normalized
-view* (Phase 2 rewrites + Phase 3 anchors + canonical triples the source already had),
-and that view is rarely byte-identical to the source. Storing it as a real file lets
-cascade-delete drop it cleanly without touching the user's original input.
+Regardless of input format, `graphs/<slug>.ttl` is a real file written by the
+ingest — never a symlink to the source. The output is a *normalized view*
+(canonical triples + Part 2-anchored classes + reified clusters from the
+14-prompt classifier) that is rarely byte-identical to the source. Storing it
+as a real file lets cascade-delete drop it cleanly without touching the
+user's original input.
 
-The original TTL/PDF source stays where the user put it; the registry references it by
-path, but the graph is ours.
+The original TTL/PDF source stays where the user put it; the registry
+references it by path, but the graph is ours.
 
 ### sources.ttl example
 
@@ -791,133 +714,16 @@ path, but the graph is ours.
 `dg:IngestionRecord`, `dg:sourcePath`, `dg:graphFile`, `dg:addedAt`, `dg:defines`,
 `dg:Classes`, `dg:Properties`, `dg:Individuals` are docgraph-specific.
 
-### Cascade delete
-
-`docgraph remove <file>`:
-1. Look up the graph file in `sources.ttl`.
-2. Parse it; collect every class and property URI it declares.
-3. Show the user what will be removed (concepts + dependents).
-4. On confirm: delete the graph file, remove from `sources.ttl`.
-5. Scan all other graph files for triples that reference the removed URIs and repair
-   them (rewrite type to `iso15926:ArrangedIndividual` or drop the triple, per the
-   rules above).
-
----
-
-## Analyzer pipeline (Phase 1–4)
-
-The analyzer is the format-agnostic back half of every ingest. It runs once per source,
-after the format-specific parser has produced candidate triples in the source's own
-vocabulary.
-
-### Phase 1 — detect what the source defines
-
-Walk the candidate triples. Answer the three "defines" questions (Classes, Properties,
-Individuals) by structural inspection — no LLM call needed:
-
-```
-declares ?x a owl:Class | rdfs:Class | skos:Concept …  →  dg:Classes
-declares ?x a owl:ObjectProperty | DatatypeProperty | rdf:Property …  →  dg:Properties
-declares ?x a <C>, where <C> is not in the meta-vocabulary  →  dg:Individuals
-```
-
-Emit `<source> dg:defines …` triples. This drives which subsequent phases need to run:
-a pure instance document skips Phase 2/3 (no classes to normalize or anchor); a pure
-ontology skips downstream individual-extraction.
-
-### Phase 2 — normalize non-canonical idioms
-
-For every declared class and property, check whether its **structural slots** are
-filled with canonical predicates:
-
-- A property declared without `rdfs:domain`/`rdfs:range` but *with*
-  `schema:domainIncludes` or similar → idiom needs a lift rule.
-- A class declared without `rdfs:subClassOf` parent but *with* `skos:broader` → same.
-- A `rdf:Property` declaration with no `owl:DatatypeProperty`/`ObjectProperty` typing,
-  where the range determines which → same.
-
-Pure-OWL inputs have all slots filled canonically and Phase 2 is a no-op. The detection
-is automatic — the user doesn't declare "this needs normalization", the analyzer finds
-it by inspection.
-
-For each idiom predicate that triggered the signal, the analyzer looks up a **lift rule**
-(a SPARQL CONSTRUCT) in two locations:
-
-```
-data/normalization/         ← pre-seeded rules shipped with docgraph
-  schemaorg.rq              ← schema:domainIncludes/rangeIncludes/property typing
-  skos-as-taxonomy.rq       ← skos:broader/narrower → rdfs:subClassOf
-.docgraph/cache/lifts/      ← runtime-discovered rules (LLM-generated, user-approved)
-  <predicate-slug>.rq
-```
-
-Both locations are equal-status. The loader unions all matching rules. There is no
-"deterministic vs LLM" split in code — pre-seeded entries are just LLM-work-already-
-done-at-build-time, in the same on-disk format the runtime cache uses. Users can
-override or delete pre-seeded entries.
-
-If a non-canonical idiom has no rule in either location, Phase 2 prompts the LLM with
-the predicate URI and its `rdfs:label`/`comment` from the source, and asks for a
-CONSTRUCT-shaped rewrite (or "pass through" if it was already canonical and Phase 2's
-heuristic was wrong). Output is shown to the user for approval, then cached in
-`.docgraph/cache/lifts/`. Cache key is the predicate URI — predicate semantics are
-vocabulary-stable, so the same predicate seen in the next ingest reuses the rule.
-
-### Phase 3 — anchor declared classes to Part 2
-
-For every class declared in the (now-normalized) source, walk `rdfs:subClassOf*` upward.
-If it terminates at any `iso15926:` class → no anchor needed. If it doesn't, send to
-the LLM with a curated upper-level Part 2 catalogue (~15 top-level classes:
-`ArrangedIndividual`, `PhysicalObject`, `Organism`, `Organization`, `Event`,
-`Activity`, `Role`, `Quality`, `Function`, `Disposition`, `ClassOfInformationObject`,
-`ClassOfInformationRepresentation`, etc.) and get back one of:
-
-- `<class> rdfs:subClassOf iso15926:<X>` — the closest-fit Part 2 superclass.
-- `<class> dg:noPart2Anchor true` — class has no Part 2 home (e.g.,
-  `schema:PaymentMethod`, an intangible classifier); leave it unrooted.
-
-User reviews. Cached per class URI in `.docgraph/cache/anchors/`. Anchoring permits
-"no anchor" rather than forcing every class up to `iso15926:Thing` — otherwise the
-hierarchy fills with noise.
-
-### Phase 4 — emit named graph
-
-Write the normalized graph (Phase 2 rewrites + Phase 3 anchors + everything the source
-already declared canonically) to `graphs/<slug>.ttl` and register in `sources.ttl`.
-Cascade-delete drops the file and the registry entry.
-
-### Caching summary
-
-Two long-lived caches survive source removal — they're vocabulary-level facts, not
-document-level:
-
-```
-.docgraph/cache/lifts/<predicate-slug>.rq    ← per-predicate lift rule
-.docgraph/cache/anchors/<class-slug>.ttl     ← per-class Part 2 anchor
-```
-
-Same shape as the PDF→Markdown cache (cache the expensive LLM work so it doesn't
-re-run), different key. `docgraph forget-rule <uri>` evicts an entry that was approved
-in error.
-
-### Bootstrap
-
-`data/financial_documents.ttl` is the canonical Phase-2/3 no-op test: ingesting it
-should produce a normalized graph byte-equivalent to the source modulo blank-node
-renaming. If it doesn't, the analyzer is over-rewriting.
-
----
-
 ## Classification — two questions (Q1 + Q2)
 
 Classification of an ingested document splits into two independent questions asked in
 order. They have different scopes, different candidate sets, and different cost
 profiles.
 
-These are orthogonal to the structural axis introduced in "Pipeline shape" — *what does
-this document define?* (Classes / Properties / Individuals). Q1/Q2 ask about the
-document's subject and form. The structural axis runs in the analyzer (Phase 1) by
-inspecting triples; Q1/Q2 are LLM-driven semantic calls. Both result sets land on the
+These are orthogonal to the **declares-axis** above (*what does this document
+define?* — Classes / Properties / Individuals). Q1/Q2 ask about the
+document's subject and form. The declares-axis is structural inspection of
+triples; Q1/Q2 are LLM-driven semantic calls. Both result sets land on the
 same `<source>` IngestionRecord but answer different questions.
 
 ### Q1 — Subject: what is this document *about*?
@@ -947,11 +753,9 @@ same `<source>` IngestionRecord but answer different questions.
   - Sensor reading → `dg:isAbout iso15926:Quality`.
   - Poetry book → `dg:isAbout iso15926:ArrangedIndividual` (vague — and that
     vagueness is itself the "outside our domain" signal).
-- **Doubles as the uncovered diagnostic**: if Q1 returns only the most generic subjects
-  (`ArrangedIndividual` and nothing more specific) with low confidence, the document
-  is outside the upper ontology's resolution. Replaces the earlier
-  `dg:typeNearestSimilarity < 0.3` geometric heuristic with a semantically grounded
-  one.
+- **Doubles as the uncovered diagnostic**: if Q1 returns only the most
+  generic subjects (`ArrangedIndividual` and nothing more specific) with low
+  confidence, the document is outside the upper ontology's resolution.
 
 ### Q2 — Form: what *kind of document* is this?
 
@@ -1032,25 +836,17 @@ Per ingest, the default graph carries:
 <ext/<slug>>
     dg:subjectConfidence  0.81 ;            # Q1's headline confidence
     dg:typeConfidence     0.92 ;            # Q2's headline confidence (if Q2 ran)
-    dg:typeCoverage       0.67 ;            # filled-direct-props / total (if Q2 ran)
-    dg:typeNearestSimilarity 0.27 ;         # best Q2 cosine score (if Q2 ran)
     dg:isAbout            iso15926:Activity, iso15926:Person .  # Q1 result
 ```
 
-Reading them together gives the diagnostics the user wants:
-- High `subjectConfidence` + Q2 didn't run → "we know what it's about; you haven't
-  loaded a form ontology yet."
-- High `subjectConfidence` + low `typeNearestSimilarity` → "we know the general topic;
-  no loaded form fits — the document is outside this project's domain coverage."
-- High `subjectConfidence` + high `typeConfidence` + low `typeCoverage` → "right type,
-  but document is sparse — many of the type's declared properties weren't in the
-  document."
+Reading them together: high `subjectConfidence` + Q2 didn't run → "we know
+what it's about; you haven't loaded a form ontology yet". High
+`subjectConfidence` + low `typeConfidence` → "we know the general topic; no
+loaded form fits — the document is outside this project's domain coverage".
 
 ---
 
 ## Extraction pipeline (full sequence)
-
-The unified pipeline that "Pipeline shape" introduces, with concrete steps:
 
 ```
 docgraph add <file>
@@ -1071,50 +867,38 @@ docgraph add <file>
     │                      Mint chapter/quote ArrangedIndividuals + composition
     │                      tuples while walking the markdown structure.
     │
-    ├─ 3. Analyzer Phase 1 — what does this source define?
-    │     Structural inspection of candidate triples. Emit
-    │     <source> dg:defines dg:Classes/Properties/Individuals.
+    ├─ 3. Structural inspection — what does this source declare?
+    │     Emit <source> dg:defines dg:Classes/Properties/Individuals
+    │     (see "What does a document declare?" above).
     │
-    ├─ 4. Analyzer Phase 2 — normalize non-canonical idioms.
-    │     For each declared class/property with empty structural slots,
-    │     look up lift rules in data/normalization/ + cache/lifts/, prompt
-    │     LLM if missing, apply. Pure-OWL inputs are no-ops.
+    ├─ 4. 14-prompt Part 2 classifier (src/classify_part2/).
+    │     Run the per-aspect prompts (activities, classes, connections,
+    │     identifiers, individuals, lifecycle, participations, properties,
+    │     roles, temporal, whole-parts, …). Each converter emits a reified
+    │     Part 2 cluster — equivalent to expanding the lowered body of the
+    │     corresponding library template (see "Templates" above).
     │
-    ├─ 5. Analyzer Phase 3 — anchor declared classes to Part 2.
-    │     For each class without an iso15926: ancestor, LLM picks closest fit
-    │     from the curated upper-level Part 2 catalogue (or "no anchor").
-    │     Cached per class URI. Skipped if Phase 1 found no Classes.
-    │
-    ├─ 6. Q1 — Subject identification (LLM, semantic).
+    ├─ 5. Q1 — Subject identification (LLM, semantic).
     │     Candidates: ~15 curated upper-level Part 2 classes, sent in full.
     │     Emit <source> dg:isAbout <UpperClass>, …  Always runs.
     │
-    ├─ 7. Q2 — Form classification (LLM, semantic; only when domain ontology loaded).
+    ├─ 6. Q2 — Form classification (LLM, semantic; only when domain ontology loaded).
     │     Candidates: leaves of user-ingested ontologies.
     │     If ≥ 30: embedding top-k pre-filter; else send all.
     │     Emit <source> rdf:type <FormClass> in the extraction graph.
     │     Skipped (with clear message) when no domain ontology is loaded.
     │
-    ├─ 8. Property extraction (only when Q2 ran).
-    │     For the chosen form class, walk rdfs:subClassOf* ancestors and
-    │     collect every property whose rdfs:domain matches. Single LLM
-    │     call returns nested JSON; we mint URIs for object-typed
-    │     properties (one level deep), emit triples into the extraction
-    │     named graph. Each extracted entity carries one or more reified
-    │     description tuples linking the supporting quote(s) to it.
-    │     Coverage signal: filled-direct / total-direct.
+    ├─ 7. Template-instance recognition + filling (in progress).
+    │     Fold extracted facts against the loaded template library by
+    │     recognition (see templates.md). The un-folded remainder feeds
+    │     the discovery mechanisms (structural / learned).
     │
-    └─ 9. Analyzer Phase 4 — emit named graph and register in sources.ttl.
+    └─ 8. Emit named graph and register in sources.ttl.
 ```
 
-Steps 3–5 are the analyzer's class/property work; steps 6–8 are subject/form
-classification and per-document property extraction. They share the same named graph
-(`<ext/<slug>>` for the extraction graph; `graphs/<slug>.ttl` for the normalized source
-view).
-
-The extraction graph is described as a `prov:Entity` in the default graph and
-generated by all the LLM activities above (Phase 2 normalization, Phase 3 anchoring,
-Q1, Q2, property extraction). See "Provenance" above for the cascade story.
+The extraction graph is described as a `prov:Entity` in the default graph,
+generated by the LLM activities above. See "Provenance" above for the cascade
+story.
 
 ---
 
@@ -1148,185 +932,66 @@ No `financial_documents.ttl`. No domain classes. The graph is empty except for
 structure. When the combined graph is loaded, `meta.ttl`'s `owl:imports` brings in
 Part 2 and the full hierarchy is available for classification.
 
-### Pre-seeded normalization rules (shipped with docgraph, not in `.docgraph/`)
+### Future: triplestore migration
 
-The repo ships a small set of lift rules for common vocabularies under
-`data/normalization/`:
-
-```
-data/normalization/
-  schemaorg.rq        ← schema:domainIncludes/rangeIncludes, rdf:Property typing
-  skos-as-taxonomy.rq ← skos:broader/narrower → rdfs:subClassOf
-```
-
-These are pre-seeded equivalents of `cache/lifts/` entries — same on-disk format, same
-code path. The user pays no LLM cost for first-time ingest of schema.org or SKOS-shaped
-vocabularies; everything else still flows through the LLM-discovered route.
-
----
-
-## Future: triplestore migration
-
-Current plan uses **rdflib `Dataset`** with TriG/N-Quads format for named graphs,
-stored as files. This is readable, version-controllable, and testable on small corpora.
-
-When scale requires it, the file layout maps 1-to-1 to a triplestore's named graphs
-(Oxigraph, Apache Fuseki). Migration path: replace file I/O with SPARQL HTTP client,
-keep the same graph URI scheme.
+Current plan uses **rdflib `Dataset`** with TriG/N-Quads format. The file
+layout maps 1-to-1 to a triplestore's named graphs (Oxigraph, Apache Fuseki)
+when scale demands it.
 
 ---
 
 ## Open questions / next decisions
 
-1. **ISO 15926 Part 2 mapping** *(resolved 2026-05-02)*: Part 2 (POSC Caesar OWL
-   rendering) is the meta-ontology. Key decisions:
-   - Use `iso15926:` prefix for `http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#`.
-   - Document instances are `iso15926:ArrangedIndividual`s, classified by an instance
-     of `ClassOfInformationObject`.
-   - Document types → OWL classes with `rdfs:subClassOf iso15926:ArrangedIndividual`.
-   - Properties → `owl:ObjectProperty` / `owl:DatatypeProperty` with
-     `rdfs:domain`/`range`.
-   - Modality (Mandatory/Preferred/Optional/Prohibited) is docgraph-specific
-     (`dg:Modality` enum) — Part 2 has no equivalent at the property-modality layer.
-   - Source-level provenance is the named graph; per-fact temporal/authoritative
-     provenance uses Part 2 reification (`Classification`, `Specialization`,
-     `RepresentationOfThing`, etc.) per the rule above.
-   - Evidence quotes are `ArrangedIndividual`s linked to their supporting
-     `Description` and `CompositionOfIndividual` reifications.
+1. **Merge conflicts**: Two documents declare the same URI as `owl:Class` with
+   different `rdfs:subClassOf` parents. Options: last-write-wins, explicit
+   conflict node (`dg:ConflictingDefinition`), or require user resolution.
 
-2. **Prototype order**: TTL ingest first (proves meta-ontology structure, no LLM risk)
-   or PDF role-detection first (proves the LLM pipeline)?
+2. **Templates: breadcrumb policy**: Should expansion emit a
+   `<anchor> tpl:wasInstantiatedFrom tpl:Foo` triple alongside the lowered
+   Part 2 so the inspector can fold-back without running a recognizer pass
+   over the whole graph? Costs one extra triple per template-instance; saves
+   running subgraph isomorphism against every registered template at display
+   time. Probably yes for instance-form templates (anchor node is natural),
+   unclear for pattern-form templates (no anchor).
 
-3. **`docgraph remove`**: Show diff of what will cascade before confirming?
+3. **Templates: versioning & replacement**: When a template definition
+   changes (slot added, lowered body restructured) and there are existing
+   expanded instances on disk, what's the migration story? Options: (a)
+   re-expand all affected sources from cached LLM outputs (requires keeping
+   LLM-emitted template-instance JSON, not just the expanded result); (b)
+   leave existing data alone, new instances use new shape (graph drift);
+   (c) require explicit `docgraph templates migrate <uri>` with diff preview.
+   Probably (c) for explicit breaking changes, (b) for additive ones.
 
-4. **`docgraph status`**: Surface contents of `_unresolved.ttl` — "these concepts are
-   referenced but have no defining document".
+4. **Templates: foreign-Part-2 recognition at ingest**: When ingesting a
+   TTL that already contains reified Part 2 clusters (not authored as
+   templates), should ingest try to recognize known templates and re-author
+   as instance-form, or leave the raw reified form? Recognition is cheap
+   (subgraph match) and gives a cleaner result; but it changes the source's
+   intent ("the source emitted X triples" becomes "the source emitted Y
+   template instances"). Probably leave-raw by default, with
+   `docgraph templates fold <source>` as an explicit pass.
 
-5. **Merge conflicts**: Two documents declare the same URI as `owl:Class` with
-   different `rdfs:subClassOf` parents. Options: last-write-wins, explicit conflict
-   node (`dg:ConflictingDefinition`), or require user resolution.
+5. **Subject classifier implementation**: The subject-typed filling step
+   needs a fragment-to-Part-2-subject classifier. Options: (a) rule-based on
+   extractor cues (table-row → likely Possession; verb-phrase → likely
+   Activity); (b) lightweight LLM pass (cheap model, single classification
+   call per fragment); (c) a recursive use of the template engine itself —
+   pattern-form classifier templates whose lifted side is a natural-language
+   descriptor and lowered side a `tpl:subject` annotation. Probably (a)+(b)
+   hybrid: rules where they're obvious, LLM fallback otherwise.
 
-6. **Scope / temporal validity**: When a standard has a validity period or
-   jurisdiction, attach it to the *named graph* (registry entry in `sources.ttl`), not
-   to each triple. Confirm this is sufficient for the use cases on the table.
+6. **Pattern-index signature shape**: How deep should subgraph signatures go
+   (2-walks vs 3-walks vs bounded-by-reification-cluster)? Type-only or
+   predicate-aware? Promotion threshold `k`? Defaults: bounded by the
+   enclosing reified cluster (e.g., one full `Description` tuple),
+   predicate-aware, `k=3` across ≥2 sources. Tune once real data exists.
+   Risk of the deeper-walk setting: signatures explode combinatorially.
+   Risk of shallow: too many spurious matches.
 
-7. **Migrating `financial_documents.ttl` to a template library**: the existing
-   hardcoded financial OWL ontology becomes `data/templates/financial/` — one TTL
-   per predicate (pass-through templates for datatype properties, instance-form
-   for multi-slot bundles). Bootstrap test becomes "load the template library and
-   ingest the same sample document; expanded graph contains the same Part 2
-   triples as the pre-migration pipeline produced". Migration script can read the
-   existing ontology and emit a starter template directory, then the user
-   reviews/edits.
-
-8. **LLM rule approval flow**: Phase 2 lift discovery and Phase 3 anchor discovery
-   both want user review before caching. Bundle into one combined diff at end of
-   ingest ("here's how I translated this source — accept / edit / abort") or two
-   separate prompts? Probably one combined diff.
-
-9. **Pre-seeded vs cached rule conflict**: if a user runs `docgraph add` on a
-   schema.org TTL, gets the pre-seeded lift, later edits `cache/lifts/` to override,
-   then a docgraph upgrade ships a new pre-seeded version — whose wins? Probably the
-   cache (it's user-owned), with a `docgraph diagnose` command to surface the
-   divergence.
-
-10. **"No anchor" surface**: `dg:noPart2Anchor true` is queryable but noisy (every
-    Part-2-foreign class carries the annotation). Alternative: silent (just leave
-    class unrooted) and derive the "outside Part 2" set with a SPARQL query.
-    Convenience-vs-cleanliness call.
-
-11. **Quote-individual deduplication scope**: SHA-1 hash of quote text gives free
-    cross-source dedup, but means a quote URI in graph A can be referenced by graph B's
-    description tuples. Options: (a) keep dedup global — a quote with the same text
-    is the same node regardless of source; (b) dedup per-source only — each source's
-    graph re-mints its own quote URIs even for identical text. (a) is conceptually
-    cleaner; (b) makes cascade-delete trivially local. Probably (a) with a registry
-    of quote-graph-of-origin to enable repair on cascade.
-
-12. **Templates: store-as-template vs store-as-Part-2**: Current decision is
-    store-as-Part-2 (templates live at the LLM/inspection boundaries; expanded
-    reified Part 2 lands in graph files). Future option: flip to store-as-template
-    (lifted instances on disk, Part 2 materialized on demand). Smaller files but
-    every consumer needs the expander. Worth re-evaluating once template usage is
-    real and graph-file size becomes a pain point.
-
-13. **Templates: breadcrumb policy**: Should expansion emit a
-    `<anchor> tpl:wasInstantiatedFrom tpl:Foo` triple alongside the lowered Part 2
-    so the inspector can fold-back without running a recognizer pass over the whole
-    graph? Costs one extra triple per template-instance; saves running subgraph
-    isomorphism against every registered template at display time. Probably yes for
-    instance-form templates (anchor node is natural), unclear for pattern-form
-    templates (no anchor).
-
-14. **Templates: versioning & replacement**: When a template definition changes
-    (slot added, lowered body restructured) and there are existing expanded
-    instances on disk, what's the migration story? Options: (a) re-expand all
-    affected sources from cached LLM outputs (requires keeping LLM-emitted
-    template-instance JSON, not just the expanded result); (b) leave existing data
-    alone, new instances use new shape (graph drift); (c) require explicit
-    `docgraph templates migrate <uri>` with diff preview. Probably (c) for explicit
-    breaking changes, (b) for additive ones.
-
-15. **Templates: foreign-Part-2 recognition at ingest**: When ingesting a TTL that
-    already contains reified Part 2 clusters (not authored as templates), should
-    Phase 2 try to recognize known templates and re-author as instance-form, or
-    leave the raw reified form? Recognition is cheap (subgraph match) and gives a
-    cleaner result; but it changes the source's intent ("the source emitted X
-    triples" becomes "the source emitted Y template instances"). Probably leave-
-    raw by default, with `docgraph templates fold <source>` as an explicit pass.
-
-16. **Templates: LLM-discovered template approval**: Same gate as Phase 2 lift
-    discovery and Phase 3 anchor discovery. When the LLM proposes a new template
-    during extraction (because the candidate text doesn't fit any existing
-    template), surface for user approval, then cache. Bundling with the existing
-    rule-approval flow (open question 8) probably makes sense. See "Template
-    discovery and filling" for the broader three-source picture (library,
-    structural, learned).
-
-17. **Subject classifier implementation**: The subject-typed filling step needs
-    a fragment-to-Part-2-subject classifier. Options: (a) rule-based on extractor
-    cues (table-row → likely Possession; verb-phrase → likely Activity); (b)
-    lightweight LLM pass (cheap model, single classification call per fragment);
-    (c) a recursive use of the template engine itself — pattern-form classifier
-    templates whose lifted side is a natural-language descriptor and lowered side
-    a `tpl:subject` annotation. Probably (a)+(b) hybrid: rules where they're
-    obvious, LLM fallback otherwise.
-
-18. **Pattern-index signature shape**: How deep should subgraph signatures go
-    (2-walks vs 3-walks vs bounded-by-reification-cluster)? Type-only or
-    predicate-aware? Promotion threshold `k`? Defaults: bounded by the enclosing
-    reified cluster (e.g., one full `Description` tuple), predicate-aware,
-    `k=3` across ≥2 sources. Tune once real data exists. Risk of the deeper-walk
-    setting: signatures explode combinatorially. Risk of shallow: too many
-    spurious matches.
-
-19. **Structural-template extraction scope**: Which document features count as
-    "structural repetition" worth lifting at state-0? Tables yes; numbered lists
-    yes; key-value blocks (forms) yes; prose paragraphs no. Edge cases:
-    nested tables, tables with merged cells, diagrams with consistent
-    sub-structure (org charts, P&IDs). Probably tackle markdown tables first,
-    then expand.
-
----
-
-## Current codebase reference
-
-Key files for the Part 2 pipeline:
-
-| File | Role |
-|---|---|
-| `src/classify_part2/` | Part 2 classification pipeline (14-prompt classifier) |
-| `src/classify_part2/ns.py` | Namespace constants (`ISO15926`, `DG`, `EXT_NS_FOR`) |
-| `src/classify_part2/reify.py` | `mint_classification`, `mint_class_of` helpers |
-| `src/classify_part2/uri.py` | Deterministic URI minting (slugify + ext namespace) |
-| `src/classify_part2/pipeline.py` | Top-level entry point for one source |
-| `src/classify_part2/runner.py` | Per-prompt LLM driver |
-| `src/classify_part2/convert/` | Per-prompt JSON-to-TTL converters |
-| `docs/ISO-15926-2_2003.rdf` | Part 2 OWL rendering (POSC Caesar) |
-| `docs/ISO-15926-2_2003_annotations.rdf` | Part 2 annotation overlay |
-| `docs/ISO-15926-2_2003_information_objects.md` | Verbatim extract of the standard's information-object sections |
-| `docs/classify_design.md` | High-level design + gating logic for the 14-prompt pipeline |
-| `docs/classify_prompts/` | One markdown file per prompt body |
-| `data/financial_documents.ttl` | Hardcoded domain ontology (to be replaced by the general pipeline) |
-| `data/docgraph.ttl` | Project registry (to be redesigned around `sources.ttl`) |
-| `data/shapes.ttl` | Hand-authored SHACL shapes (to be derived from modality triples) |
+7. **Structural-template extraction scope**: Which document features count
+   as "structural repetition" worth lifting at state-0? Tables yes; numbered
+   lists yes; key-value blocks (forms) yes; prose paragraphs no. Edge cases:
+   nested tables, tables with merged cells, diagrams with consistent
+   sub-structure (org charts, P&IDs). Probably tackle markdown tables first,
+   then expand.
