@@ -1,0 +1,44 @@
+@prefix tpl:  <http://example.org/docgraph/template#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+tpl:Template a owl:Class ;
+    rdfs:label "Template" ;
+    rdfs:comment "ISO 15926 Part 7-style lifted/lowered template." .
+
+tpl:Slot a owl:Class ;
+    rdfs:label "Slot" .
+
+tpl:slot a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:range  tpl:Slot ;
+    rdfs:comment "Links a template to one of its slot variables. The slot's URI is the variable in the lowered graph; the slot's local-name is the slot's name (used as the JSON binding key and the [name] placeholder in tpl:definition)." .
+
+tpl:range a rdf:Property ;
+    rdfs:domain tpl:Slot ;
+    rdfs:label  "slot range (class or datatype)" .
+
+tpl:minCount a owl:DatatypeProperty ;
+    rdfs:domain tpl:Slot ;
+    rdfs:label  "minimum cardinality (default 1)" .
+
+tpl:maxCount a owl:DatatypeProperty ;
+    rdfs:domain tpl:Slot ;
+    rdfs:comment "Maximum cardinality. 0 means unbounded. Default 1." .
+
+tpl:lifted a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "URI of the named graph holding the lifted form. Pattern-form templates only; instance-form auto-derives." .
+
+tpl:lowered a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "URI of the named graph holding the lowered (Part 2) form." .
+
+tpl:subject a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "Part 2 reified-relationship class this template anchors on (Activity, Possession, Description, ...). Used for subject-typed candidate selection during LLM filling." .
+
+tpl:definition a owl:DatatypeProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "Natural-language sentence with [slot] placeholders. LLM-facing summary." .

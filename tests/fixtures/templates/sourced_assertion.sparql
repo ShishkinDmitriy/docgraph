@@ -1,0 +1,15 @@
+PREFIX dg: <http://example.org/docgraph/meta#>
+PREFIX iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT * WHERE {
+  ?anon_b0 iso15926:hasPart ?quote .
+  ?anon_b0 iso15926:hasWhole ?doc .
+  ?anon_b0 rdf:type iso15926:CompositionOfIndividual .
+  ?anon_b1 iso15926:hasRepresented ?references .
+  ?anon_b1 iso15926:hasSign ?quote .
+  ?anon_b1 rdf:type iso15926:Description .
+  ?quote dg:locator ?locator .
+  ?quote dg:text ?quoteText .
+  ?quote rdf:type dg:Quote .
+}

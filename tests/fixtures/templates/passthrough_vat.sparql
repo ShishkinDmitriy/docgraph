@@ -1,0 +1,5 @@
+PREFIX dom: <http://example.org/docgraph/financial#>
+
+SELECT * WHERE {
+  ?invoice dom:hasVatNumber ?value .
+}
