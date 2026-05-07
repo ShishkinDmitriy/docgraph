@@ -1,0 +1,55 @@
+@prefix ex: <http://example.org/docgraph/example#> .
+@prefix inst: <urn:tpl-instance/individual-has-monetary-value/8dd17bdffe624714/> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix rdl: <http://data.15926.org/rdl/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+inst:anon-_b0 a iso15926:TemporalWholePart ;
+    iso15926:hasPart inst:u1 ;
+    iso15926:hasWhole ex:V-101 .
+
+inst:anon-_b1 a iso15926:Classification ;
+    iso15926:hasClassified inst:u2 ;
+    iso15926:hasClassifier rdl:RDS2220202 .
+
+inst:anon-_b2 a iso15926:Classification ;
+    iso15926:hasClassified inst:u4 ;
+    iso15926:hasClassifier rdl:RDS2228349 .
+
+inst:anon-_b3 a iso15926:Identification ;
+    iso15926:hasRepresented inst:u5 ;
+    iso15926:hasSign 1875.00 .
+
+inst:anon-_b4 a iso15926:Beginning ;
+    iso15926:hasPart inst:u6 ;
+    iso15926:hasWhole inst:u1 .
+
+inst:anon-_b5 a iso15926:Identification ;
+    iso15926:hasRepresented inst:u6 ;
+    iso15926:hasSign inst:u7 .
+
+rdl:RDS2220202 a iso15926:ClassOfIndirectProperty .
+
+rdl:RDS2228349 a iso15926:Scale .
+
+ex:V-101 a iso15926:PossibleIndividual .
+
+inst:u2 a iso15926:IndirectProperty ;
+    iso15926:hasPossessor inst:u1 ;
+    iso15926:hasProperty inst:u3 .
+
+inst:u4 a iso15926:PropertyQuantification ;
+    iso15926:hasInput inst:u3 ;
+    iso15926:hasResult inst:u5 .
+
+inst:u7 a iso15926:RepresentationOfGregorianDateAndUtcTime ;
+    iso15926:hasContent "2021-09-21T13:33:00+00:00"^^xsd:dateTime .
+
+inst:u3 a iso15926:Property .
+
+inst:u5 a iso15926:RealNumber .
+
+inst:u6 a iso15926:PointInTime .
+
+inst:u1 a iso15926:PossibleIndividual .
+

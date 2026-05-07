@@ -1,0 +1,13 @@
+# Lifted-form instance: V-101 labour cost USD 1,875.
+@prefix iso: <http://example.org/docgraph/iso#> .
+@prefix ex:  <http://example.org/docgraph/example#> .
+@prefix rdl: <http://data.15926.org/rdl/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+ex:monetary-V-101-labour-cost-USD-1875
+    a iso:IndividualHasMonetaryValue ;
+    iso:hasPossessor     ex:V-101 ;
+    iso:hasCostType      rdl:RDS2220202 ;
+    iso:valMonetaryValue "1875.00"^^xsd:decimal ;
+    iso:hasCurrency      rdl:RDS2228349 ;
+    iso:valEffectiveDate "2021-09-21T13:33:00Z"^^xsd:dateTime .

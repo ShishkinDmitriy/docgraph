@@ -1,0 +1,38 @@
+PREFIX iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT * WHERE {
+  ?anon_b0 iso15926:hasPart ?u1 .
+  ?anon_b0 iso15926:hasWhole ?hasPropertyPossessor .
+  ?anon_b0 rdf:type iso15926:TemporalWholePart .
+  ?anon_b1 iso15926:hasClassified ?u1 .
+  ?anon_b1 iso15926:hasClassifier ?u2 .
+  ?anon_b1 rdf:type iso15926:Classification .
+  ?anon_b2 iso15926:hasClassified ?u2 .
+  ?anon_b2 iso15926:hasClassifier ?hasPropertyType .
+  ?anon_b2 rdf:type iso15926:Classification .
+  ?anon_b3 iso15926:hasClassified ?u3 .
+  ?anon_b3 iso15926:hasClassifier ?hasScale .
+  ?anon_b3 rdf:type iso15926:Classification .
+  ?anon_b4 iso15926:hasRepresented ?u4 .
+  ?anon_b4 iso15926:hasSign ?valPropertyValue .
+  ?anon_b4 rdf:type iso15926:Identification .
+  ?anon_b5 iso15926:hasPart ?u5 .
+  ?anon_b5 iso15926:hasWhole ?u1 .
+  ?anon_b5 rdf:type iso15926:Beginning .
+  ?anon_b6 iso15926:hasRepresented ?u5 .
+  ?anon_b6 iso15926:hasSign ?u6 .
+  ?anon_b6 rdf:type iso15926:Identification .
+  ?hasPropertyPossessor rdf:type iso15926:PossibleIndividual .
+  ?hasPropertyType rdf:type iso15926:ClassOfProperty .
+  ?hasScale rdf:type iso15926:Scale .
+  ?u1 rdf:type iso15926:PossibleIndividual .
+  ?u2 rdf:type iso15926:Property .
+  ?u3 iso15926:hasInput ?u2 .
+  ?u3 iso15926:hasResult ?u4 .
+  ?u3 rdf:type iso15926:PropertyQuantification .
+  ?u4 rdf:type iso15926:ArithmeticNumber .
+  ?u5 rdf:type iso15926:PointInTime .
+  ?u6 iso15926:hasContent ?valEffectiveDate .
+  ?u6 rdf:type iso15926:RepresentationOfGregorianDateAndUtcTime .
+}
