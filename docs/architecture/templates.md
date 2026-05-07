@@ -26,11 +26,14 @@ Three motivations:
    foreign idiom and whose lowered form is the equivalent reified Part 2
    cluster.
 
-Templates are first-class **as definitions** (URIs, files, registry,
-inspectable, version-controlled) but **not as stored instances** — a
-template-instance is expanded to reified Part 2 before being written to a
-graph file. We can flip to "store as templates, materialize Part 2 on demand"
-later without losing data.
+**Templates are the storage shape.** A template-instance is written to the
+graph file in its **lifted form** (one typed-anchor + N slot-binding triples)
+— the compact, human-inspectable shape. The lowered Part 2 cluster is
+materialised on demand for SPARQL queries that need Part 2 shapes (and via
+`recognize` for any graph that already happens to be in lowered shape, e.g.
+foreign data not authored as templates). Storage cost: ~6 triples per
+`IndividualHasMonetaryValue` instance instead of ~13 — the whole point of
+the unification.
 
 ## Lifted vs lowered (Part 7 terminology)
 
@@ -39,18 +42,22 @@ Borrowed verbatim from ISO 15926 Part 7:
 - **Lifted form** — the compact representation. For instance-form templates, a typed
   instance with slot values (`var:this a tpl:Foo ; <slot-N> var:slot-N`). For pattern-form
   templates, an arbitrary graph pattern (often a single triple, e.g.,
-  `var:x prov:wasGeneratedBy var:y`).
-- **Lowered form** — the expanded reified Part 2 graph. The canonical storage form.
+  `var:x prov:wasGeneratedBy var:y`). **The canonical storage form.**
+- **Lowered form** — the expanded reified Part 2 graph. Materialised on demand for
+  SPARQL queries that need Part 2 shapes; not stored.
 
 Every template declares both as RDF graphs that share a set of variables. Engine
 operations:
 
-- **Expansion** — match lifted, substitute into lowered. Used at extraction time:
-  the analyzer's emit format is template instances; the engine writes reified Part 2
-  to the graph file.
-- **Recognition** — match lowered, substitute into lifted. Used at display time
-  (inspector folds reified clusters back to template form). Also useful when
-  ingesting foreign Part 2 data not authored as templates.
+- **Materialisation (lifted-form storage)** — substitute bindings into the lifted
+  graph and write that to disk. The default path: the analyzer's emit format is
+  template instances, and the engine stores them in lifted form.
+- **Expansion (on-demand lowered)** — match lifted, substitute into lowered. Used
+  by SPARQL paths that need Part 2 reified shapes, and by anyone consuming the
+  graph through Part 2 vocabulary.
+- **Recognition** — match lowered, substitute into lifted. Used when ingesting
+  foreign Part 2 data not authored as templates, so it can be folded into the
+  same lifted-storage shape.
 
 Both directions use the same machinery (subgraph match + variable substitution).
 No embedded SPARQL strings; no separate rule pairs.
@@ -257,14 +264,13 @@ RDFS — the docgraph rule"): reify when the assertion carries information
 that **shouldn't be true at all times** or has a **specific source/authority
 worth preserving beyond the named-graph level**. Otherwise pass-through.
 
-**Cost reality.** A typical invoice with 20 datatype-property assertions:
-- All pass-through → 20 triples (cheapest; no Part 2 grounding for those values)
-- All lightly reified → ~60 triples (3× expansion)
-- All fully Part 2-reified → ~100 triples (5× expansion)
-
-Plus the quote chain (~13/quote) and any reified relationships. Default to
-pass-through for datatype properties; reify selectively where the value's
-provenance matters.
+**Cost reality.** Storage is the lifted form, so the cost is roughly constant
+regardless of how reified the lowered body is — an `IndividualHasMonetaryValue`
+costs the same 6 lifted triples whether its lowered body is 1 triple or 13.
+The reification level only matters for SPARQL paths that materialise the lowered
+form on demand. Default to pass-through for datatype properties (cheapest to
+materialise); reify selectively where the value's provenance matters and a
+SPARQL path will actually consume the Part 2 shape.
 
 ## Multi-valued slots
 

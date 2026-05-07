@@ -81,6 +81,23 @@ class Template:
     definition: str | None = None
     subject: URIRef | None = None
     slots: list[Slot] = field(default_factory=list)
+    # `tpl:example` graph (when declared) — documentation-only, not consumed
+    # by expansion or recognition. Useful for LLM prompts that show worked
+    # examples of the lifted form.
+    example: Graph | None = None
+    # Per-variable natural-language descriptions, captured from
+    # `<urn:tpl-var/X> rdfs:comment "..."` triples in the meta graph. Keyed
+    # by variable local-name (e.g. "hasPossessor"). Surfaced by the prompt
+    # renderer so the LLM sees what each role *means*, beyond its Part 2
+    # type. Generic mechanism — applies equally to instance-form slots and
+    # pattern-form variables.
+    var_descriptions: dict[str, str] = field(default_factory=dict)
+    # Per-variable datatype URIs (xsd:decimal / xsd:dateTime / ...), inferred
+    # from the lowered graph's structural typing of literal-bearing variables.
+    # See `_infer_var_datatypes` for the recognised patterns. Keyed by
+    # variable local-name. The materialiser uses this to type literal-valued
+    # bindings instead of emitting plain string literals.
+    var_datatypes: dict[str, URIRef] = field(default_factory=dict)
     # `@prefix` declarations from the source file, captured for downstream
     # use (e.g., emitting CURIE-shaped SPARQL). The `var:` prefix is dropped
     # since its URIs are skolemized to per-template namespaces.
@@ -91,6 +108,106 @@ class Template:
             if s.name == name:
                 return s
         return None
+
+
+ISO15926 = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
+
+# One-to-one mapping from Part 2 representation/numeric classes to the xsd
+# datatype the corresponding literal binding takes. The lowered graph types
+# the *intermediate* node with one of these classes; the literal-bound slot
+# variable is reachable from that node via a Part 2 idiom (see
+# `_LITERAL_VAR_FROM_TYPED_NODE` below).
+#
+# Extend this map as more Part 2 representation classes appear in templates.
+_DATATYPE_BY_PART2_CLASS: dict[URIRef, URIRef] = {
+    ISO15926.RepresentationOfGregorianDateAndUtcTime: XSD.dateTime,
+    ISO15926.RealNumber:       XSD.decimal,
+    ISO15926.ArithmeticNumber: XSD.decimal,
+    ISO15926.IntegerNumber:    XSD.integer,
+}
+
+
+def _literal_var_locals_for_typed_node(
+    lowered: Graph, typed_node, var_prefix: str
+) -> list[str]:
+    """Given a Part 2-typed intermediate node, return the local-names of any
+    slot variables it stamps a datatype onto.
+
+    Part 2 uses two idioms to connect a representation/number node to its
+    literal binding:
+
+    1. **Direct `hasContent`** — used by `RepresentationOfGregorianDateAndUtcTime`
+       and similar classes that *are* the representation.
+       Pattern: ``?typed iso15926:hasContent ?var``.
+
+    2. **Indirect via `Identification`** — used by `RealNumber`,
+       `ArithmeticNumber`, `IntegerNumber` etc. The number is the
+       *represented thing*; the literal sign reaches it through an
+       Identification reification.
+       Pattern: ``?id a iso15926:Identification ;
+                       iso15926:hasRepresented ?typed ;
+                       iso15926:hasSign        ?var .``
+
+    Both idioms come straight from Part 2's reification rules (templates.md
+    documents them). The mapping table itself stays one-to-one — we only
+    need two graph-walk shapes to *find* which variable a given typed node
+    stamps.
+    """
+    out: list[str] = []
+
+    def _local_if_var(term):
+        if isinstance(term, URIRef) and str(term).startswith(var_prefix):
+            return str(term)[len(var_prefix):]
+        return None
+
+    # Idiom 1: direct hasContent.
+    for _, _, content in lowered.triples(
+        (typed_node, ISO15926.hasContent, None)
+    ):
+        local = _local_if_var(content)
+        if local:
+            out.append(local)
+
+    # Idiom 2: Identification with hasRepresented = typed_node and
+    # hasSign = ?var.
+    for id_node, _, _ in lowered.triples(
+        (None, ISO15926.hasRepresented, typed_node)
+    ):
+        # Confirm the id_node is actually an Identification.
+        if (id_node, RDF.type, ISO15926.Identification) not in lowered:
+            continue
+        for _, _, sign in lowered.triples(
+            (id_node, ISO15926.hasSign, None)
+        ):
+            local = _local_if_var(sign)
+            if local:
+                out.append(local)
+
+    return out
+
+
+def _infer_var_datatypes(
+    lowered: Graph, var_ns: Namespace
+) -> dict[str, URIRef]:
+    """Walk the lowered graph and return a per-variable xsd datatype map.
+
+    Conceptually a single one-to-one mapping `(Part 2 class) → (xsd type)`:
+    if a variable plays the literal role for a Part 2 representation/number
+    class, its xsd type is determined. The two graph-walk idioms in
+    `_literal_var_locals_for_typed_node` are just two ways the lowered
+    graph can connect the typed node to its literal slot.
+    """
+    out: dict[str, URIRef] = {}
+    var_prefix = str(var_ns)
+    for typed_node, _, type_class in lowered.triples((None, RDF.type, None)):
+        dt = _DATATYPE_BY_PART2_CLASS.get(type_class)
+        if dt is None:
+            continue
+        for local in _literal_var_locals_for_typed_node(
+            lowered, typed_node, var_prefix
+        ):
+            out.setdefault(local, dt)
+    return out
 
 
 def _is_literal_range(rng: URIRef | None) -> bool:
@@ -439,6 +556,28 @@ def load_template(
     definition = meta.value(tpl_uri, TPL.definition)
     subject = meta.value(tpl_uri, TPL.subject)
 
+    # Per-variable descriptions: any `<urn:tpl-var/X> rdfs:comment "..."`
+    # triple in the meta graph. Keyed by variable local-name post-skolem.
+    var_descriptions: dict[str, str] = {}
+    for s, _, o in meta.triples((None, RDFS.comment, None)):
+        if isinstance(s, URIRef) and str(s).startswith(VAR_SOURCE_PREFIX):
+            local = str(s)[len(VAR_SOURCE_PREFIX):]
+            if local and isinstance(o, Literal):
+                var_descriptions[local] = str(o)
+
+    var_datatypes = _infer_var_datatypes(lowered, var_ns)
+
+    example: Graph | None = None
+    example_raw_uri = meta.value(tpl_uri, TPL.example)
+    if isinstance(example_raw_uri, URIRef):
+        raw_example = ds.graph(example_raw_uri)
+        if list(raw_example):
+            # Example is documentation; serialize URIs as-is (no skolemization
+            # of var: namespace, since example bodies use concrete URIs anyway).
+            example = Graph()
+            for s, p, o in raw_example:
+                example.add((s, p, o))
+
     prefixes: dict[str, str] = {}
     for prefix, ns in ds.namespaces():
         if not prefix:
@@ -463,5 +602,8 @@ def load_template(
         ),
         subject=subject if isinstance(subject, URIRef) else None,
         slots=slots,
+        example=example,
+        var_descriptions=var_descriptions,
+        var_datatypes=var_datatypes,
         prefixes=prefixes,
     )

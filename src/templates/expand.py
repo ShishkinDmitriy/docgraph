@@ -44,8 +44,23 @@ def _binding_hash(template_slug: str, hashable_bindings: dict) -> str:
     ).hexdigest()[:16]
 
 
-def _instance_ns(template_slug: str, binding_hash: str) -> Namespace:
-    return Namespace(f"urn:tpl-instance/{template_slug}/{binding_hash}/")
+def _instance_anchor(template_slug: str, binding_hash: str, ext_ns) -> URIRef:
+    """Stable anchor URI for a template instance.
+
+    The anchor is the URI that `var:this` substitutes to in the lifted form.
+    When `ext_ns` is given (the pipeline path), the URI lives in the per-doc
+    extraction namespace so it sits alongside other extracted entities
+    (`e:individual-has-monetary-value-4dd305eab9efe006`). Without `ext_ns`
+    (test/library use), it falls back to a `urn:tpl-instance/` scheme.
+
+    Other intermediate variables and anon URIs from the substitution are
+    minted relative to this anchor: `<anchor>-<varname>`. So the anchor is
+    both the lifted-form anchor URI *and* the prefix for everything else
+    minted from this instance.
+    """
+    if ext_ns is not None:
+        return URIRef(f"{ext_ns}{template_slug}-{binding_hash}")
+    return URIRef(f"urn:tpl-instance/{template_slug}-{binding_hash}")
 
 
 def _is_intermediate(term, template: Template, slot_names: set[str]) -> bool:
@@ -165,9 +180,78 @@ def _multi_slot(template: Template) -> Slot | None:
     return multi[0] if multi else None
 
 
-def expand(template: Template, bindings: dict) -> Graph:
+def materialize_lifted(
+    template: Template, bindings: dict, *, ext_ns=None
+) -> Graph:
+    """Materialize the template's *lifted* graph with the given slot bindings.
+
+    This is the storage-shaped counterpart of `expand`: instead of producing
+    the reified Part 2 lowered cluster, it substitutes bindings into the
+    lifted body — the compact form that gets written to disk. The lowered
+    form is recoverable on demand by calling `expand` with the same bindings
+    (or running `recognize` against a graph that was previously expanded).
+
+    `ext_ns` (optional) is the per-doc extraction namespace; when given, the
+    instance anchor URI lives there (e.g. `e:individual-has-monetary-value-
+    <hash>`) so it sits alongside other extracted entities. When omitted —
+    typical for tests/library use — the anchor falls back to a urn:scheme.
+
+    For instance-form templates the lifted is `var:this a tpl:Foo ; <slot>
+    ?value ; ...`. For pattern-form it's the explicit `tpl:lifted` graph.
+    Both cases mint a stable anchor URI for `var:this`; ad-hoc intermediates
+    (rare in lifted bodies) get `<anchor>-<varname>`.
+    """
+    _validate_bindings(template, bindings)
+    coerced = _coerce_all(template, bindings) if template.is_instance_form else {}
+
+    hash_key = (
+        {k: [str(v) for v in vs] for k, vs in coerced.items()}
+        if template.is_instance_form
+        else {k: str(v) for k, v in bindings.items()}
+    )
+    inst_anchor = _instance_anchor(
+        template.slug, _binding_hash(template.slug, hash_key), ext_ns
+    )
+
+    out = Graph()
+
+    if template.is_instance_form:
+        # `_substitute` expects a slot_name → single-coerced-value map; for
+        # the lifted form there are no multi-valued iterations to worry about
+        # (the lifted graph mentions each slot variable once).
+        single_vals = {
+            name: (vs[0] if vs else None) for name, vs in coerced.items()
+        }
+        for s, p, o in template.lifted:
+            out.add(
+                (
+                    _substitute(s, template, single_vals, inst_anchor,
+                                per_iter=set(), iter_idx=None),
+                    _substitute(p, template, single_vals, inst_anchor,
+                                per_iter=set(), iter_idx=None),
+                    _substitute(o, template, single_vals, inst_anchor,
+                                per_iter=set(), iter_idx=None),
+                )
+            )
+    else:
+        for s, p, o in template.lifted:
+            out.add(
+                (
+                    _substitute_pattern(s, template, bindings, inst_anchor),
+                    _substitute_pattern(p, template, bindings, inst_anchor),
+                    _substitute_pattern(o, template, bindings, inst_anchor),
+                )
+            )
+    return out
+
+
+def expand(template: Template, bindings: dict, *, ext_ns=None) -> Graph:
     """Expand the template with the given slot bindings. Returns a new Graph
-    whose triples are the substituted lowered body."""
+    whose triples are the substituted lowered body.
+
+    `ext_ns` (optional) controls where intermediate URIs live; see
+    `materialize_lifted` for the rationale.
+    """
     _validate_bindings(template, bindings)
     coerced = _coerce_all(template, bindings) if template.is_instance_form else {}
     multi = _multi_slot(template) if template.is_instance_form else None
@@ -181,7 +265,9 @@ def expand(template: Template, bindings: dict) -> Graph:
         if template.is_instance_form
         else {k: str(v) for k, v in bindings.items()}
     )
-    inst_ns = _instance_ns(template.slug, _binding_hash(template.slug, hash_key))
+    inst_anchor = _instance_anchor(
+        template.slug, _binding_hash(template.slug, hash_key), ext_ns
+    )
 
     # Catalogue intermediate terms in the lowered graph.
     intermediates: set[URIRef] = set()
@@ -211,11 +297,11 @@ def expand(template: Template, bindings: dict) -> Graph:
             for s, p, o in template.lowered:
                 out.add(
                     (
-                        _substitute(s, template, single_vals, inst_ns,
+                        _substitute(s, template, single_vals, inst_anchor,
                                     per_iter, iter_idx=None),
-                        _substitute(p, template, single_vals, inst_ns,
+                        _substitute(p, template, single_vals, inst_anchor,
                                     per_iter, iter_idx=None),
-                        _substitute(o, template, single_vals, inst_ns,
+                        _substitute(o, template, single_vals, inst_anchor,
                                     per_iter, iter_idx=None),
                     )
                 )
@@ -232,11 +318,11 @@ def expand(template: Template, bindings: dict) -> Graph:
                     )
                     out.add(
                         (
-                            _substitute(s, template, iter_vals, inst_ns,
+                            _substitute(s, template, iter_vals, inst_anchor,
                                         per_iter, iter_idx=None),
-                            _substitute(p, template, iter_vals, inst_ns,
+                            _substitute(p, template, iter_vals, inst_anchor,
                                         per_iter, iter_idx=None),
-                            _substitute(o, template, iter_vals, inst_ns,
+                            _substitute(o, template, iter_vals, inst_anchor,
                                         per_iter, iter_idx=None),
                         )
                     )
@@ -250,11 +336,11 @@ def expand(template: Template, bindings: dict) -> Graph:
                         continue
                     out.add(
                         (
-                            _substitute(s, template, iter_vals, inst_ns,
+                            _substitute(s, template, iter_vals, inst_anchor,
                                         per_iter, iter_idx=idx),
-                            _substitute(p, template, iter_vals, inst_ns,
+                            _substitute(p, template, iter_vals, inst_anchor,
                                         per_iter, iter_idx=idx),
-                            _substitute(o, template, iter_vals, inst_ns,
+                            _substitute(o, template, iter_vals, inst_anchor,
                                         per_iter, iter_idx=idx),
                         )
                     )
@@ -264,9 +350,9 @@ def expand(template: Template, bindings: dict) -> Graph:
         for s, p, o in template.lowered:
             out.add(
                 (
-                    _substitute_pattern(s, template, bindings, inst_ns),
-                    _substitute_pattern(p, template, bindings, inst_ns),
-                    _substitute_pattern(o, template, bindings, inst_ns),
+                    _substitute_pattern(s, template, bindings, inst_anchor),
+                    _substitute_pattern(p, template, bindings, inst_anchor),
+                    _substitute_pattern(o, template, bindings, inst_anchor),
                 )
             )
 
@@ -277,12 +363,18 @@ def _substitute(
     term,
     template: Template,
     slot_vals: dict,
-    inst_ns: Namespace,
+    inst_anchor: URIRef,
     per_iter: set[URIRef],
     iter_idx: int | None,
 ):
     """Instance-form substitution. `slot_vals` maps slot_name → coerced single
-    value (for multi-valued slot, the value of the current iteration)."""
+    value (for multi-valued slot, the value of the current iteration).
+
+    `var:this` substitutes to `inst_anchor` directly; every other intermediate
+    or anon URI gets minted as `<inst_anchor>-<suffix>`. The anchor is both
+    the lifted-form anchor URI and the prefix for ad-hoc URIs spawned from
+    this instance.
+    """
     if not isinstance(term, URIRef):
         return term
     s = str(term)
@@ -290,13 +382,15 @@ def _substitute(
         local = s[len(str(template.var_ns)) :]
         if local in slot_vals and slot_vals[local] is not None:
             return slot_vals[local]
+        if local == "this":
+            return inst_anchor
         # intermediate variable
         suffix = (
             f"{local}-{iter_idx}"
             if iter_idx is not None and term in per_iter
             else local
         )
-        return URIRef(f"{inst_ns}{suffix}")
+        return URIRef(f"{inst_anchor}-{suffix}")
     if s.startswith(str(template.anon_ns)):
         local = s[len(str(template.anon_ns)) :]
         suffix = (
@@ -304,12 +398,12 @@ def _substitute(
             if iter_idx is not None and term in per_iter
             else f"anon-{local}"
         )
-        return URIRef(f"{inst_ns}{suffix}")
+        return URIRef(f"{inst_anchor}-{suffix}")
     return term
 
 
 def _substitute_pattern(
-    term, template: Template, bindings: dict, inst_ns: Namespace
+    term, template: Template, bindings: dict, inst_anchor: URIRef
 ):
     if not isinstance(term, URIRef):
         return term
@@ -321,8 +415,10 @@ def _substitute_pattern(
             if isinstance(v, (URIRef, Literal)):
                 return v
             return URIRef(str(v))
-        return URIRef(f"{inst_ns}{local}")
+        if local == "this":
+            return inst_anchor
+        return URIRef(f"{inst_anchor}-{local}")
     if s.startswith(str(template.anon_ns)):
         local = s[len(str(template.anon_ns)) :]
-        return URIRef(f"{inst_ns}anon-{local}")
+        return URIRef(f"{inst_anchor}-anon-{local}")
     return term

@@ -120,11 +120,13 @@ so plain `tpl:modality` is the right shape.
 
 ## Templates — Part 7-style lifted/lowered patterns
 
-Templates are the **universal LLM-emit and storage-grounding mechanism**: every
+Templates are the **universal LLM-emit and storage mechanism**: every
 LLM-emitted assertion is a template instance, every domain ontology is a
-template library, every Part 2 reified cluster on disk is the lowered form of a
-template. Storage stays uniformly Part 2-shaped because each template's lowered
-body is grounded to Part 2.
+template library, and **the on-disk graph is the lifted form** — compact
+typed-anchor + slot-binding triples. The lowered Part 2 cluster is
+materialised on demand for SPARQL paths that need Part 2 shapes; it isn't
+stored. Templates are grounded to Part 2 through their lowered body, so
+materialisation is always possible without losing data.
 
 The full chapter — lifted/lowered semantics, the `var:` namespace and
 skolemization, instance-form and pattern-form examples, the reification
@@ -442,13 +444,11 @@ when scale demands it.
    different `rdfs:subClassOf` parents. Options: last-write-wins, explicit
    conflict node (`dg:ConflictingDefinition`), or require user resolution.
 
-2. **Templates: breadcrumb policy**: Should expansion emit a
-   `<anchor> tpl:wasInstantiatedFrom tpl:Foo` triple alongside the lowered
-   Part 2 so the inspector can fold-back without running a recognizer pass
-   over the whole graph? Costs one extra triple per template-instance; saves
-   running subgraph isomorphism against every registered template at display
-   time. Probably yes for instance-form templates (anchor node is natural),
-   unclear for pattern-form templates (no anchor).
+2. **Templates: breadcrumb policy** *(closed 2026-05-07)*: Moot once storage
+   is the lifted form — the typed anchor (`<inst-uri> a iso:Foo`) is itself
+   the breadcrumb. The fold-back from lowered to lifted only matters for
+   foreign Part 2 data ingested without going through the template-emit path,
+   where `recognize` runs over the foreign cluster.
 
 3. **Templates: sub-template composition syntax**: A template's lowered
    body should be able to invoke another template by name (so leaf

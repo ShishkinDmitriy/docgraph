@@ -66,6 +66,26 @@ Preserve the value as a string — do not round, do not normalise units.
 Bearer must reference an entity from the lists below. If a quantity is
 attached to something not listed, omit it.
 
+## Templates available
+
+If a quantity has an exact value AND the document gives an explicit
+effective date for the assertion, prefer emitting a template instance in
+the `instances` array (see schema below) instead of a `quantities` row.
+Use the existing `quantities` schema for ranges/bounds, and for exact
+values where no effective date is given.
+
+Available templates:
+
+{templates}
+
+Use the URI shown in the heading (e.g. `iso:IndividualHasPropertyWithValue`)
+as the `template` field. Bind each variable to a CURIE (`ext:p-101`) for
+entity references, the `hasPropertyType` and `hasScale` to ad-hoc
+`ext:<slug>` URIs you mint for the quantity-kind and unit (re-using the
+same slug across instances when the same kind/unit appears), and the
+date to an ISO 8601 string. Drop the `quantities` row for any quantity
+you emit as a template instance — never duplicate.
+
 Document context:
 - doc_kind: {doc_kind}
 - primary_subjects: {primary_subjects}
@@ -86,6 +106,18 @@ Document content:
 Reply with a single JSON object, no prose, no fences:
 
 {
+  "instances": [
+    {
+      "template": "iso:IndividualHasPropertyWithValue",
+      "bindings": {
+        "hasPropertyPossessor": "ext:<bearer-id>",
+        "hasPropertyType":      "ext:<quantity-kind-slug>",
+        "valPropertyValue":     "30.57",
+        "hasScale":             "ext:<unit-slug>",
+        "valEffectiveDate":     "2021-07-27T00:00:00Z"
+      }
+    }
+  ],
   "quantities": [
     {
       "id":            "...",
@@ -103,7 +135,8 @@ Reply with a single JSON object, no prose, no fences:
   ]
 }
 
-If no quantitative properties are described, return {"quantities": []}.
+If no quantitative properties are described, return
+{"instances": [], "quantities": []}.
 ```
 
 ## Converter mapping

@@ -20,6 +20,8 @@ from src.classify_part2 import prompts
 from src.classify_part2.context import ConversionContext, EntityRef
 from src.log_panels import log_prompt, log_response
 from src.models import ModelConfig
+from src.templates.loader import Template
+from src.templates.prompt_format import render_templates
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +34,17 @@ def run(
     client,
     model: ModelConfig,
     max_tokens: int = 4096,
+    templates: list[Template] | None = None,
 ) -> dict:
-    """Run one prompt and return its parsed JSON output."""
+    """Run one prompt and return its parsed JSON output.
+
+    When `templates` is given, the rendered template specs are substituted
+    at the `{templates}` placeholder in the prompt body — that's how a
+    prompt opts into the template-emit path. Prompts without the
+    placeholder ignore the `templates` arg entirely.
+    """
     template = prompts.load(prompt_name)
-    body = _fill(template, prompt_name, markdown, ctx)
+    body = _fill(template, prompt_name, markdown, ctx, templates or [])
 
     meta = f"{model.model_id}  max_tokens={max_tokens}  prompt={prompt_name}"
     log_prompt(f"classify/{prompt_name}", body, logger=logger, metadata=meta)
@@ -53,7 +62,13 @@ def run(
 # ── Placeholder filling ──────────────────────────────────────────────────────
 
 
-def _fill(template: str, prompt_name: str, markdown: str, ctx: ConversionContext) -> str:
+def _fill(
+    template: str,
+    prompt_name: str,
+    markdown: str,
+    ctx: ConversionContext,
+    templates: list[Template],
+) -> str:
     """Substitute every ``{placeholder}`` in *template*.
 
     Unused placeholders for a given prompt are simply left out by the
@@ -63,6 +78,7 @@ def _fill(template: str, prompt_name: str, markdown: str, ctx: ConversionContext
         "markdown":          markdown,
         "doc_kind":          ctx.doc_kind or "(unspecified)",
         "primary_subjects":  _format_list(ctx.primary_subjects),
+        "templates":         render_templates(templates),
         "activity_ids_and_labels":              _table(ctx.by_kind("activity"),
                                                        columns=("id", "label")),
         "activity_id_label_summary_table":      _table(ctx.by_kind("activity"),

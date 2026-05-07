@@ -1,36 +1,35 @@
 @prefix ex: <http://example.org/docgraph/example#> .
-@prefix inst: <urn:tpl-instance/individual-has-property-with-value/c436b2bcab2140e6/> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix rdl: <http://data.15926.org/rdl/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-inst:anon-_b0 a iso15926:TemporalWholePart ;
-    iso15926:hasPart inst:u1 ;
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b0> a iso15926:TemporalWholePart ;
+    iso15926:hasPart <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> ;
     iso15926:hasWhole ex:V-101 .
 
-inst:anon-_b1 a iso15926:Classification ;
-    iso15926:hasClassified inst:u1 ;
-    iso15926:hasClassifier inst:u2 .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b1> a iso15926:Classification ;
+    iso15926:hasClassified <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> ;
+    iso15926:hasClassifier <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> .
 
-inst:anon-_b2 a iso15926:Classification ;
-    iso15926:hasClassified inst:u2 ;
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b2> a iso15926:Classification ;
+    iso15926:hasClassified <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> ;
     iso15926:hasClassifier rdl:RDS353339 .
 
-inst:anon-_b3 a iso15926:Classification ;
-    iso15926:hasClassified inst:u3 ;
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b3> a iso15926:Classification ;
+    iso15926:hasClassified <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u3> ;
     iso15926:hasClassifier rdl:RDS2229868 .
 
-inst:anon-_b4 a iso15926:Identification ;
-    iso15926:hasRepresented inst:u4 ;
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b4> a iso15926:Identification ;
+    iso15926:hasRepresented <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u4> ;
     iso15926:hasSign 30.57 .
 
-inst:anon-_b5 a iso15926:Beginning ;
-    iso15926:hasPart inst:u5 ;
-    iso15926:hasWhole inst:u1 .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b5> a iso15926:Beginning ;
+    iso15926:hasPart <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u5> ;
+    iso15926:hasWhole <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> .
 
-inst:anon-_b6 a iso15926:Identification ;
-    iso15926:hasRepresented inst:u5 ;
-    iso15926:hasSign inst:u6 .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b6> a iso15926:Identification ;
+    iso15926:hasRepresented <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u5> ;
+    iso15926:hasSign <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u6> .
 
 rdl:RDS2229868 a iso15926:Scale .
 
@@ -38,18 +37,18 @@ rdl:RDS353339 a iso15926:ClassOfProperty .
 
 ex:V-101 a iso15926:PossibleIndividual .
 
-inst:u3 a iso15926:PropertyQuantification ;
-    iso15926:hasInput inst:u2 ;
-    iso15926:hasResult inst:u4 .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u3> a iso15926:PropertyQuantification ;
+    iso15926:hasInput <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> ;
+    iso15926:hasResult <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u4> .
 
-inst:u6 a iso15926:RepresentationOfGregorianDateAndUtcTime ;
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u6> a iso15926:RepresentationOfGregorianDateAndUtcTime ;
     iso15926:hasContent "2021-07-27T10:19:00+00:00"^^xsd:dateTime .
 
-inst:u4 a iso15926:ArithmeticNumber .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u4> a iso15926:ArithmeticNumber .
 
-inst:u5 a iso15926:PointInTime .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u5> a iso15926:PointInTime .
 
-inst:u1 a iso15926:PossibleIndividual .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> a iso15926:PossibleIndividual .
 
-inst:u2 a iso15926:Property .
+<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> a iso15926:Property .
 

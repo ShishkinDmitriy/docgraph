@@ -12,12 +12,19 @@
 
 iso:ClassificationOfIndividual a tpl:Template ;
     rdfs:label "Classification of individual" ;
+    rdfs:comment "A PossibleIndividual fulfils the criteria for membership of a ClassOfIndividual, with a temporal anchor." ;
     rdfs:isDefinedBy <https://15926.blog/templates/IN-CLSIF-100.xml> ;
     tpl:definition "[hasClassified] is classified as [hasClassifier] (effective [valEffectiveDate])." ;
     tpl:subject iso15926:Classification ;
     tpl:lifted  var:lifted ;
     tpl:lowered var:lowered ;
     tpl:example var:example .
+
+var:hasClassified rdfs:comment "The individual entity being classified. The classification is temporally anchored by valEffectiveDate — this template asserts the individual qualified as a member of the class as of that date. For static structural typing where membership is not time-bound (e.g. 'this file is a PDF'), prefer plain rdf:type instead of this template." .
+
+var:hasClassifier rdfs:comment "The class the individual is being classified as. Reference an RDL ID where available; otherwise mint a per-document ext:<slug> whose slug names the class concretely." .
+
+var:valEffectiveDate rdfs:comment "ISO 8601 date or datetime when the classification becomes effective. Use the document's stated date for the fact; do not infer." .
 
 GRAPH var:lifted {
     var:this a iso:ClassificationOfIndividual ;

@@ -25,9 +25,22 @@ from src.classify_part2 import convert, nature_scan, reify, runner
 from src.classify_part2.context import ConversionContext
 from src.classify_part2.nature_scan import NatureScanResult
 from src.classify_part2.ns import DG, ISO15926
+from src.classify_part2.template_emit import expand_instances
 from src.models import ModelConfig
+from src.templates.registry import Registry
 
 logger = logging.getLogger(__name__)
+
+
+# Subjects each prompt may emit. Used to look up applicable templates from
+# the registry. Prompts not listed here run in raw-only mode (no `{templates}`
+# placeholder rendering, no `instances` key consumed). Template path activates
+# only when a prompt is listed here AND its markdown contains `{templates}`.
+PROMPT_SUBJECTS: dict[str, tuple[URIRef, ...]] = {
+    "classes_of_individual": (ISO15926.Classification,),
+    "properties":             (ISO15926.Property,),
+    "quantities":             (ISO15926.Property, ISO15926.IndirectProperty),
+}
 
 
 # (prompt-short-name, converter callable, max_tokens). Order is the
@@ -67,16 +80,30 @@ def classify(
     client,
     model: ModelConfig,
     console: Console,
+    registry: Registry | None = None,
 ) -> PipelineResult:
     """Run the 14-prompt classify pipeline against *markdown*.
 
     Triples are emitted into a fresh ``Graph`` and the caller (typically
     ``ingest_pdf``) merges it into the source's named extraction graph.
+
+    `registry` supplies the template library for the template-emit hybrid
+    path; when omitted the loader walks `data/templates/` once on entry.
     """
     started = datetime.now(timezone.utc).replace(microsecond=0)
     g = Graph()
     g.bind("iso15926", ISO15926)
     g.bind("dg",       DG)
+
+    if registry is None:
+        registry = Registry.load_default()
+
+    # Bind every template's `@prefix` declarations onto the doc graph so
+    # the lifted form serialises as CURIEs (e.g. `iso:IndividualHasMonetaryValue`)
+    # rather than absolute URIs.
+    for tpl in registry.all():
+        for prefix, ns in tpl.prefixes.items():
+            g.bind(prefix, ns, override=False)
 
     # ── Prompt #1 — nature scan ──
     console.print("  [cyan]nature scan[/cyan]...")
@@ -123,10 +150,14 @@ def classify(
             continue
 
         console.print(f"  [cyan]{name}[/cyan]...")
+        applicable_templates = []
+        for subject in PROMPT_SUBJECTS.get(name, ()):
+            applicable_templates.extend(registry.by_subject(subject))
         try:
             data = runner.run(
                 name, markdown=markdown, ctx=ctx,
                 client=client, model=model, max_tokens=max_tokens,
+                templates=applicable_templates,
             )
         except Exception as exc:
             console.print(f"    [yellow]{name} failed[/yellow]: {exc}")
@@ -136,8 +167,28 @@ def classify(
 
         sub_g = conv_fn(data, ctx)
         g += sub_g
+        # Hybrid path: any `instances` block from the LLM is expanded via
+        # the template registry and merged in alongside the converter's
+        # raw-fallback output. Prompts without `{templates}` placeholder
+        # won't have prompted the LLM for `instances`, so this is a no-op
+        # for them.
+        instances = data.get("instances") if isinstance(data, dict) else None
+        if instances:
+            inst_g = expand_instances(
+                instances, registry,
+                ext_ns=ctx.ext_ns, entities=ctx.entities,
+            )
+            g += inst_g
+            console.print(
+                f"    {len(sub_g)} raw + {len(inst_g)} template triple(s); "
+                f"ctx now [bold]{len(ctx.entities)}[/bold] entit(y/ies)"
+            )
+        else:
+            console.print(
+                f"    {len(sub_g)} triple(s); ctx now "
+                f"[bold]{len(ctx.entities)}[/bold] entit(y/ies)"
+            )
         ran.append(name)
-        console.print(f"    {len(sub_g)} triple(s); ctx now [bold]{len(ctx.entities)}[/bold] entit(y/ies)")
 
     ended = datetime.now(timezone.utc).replace(microsecond=0)
     return PipelineResult(

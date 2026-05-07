@@ -12,12 +12,23 @@
 
 iso:IndividualHasPropertyWithValue a tpl:Template ;
     rdfs:label "Individual has property with value" ;
+    rdfs:comment "A PossibleIndividual possesses a directly measurable Property with a value and scale." ;
     rdfs:isDefinedBy <https://15926.blog/templates/IN-PTYST-100.xml> ;
     tpl:definition "[hasPropertyPossessor] has a [hasPropertyType] of [valPropertyValue] [hasScale] (effective [valEffectiveDate])." ;
     tpl:subject iso15926:Property ;
     tpl:lifted  var:lifted ;
     tpl:lowered var:lowered ;
     tpl:example var:example .
+
+var:hasPropertyPossessor rdfs:comment "The entity that possesses the property being measured — typically a physical object, equipment, material, or service-instance. NOT the event of measuring or recording the property; bind to the thing being measured, not the act of measurement." .
+
+var:hasPropertyType rdfs:comment "A specific kind of measurable property. Reference an RDL ID where available; otherwise mint a concrete ext:<slug> (e.g. ext:mass, ext:length, ext:temperature, ext:flow_rate, ext:pressure). Avoid generic labels like value, amount, or quantity that don't name what is being measured." .
+
+var:valPropertyValue rdfs:comment "The numeric value in xsd:decimal lexical form: period as decimal separator (e.g. '30.57' for the German '30,57'), no thousands grouping. Preserve the source's precision — don't add or trim trailing zeros, and don't normalise units." .
+
+var:hasScale rdfs:comment "The unit/scale the value is in. Reference an RDL ID where available; otherwise mint or reuse a per-document ext:<unit-slug> (e.g. ext:meter, ext:celsius, ext:bar)." .
+
+var:valEffectiveDate rdfs:comment "ISO 8601 date or datetime when the assertion becomes effective. Use the document's stated date for the fact; do not infer." .
 
 GRAPH var:lifted {
     var:this a iso:IndividualHasPropertyWithValue ;

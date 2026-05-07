@@ -12,12 +12,23 @@
 
 iso:IndividualHasMonetaryValue a tpl:Template ;
     rdfs:label "Individual has monetary value" ;
+    rdfs:comment "A PossibleIndividual incurs a price or cost, with cost type, amount and currency." ;
     rdfs:isDefinedBy <https://15926.blog/templates/IN-PTYST-125.xml> ;
     tpl:definition "[hasPossessor] has [hasCostType] of [valMonetaryValue] [hasCurrency] (effective [valEffectiveDate])." ;
     tpl:subject iso15926:IndirectProperty ;
     tpl:lifted  var:lifted ;
     tpl:lowered var:lowered ;
     tpl:example var:example .
+
+var:hasPossessor rdfs:comment "The entity bearing the cost — the thing being priced (an asset, service-instance, possession, or material). NOT the event of issuing/billing/recording the price; bind to what the cost is for, not the act of recording it." .
+
+var:hasCostType rdfs:comment "A specific kind of cost (e.g. labour_cost, material_cost, total_cost, unit_cost, tax, discount, list_price). Reference an RDL ID where available; otherwise mint a concrete ext:<slug> naming the kind. Avoid vague labels like cost, amount, or service_cost that don't name the kind of cost." .
+
+var:valMonetaryValue rdfs:comment "The numeric amount in xsd:decimal lexical form: period as decimal separator (e.g. '115.84' for the German '115,84'), no thousands grouping ('1875.00', not '1,875.00'). Preserve the source's precision (digits after the point) — don't add or trim trailing zeros." .
+
+var:hasCurrency rdfs:comment "The currency the amount is denominated in. Reference an RDL ID where available; otherwise mint or reuse a per-document ext:<currency-code> slug (e.g. ext:eur, ext:usd)." .
+
+var:valEffectiveDate rdfs:comment "ISO 8601 date or datetime when the assertion becomes effective. Use the document's stated date for the fact; do not infer." .
 
 GRAPH var:lifted {
     var:this a iso:IndividualHasMonetaryValue ;
