@@ -13,51 +13,45 @@ The project uses a two-layer provenance model:
 The two layers are complementary: named graphs answer *"who wrote this triple set"*,
 reification answers *"who/when/by-what-authority does this specific fact hold"*.
 
-## Permanent backbone — `meta.ttl`
+## Permanent backbone — bundled `dg.ttl` + per-project `config.ttl`
 
-`meta.ttl` is the structural scaffolding written once by `init` and never overwritten.
-It loads Part 2 and declares the docgraph-specific extensions:
+The structural scaffolding is split into two layers (per the storage layout in
+[`../../ARCHITECTURE.md`](../../ARCHITECTURE.md)):
+
+- **`vendor/ontologies/dg.ttl`** — bundled with docgraph; declares the docgraph
+  extension vocabulary (modality, structural classes for the file→document→
+  chapter→quote chain, ingestion-record vocab, project-metadata vocab).
+  Independent of the active upper ontology — same file is loaded by both the
+  Part 2 and Part 14 pipelines.
+- **`.docgraph/config.ttl`** — tiny per-project header (project type, pipeline
+  choice, init date). Written once by `init`, never overwritten; carries no
+  vocabulary itself.
+
+The bundled `dg.ttl` declares:
 
 ```turtle
-# meta.ttl — permanent scaffolding
-@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
-@prefix dg:       <http://example.org/docgraph/meta#> .
-@prefix owl:      <http://www.w3.org/2002/07/owl#> .
+# vendor/ontologies/dg.ttl — bundled with docgraph
+@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
 
 <http://example.org/docgraph/meta>  a owl:Ontology ;
-    owl:imports <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003> .
+    rdfs:label "DocGraph meta-ontology" .
 
-# ── Modality ──────────────────────────────────────────────────────
-dg:Modality   a owl:Class .
-dg:Mandatory  a dg:Modality .
-dg:Preferred  a dg:Modality .
-dg:Optional   a dg:Modality .
-dg:Prohibited a dg:Modality .
-dg:modality   a owl:ObjectProperty ; rdfs:range dg:Modality .
-
-# ── Structural classes for the file/document/chapter/quote chain ──
-dg:Document  a owl:Class, iso15926:ClassOfInformationObject ;
-             rdfs:subClassOf iso15926:ArrangedIndividual .
-dg:Chapter   a owl:Class, iso15926:ClassOfInformationObject ;
-             rdfs:subClassOf iso15926:ArrangedIndividual .
-dg:Quote     a owl:Class, iso15926:ClassOfInformationObject ;
-             rdfs:subClassOf iso15926:ArrangedIndividual .
-
-dg:File         a owl:Class, iso15926:ClassOfInformationRepresentation ;
-                rdfs:subClassOf iso15926:ArrangedIndividual .
-dg:PdfFile      a owl:Class, iso15926:ClassOfInformationRepresentation ;
-                rdfs:subClassOf dg:File .
-dg:MarkdownFile a owl:Class, iso15926:ClassOfInformationRepresentation ;
-                rdfs:subClassOf dg:File .
-
-# ── Quote payload ─────────────────────────────────────────────────
-dg:text       a owl:DatatypeProperty ;
-              rdfs:domain dg:Quote ;
-              rdfs:range  xsd:string .
-dg:locator    a owl:DatatypeProperty ;
-              rdfs:domain dg:Quote ;
-              rdfs:range  xsd:string .
+# Modality, structural classes (dg:Document/Chapter/Quote/File/PdfFile/
+# MarkdownFile, dg:text, dg:locator), ingestion vocab (dg:IngestionRecord,
+# dg:graphFile, dg:addedAt, dg:defines, dg:Classes/Properties/Individuals),
+# project-metadata vocab (dg:DocgraphProject, dg:pipeline, dg:Part2Pipeline,
+# dg:Part14Pipeline, dg:createdAt, dg:version), and PROV subproperty helpers
+# (dg:hasInput, dg:hasOutput).
+# See vendor/ontologies/dg.ttl for the full inventory.
 ```
+
+Pipeline-specific *alignments* (e.g. `dg:Document rdfs:subClassOf
+iso15926:ArrangedIndividual` for the Part 2 pipeline, `dg:Document
+rdfs:subClassOf lis:InformationObject` for the Part 14 pipeline) are *not* in
+`dg.ttl` itself — they live alongside the upper-ontology import in the loader
+recipe, so the same `dg.ttl` works for both pipelines without contradicting
+itself.
 
 ## Document-sourced assertions
 
@@ -98,8 +92,9 @@ reification is used inside the graph (the `mint_classification` helper in
 `sources.ttl` entry. Triples in other graphs that referenced concepts the
 source defined get repaired — `<x> rdf:type <removed-class>` rewrites to
 `rdf:type iso15926:ArrangedIndividual` (when applicable) or drops; reified
-relationship nodes pointing at removed concepts are dropped. The meta
-backbone (`meta.ttl`) is never touched.
+relationship nodes pointing at removed concepts are dropped. Bundled
+foundationals (`vendor/ontologies/dg.ttl`, the upper ontology) and the
+project header (`.docgraph/config.ttl`) are never touched.
 
 ## TTL ingest is one parser among several
 

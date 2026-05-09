@@ -1,0 +1,124 @@
+@prefix dg:      <http://example.org/docgraph/meta#> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+
+<http://example.org/docgraph/meta>  a owl:Ontology ;
+    rdfs:label   "DocGraph meta-ontology" ;
+    rdfs:comment "DocGraph extension vocabulary — independent of the active upper ontology (Part 2 or Part 14). Loaded by every pipeline." .
+
+# ── Project metadata ──────────────────────────────────────────────────────────
+# Header carried in .docgraph/config.ttl identifying the project, its pipeline
+# choice, and bookkeeping fields.
+dg:DocgraphProject  a owl:Class ;
+    rdfs:label "DocgraphProject" .
+
+dg:pipeline      a owl:ObjectProperty ;
+    rdfs:label  "pipeline" ;
+    rdfs:domain dg:DocgraphProject ;
+    rdfs:comment "Selects the upper ontology + classifier path. One of dg:Part2Pipeline, dg:Part14Pipeline." .
+
+dg:Pipeline      a owl:Class ;
+    rdfs:label "Pipeline" .
+
+dg:Part2Pipeline  a dg:Pipeline ;
+    rdfs:label "Part 2 pipeline" ;
+    rdfs:comment "Loads ISO 15926 Part 2 RDF; classifier path: src/classify_part2/." .
+
+dg:Part14Pipeline a dg:Pipeline ;
+    rdfs:label "Part 14 pipeline" ;
+    rdfs:comment "Loads ISO 15926 Part 14 OWL (LIS-14); classifier path: src/classify_part14/." .
+
+dg:createdAt    a owl:DatatypeProperty ; rdfs:label "createdAt" ; rdfs:range xsd:date .
+dg:version      a owl:DatatypeProperty ; rdfs:label "version"   ; rdfs:range xsd:string .
+
+# ── Modality (RFC 2119 / ISO drafting directives) ─────────────────────────────
+dg:Modality   a owl:Class ;
+    rdfs:label "Modality" .
+
+dg:Mandatory  a dg:Modality ; rdfs:label "Mandatory"  .  # MUST / SHALL
+dg:Preferred  a dg:Modality ; rdfs:label "Preferred"  .  # SHOULD
+dg:Optional   a dg:Modality ; rdfs:label "Optional"   .  # MAY
+dg:Prohibited a dg:Modality ; rdfs:label "Prohibited" .  # MUST NOT
+
+dg:modality   a owl:ObjectProperty ;
+    rdfs:label "modality" ;
+    rdfs:range  dg:Modality .
+
+# ── Document subject — what a source document is about ───────────────────────
+dg:isAbout    a owl:ObjectProperty ;
+    rdfs:label  "isAbout" ;
+    rdfs:range  owl:Class .
+
+# ── File metadata ─────────────────────────────────────────────────────────────
+dg:filePath    a owl:DatatypeProperty ; rdfs:label "filePath"    ; rdfs:range xsd:string  .
+dg:fileHash    a owl:DatatypeProperty ; rdfs:label "fileHash"    ; rdfs:range xsd:string  .  # "sha256:..."
+dg:fileSize    a owl:DatatypeProperty ; rdfs:label "fileSize"    ; rdfs:range xsd:integer .  # bytes
+dg:mimeType    a owl:DatatypeProperty ; rdfs:label "mimeType"    ; rdfs:range xsd:string  .
+dg:pageCount   a owl:DatatypeProperty ; rdfs:label "pageCount"   ; rdfs:range xsd:integer .
+dg:pdfProducer a owl:DatatypeProperty ; rdfs:label "pdfProducer" ; rdfs:range xsd:string  .
+
+# ── Conversion / activity I/O (subproperties of PROV's used / generated) ──────
+dg:hasInput   a owl:ObjectProperty ;
+    rdfs:label  "hasInput" ;
+    rdfs:subPropertyOf prov:used .
+
+dg:hasOutput  a owl:ObjectProperty ;
+    rdfs:label  "hasOutput" ;
+    rdfs:subPropertyOf prov:generated .
+
+# ── Stub status (for graphs/_unresolved.ttl) ──────────────────────────────────
+dg:status     a owl:ObjectProperty ;
+    rdfs:label "status" .
+
+dg:Unresolved a owl:NamedIndividual ;
+    rdfs:label "Unresolved" .
+
+dg:firstSeenIn a owl:ObjectProperty ;
+    rdfs:label "firstSeenIn" .
+
+# ── Ingestion registry vocabulary (used in sources.ttl) ───────────────────────
+dg:IngestionRecord a owl:Class ;
+    rdfs:label "IngestionRecord" .
+
+dg:graphFile    a owl:DatatypeProperty ; rdfs:label "graphFile"    ; rdfs:range xsd:string .
+dg:addedAt      a owl:DatatypeProperty ; rdfs:label "addedAt"      ; rdfs:range xsd:dateTime .
+dg:detectedRole a owl:ObjectProperty   ; rdfs:label "detectedRole" .
+
+# Declares-axis (what kinds of vocabulary a source defines)
+dg:defines      a owl:ObjectProperty ; rdfs:label "defines" .
+dg:Classes      a owl:NamedIndividual ; rdfs:label "Classes" .
+dg:Properties   a owl:NamedIndividual ; rdfs:label "Properties" .
+dg:Individuals  a owl:NamedIndividual ; rdfs:label "Individuals" .
+
+# ── Software-agent metadata ───────────────────────────────────────────────────
+dg:provider     a owl:DatatypeProperty ; rdfs:label "provider" ; rdfs:range xsd:string .
+dg:modelId      a owl:DatatypeProperty ; rdfs:label "modelId"  ; rdfs:range xsd:string .
+
+# ── Extraction confidence + reason (attached to a prov:Activity) ──────────────
+dg:confidence   a owl:DatatypeProperty ; rdfs:label "confidence" ; rdfs:range xsd:decimal .
+dg:reason       a owl:DatatypeProperty ; rdfs:label "reason"     ; rdfs:range xsd:string  .
+
+# ── Type / form-classification signals (attached to the extraction graph) ─────
+dg:typeConfidence        a owl:DatatypeProperty ; rdfs:label "typeConfidence"        ; rdfs:range xsd:decimal .
+dg:typeCoverage          a owl:DatatypeProperty ; rdfs:label "typeCoverage"          ; rdfs:range xsd:decimal .
+dg:typeNearestSimilarity a owl:DatatypeProperty ; rdfs:label "typeNearestSimilarity" ; rdfs:range xsd:decimal .
+
+# ── Document outside the ontology's coverage (form scope below threshold) ─────
+dg:UncoveredDocument a owl:NamedIndividual ; rdfs:label "UncoveredDocument" .
+
+# ── Document-structure classes (file → document → chapter → quote) ────────────
+# rdfs:subClassOf assertions to the active upper ontology live in pipeline-
+# specific alignment files (Part 2 alignments in src/project.py's _META_TTL
+# template; Part 14 alignments to follow with classify_part14/).
+dg:Document     a owl:Class ; rdfs:label "Document" .
+dg:Chapter      a owl:Class ; rdfs:label "Chapter" .
+dg:Quote        a owl:Class ; rdfs:label "Quote" .
+dg:File         a owl:Class ; rdfs:label "File" .
+dg:PdfFile      a owl:Class ; rdfs:label "PdfFile"      ; rdfs:subClassOf dg:File .
+dg:MarkdownFile a owl:Class ; rdfs:label "MarkdownFile" ; rdfs:subClassOf dg:File .
+
+dg:text         a owl:DatatypeProperty ; rdfs:label "text"    ; rdfs:range xsd:string .
+dg:locator      a owl:DatatypeProperty ; rdfs:label "locator" ; rdfs:range xsd:string .

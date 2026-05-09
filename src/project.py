@@ -32,11 +32,11 @@ UNRESOLVED_FILENAME              = "_unresolved.ttl"
 CACHE_SUBDIR                     = "cache"
 
 # Bundled upper-ontology sources.
-_DOCS_DIR                       = Path(__file__).parent.parent / "docs"
-_ISO15926_SOURCE                = _DOCS_DIR / "ISO-15926-2_2003.rdf"
-_ISO15926_ANNOTATIONS_SOURCE    = _DOCS_DIR / "ISO-15926-2_2003_annotations.rdf"
-_PROV_O_SOURCE                  = _DOCS_DIR / "prov-o.ttl"
-_DCTERMS_SOURCE                 = _DOCS_DIR / "dcterms.ttl"
+_VENDOR_ONTOLOGIES_DIR          = Path(__file__).parent.parent / "vendor" / "ontologies"
+_ISO15926_SOURCE                = _VENDOR_ONTOLOGIES_DIR / "ISO-15926-2_2003.rdf"
+_ISO15926_ANNOTATIONS_SOURCE    = _VENDOR_ONTOLOGIES_DIR / "ISO-15926-2_2003_annotations.rdf"
+_PROV_O_SOURCE                  = _VENDOR_ONTOLOGIES_DIR / "prov-o.ttl"
+_DCTERMS_SOURCE                 = _VENDOR_ONTOLOGIES_DIR / "dcterms.ttl"
 
 _BUNDLED_ONTOLOGIES = [
     (_ISO15926_SOURCE,             ISO15926_FILENAME,             "ISO 15926 Part 2"),
@@ -102,6 +102,11 @@ def cache_dir(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / CACHE_SUBDIR
 
 
+# NOTE: The dg: vocabulary below is duplicated in vendor/ontologies/dg.ttl, which
+# is the canonical source-of-truth going forward (per ARCHITECTURE.md storage
+# layout). This inline template is kept until the loader refactor (M0/M1 of the
+# parallel-pipelines plan) replaces .docgraph/meta.ttl with .docgraph/config.ttl
+# and reads dg.ttl from vendor/. Keep the two in sync until then.
 _META_TTL = """\
 @prefix dg:       <http://example.org/docgraph/meta#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .

@@ -32,9 +32,9 @@ Foundational reference material lives in `docs/architecture/`:
   file → document → chapter → quote chain, concrete turtle, design rules,
   PDF→Markdown derivation with PROV-O.
 - [`provenance.md`](docs/architecture/provenance.md) — named-graph + Part 2
-  reification provenance model, `meta.ttl` permanent backbone, document-
-  sourced assertions, cascade-delete, TTL ingest, DEFINE vs REFERENCE
-  ownership and unresolved-concept stubs.
+  reification provenance model, bundled `dg.ttl` + per-project `config.ttl`
+  backbone, document-sourced assertions, cascade-delete, TTL ingest, DEFINE
+  vs REFERENCE ownership and unresolved-concept stubs.
 - [`templates.md`](docs/architecture/templates.md) — the Part 7-style
   lifted/lowered template system; recognition / expansion / SPARQL
   translation; library / structural / learned discovery.
@@ -42,6 +42,65 @@ Foundational reference material lives in `docs/architecture/`:
 This file (ARCHITECTURE.md) holds the active design surface: declares-axis,
 modality, templates pointer + 14-prompt connection, storage layout,
 classification, extraction pipeline, init, open questions.
+
+---
+
+## Pipelines — Part 2 and Part 14 in parallel
+
+DocGraph supports two upper-ontology *pipelines* selected at `init` time:
+
+| Pipeline | Upper ontology | Classifier path | Templates | Status |
+|---|---|---|---|---|
+| **`dg:Part2Pipeline`** | ISO 15926 Part 2 RDF (POSC Caesar) — full reified Part 2 | `src/classify_part2/` | `data/templates/iso/` | Current default. **Frozen** — no new feature work; bug fixes only. |
+| **`dg:Part14Pipeline`** | ISO 15926 Part 14 OWL (`vendor/ontologies/LIS-14.ttl`) — DL rendering of Part 2 | `src/classify_part14/` | `data/templates/iso14/` | New, **template-driven from day 1**. Built in parallel; default once at parity. |
+
+Why two: Part 2 carries the full reified-relationship model (`Classification`,
+`Description`, `Composition`, …) needed for sourced/temporal/authority-bound
+content. Part 14 is the OWL DL "lifted" rendering of the same model — direct
+properties (`lis:hasPart`, `lis:representedBy`, …) instead of reified clusters
+— which aligns with what modern Reference Data Libraries publish (POSC Caesar,
+IOGP, CFIHOS, 15926.io). Migrating loses Part 2's per-assertion expressiveness
+in exchange for RDL federation, OWL-tooling support, and a much smaller
+on-disk footprint per template instance. Provenance content that previously
+lived in reified clusters moves to PROV-O (`prov:wasDerivedFrom`,
+`prov:generatedAtTime`, `prov:wasAttributedTo`) plus named-graph context.
+
+A project commits to one pipeline at `init` time — mixing produces incoherent
+named graphs (Part 2 reified clusters next to Part 14 direct properties). The
+choice is recorded in `.docgraph/config.ttl`'s `dg:pipeline` triple; the CLI
+dispatcher reads it and routes to the matching classifier package.
+
+### Part 14 build-out — milestones
+
+The Part 14 pipeline is built incrementally without modifying `classify_part2`.
+Default flips from `part2` to `part14` at M3:
+
+- **M0 — loader & init refactor**: `docgraph init --pipeline part14` produces
+  `.docgraph/config.ttl` (no `meta.ttl` copying); loader reads
+  `vendor/ontologies/{LIS-14.ttl, dg.ttl, tpl.ttl, prov-o.ttl}` based on the
+  pipeline triple. Parity with current Part 2 init flow.
+- **M1 — structural-only ingest**: `docgraph add file.pdf` against a Part 14
+  project produces a valid Part 14 named graph with file/document/chapter/
+  quote chain (`lis:representedBy` + `lis:hasPart`) plus Q1 subject
+  classification. **Skips** 14-aspect extraction.
+- **M2 — partial aspect coverage**: template-driven extraction for 5 of the
+  14 aspects (start with the cheapest: identifiers, classes, properties,
+  individuals, classifications). Templates land under `data/templates/iso14/`.
+- **M3 — full aspect coverage at parity**: all 14 aspects covered on the
+  existing test corpus with parity-or-better quality. **`docgraph init`
+  default flips to `part14`** here.
+- **M4 — `classify_part2` retired**: code removed; `Part2Pipeline` value kept
+  in `dg.ttl` for legacy projects that haven't migrated their data.
+
+### Open question — possible vs actual individuals
+
+Part 14 commonly uses **named graphs themselves** to distinguish actual
+individuals from possible individuals (e.g., a graph holding RDL classifiers
+declares "every individual herein is a possible individual"). Our template
+declaration model works at the per-instance level — `var:x rdf:type ex:Foo`
+— and can't naturally express graph-level classifications of this kind.
+Out-of-scope for the initial Part 14 build-out; will need a graph-level
+template shape or an explicit graph-classification mechanism later.
 
 ---
 
@@ -158,22 +217,74 @@ synthetic and user-supplied templates.
 
 ---
 
-## Storage layout (file-based, no triplestore yet)
+## Storage layout — installation / project / results
 
-**One source document → one TTL file.** Each source gets its own named-graph TTL file
-under `graphs/` so the result is easy to inspect by eye. A registry tracks all sources.
+Three layers, each with a different category of state and a different lifetime:
+
+| Layer | Owns | Lives in | Versioned with |
+|---|---|---|---|
+| **Bundled foundationals** | Operational ontologies docgraph itself depends on (LIS-14, ISO-15926-2 RDF, PROV-O, base `dg:`/`tpl:` declarations) | `vendor/ontologies/` (per docgraph install) | docgraph release |
+| **Project assets** | User-authored vocabulary and templates (custom domain ontologies, hand-written templates) | the project repo's `data/` (e.g. `data/templates/<custom>/`, `data/ontologies/<custom>.ttl`) | project's git |
+| **Results + caches** | Per-project state generated by docgraph (per-source graphs, registries, caches, RDL mirrors, unresolved stubs) | `.docgraph/` | not versioned (gitignored) |
+
+Bundled foundationals are *never* copied into `.docgraph/`; the loader reads them from `vendor/ontologies/` on startup. Project assets are also never copied — the loader reads them from the project repo by path. `.docgraph/` is exclusively the regenerable per-project state, and deleting it leaves the project's input documents and assets untouched.
+
+### `.docgraph/` directory
+
+**One source document → one TTL file.** Each source gets its own named-graph TTL file under `graphs/` so the result is easy to inspect by eye. A registry tracks all sources.
 
 ```
 .docgraph/
-  meta.ttl             ← imports Part 2 + dg: extensions (written by `init`, never overwritten)
-  sources.ttl          ← registry: source path → graph file → added date, detected role
+  config.ttl             ← project metadata: pipeline choice, init date, version
+  sources.ttl            ← registry: source path → graph file → added date, declares-axis
+  templates.ttl          ← registry of loaded user-authored templates (paths only — TTL files live in the project repo)
   graphs/
-    _unresolved.ttl    ← stubs for concepts referenced before they were defined
-    <slug>.ttl         ← one file per source document (named graph)
-  cache/               ← existing PDF-to-markdown cache (unchanged)
+    _unresolved.ttl      ← stubs for references not yet resolved
+    <slug>.ttl           ← one per ingested source (named graph)
+  cache/
+    pdfmd/               ← PDF → Markdown cache (per-document, key = doc hash)
+    templates/           ← LLM-discovered templates pending user approval
+  rdl/                   ← local mirrors of external Reference Data Libraries
+    <name>/
+      mirror.ttl         ← the dump
+      bm25-index/        ← lexical index for resolution
+      metadata.ttl       ← endpoint URL, version, last-refresh date
 ```
 
-The `iso15926:` and `dg:` prefixes are pre-bound in every graph file for readability.
+`.docgraph/` is regenerable from the original sources. Every file in it is either a result of ingestion (`graphs/`, `sources.ttl`, `_unresolved.ttl`) or a cache/mirror (`cache/`, `rdl/`). Deleting `.docgraph/` and re-running `docgraph add` for each registered source rebuilds the project state.
+
+The `lis:` or `iso15926:` (depending on pipeline) and `dg:` prefixes are pre-bound in every graph file for readability.
+
+### `config.ttl`
+
+The per-project header is intentionally tiny — no `owl:imports` chain to maintain, no copies of upstream files to keep in sync:
+
+```turtle
+@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<> a dg:DocgraphProject ;
+    dg:pipeline   dg:Part14Pipeline ;
+    dg:createdAt  "2026-05-09"^^xsd:date ;
+    dg:version    "0.x" .
+```
+
+`dg:pipeline` is one of `dg:Part2Pipeline | dg:Part14Pipeline` and decides which classifier path runs (`src/classify_part2/` vs `src/classify_part14/`) and which bundled ontology set is loaded. A project commits to one pipeline at `init` time; mixing pipelines would produce incoherent named graphs (Part 2 reified clusters next to Part 14 direct OWL properties). Switching an existing project to a different pipeline requires re-ingesting sources.
+
+### Loader recipe
+
+The CLI's loader runs once per command, building an in-memory rdflib `Dataset` with every graph relevant to the project:
+
+1. Read `.docgraph/config.ttl`. Determine the pipeline.
+2. Load the bundled foundational set for that pipeline:
+   - **Part 14**: `vendor/ontologies/LIS-14.ttl` + `dg.ttl` + `tpl.ttl` + `prov-o.ttl`.
+   - **Part 2**: `vendor/ontologies/ISO-15926-2_2003.rdf` + `dg.ttl` + `tpl.ttl` + `prov-o.ttl`.
+3. Load the bundled template library for that pipeline (`data/templates/iso14/` or `data/templates/iso/`, plus any enabled bridges under `data/templates/bridges/`).
+4. Load any user-authored templates referenced from `.docgraph/templates.ttl`.
+5. Iterate `.docgraph/sources.ttl` and load each per-source graph from `.docgraph/graphs/<slug>.ttl` into its named graph.
+6. When relevant (resolution queries during ingest), attach RDL mirrors from `.docgraph/rdl/<name>/`.
+
+The standard OWL `owl:imports` mechanism is **not** used to drive resolution — there's no reasoner walking import chains, no IRI-to-file catalog. The loader is a deterministic file-reader following the recipe above; "imports" are encoded as code, not as triples on disk.
 
 ### Graph files are real files
 
@@ -409,26 +520,17 @@ cascade story.
 After init, `.docgraph/` contains only:
 
 ```
-meta.ttl       ← imports ISO 15926 Part 2 + declares dg: and tpl: extensions
-                 (dg:Document, dg:Chapter, dg:Quote, dg:File, dg:PdfFile, dg:MarkdownFile,
-                  dg:Modality, dg:Mandatory/Preferred/Optional/Prohibited, dg:modality,
-                  dg:status, dg:Unresolved, dg:IngestionRecord,
-                  dg:defines, dg:Classes/Properties/Individuals,
-                  dg:text, dg:locator,
-                  tpl:Template, tpl:Slot, tpl:slot, tpl:range, tpl:minCount,
-                  tpl:maxCount, tpl:lifted, tpl:lowered, tpl:subject,
-                  tpl:definition)
-sources.ttl    ← empty registry
-templates.ttl  ← empty template registry (which template files are loaded)
-graphs/        ← contains only an empty _unresolved.ttl
-cache/
-  pdfmd/       ← PDF → Markdown cache (per-document, key = doc hash)
-  templates/   ← LLM-discovered templates, user-approved (per-template URI)
+config.ttl              ← project metadata (pipeline, init date, version)
+sources.ttl             ← empty registry
+templates.ttl           ← empty user-template registry
+graphs/_unresolved.ttl  ← empty stub
+cache/pdfmd/            ← empty
+cache/templates/        ← empty
 ```
 
-No `financial_documents.ttl`. No domain classes. The graph is empty except for
-structure. When the combined graph is loaded, `meta.ttl`'s `owl:imports` brings in
-Part 2 and the full hierarchy is available for classification.
+No copies of foundational ontologies. No domain classes. No `owl:imports` chain to maintain. Bundled foundationals stay in `vendor/ontologies/`; the loader reads them from there based on the pipeline declared in `config.ttl`. Bundled `dg.ttl` and `tpl.ttl` carry the docgraph and templating extension vocabularies (structural classes like `dg:Document`/`dg:Quote`/`dg:File`, modality individuals, the `tpl:Template`/`tpl:slot`/`tpl:lifted`/`tpl:lowered` machinery, etc.) — see [`docs/architecture/meta-ontology.md`](docs/architecture/meta-ontology.md) for the full inventory.
+
+`docgraph init --pipeline part2 | part14` selects the pipeline. Default is `part2` until `classify_part14` reaches feature parity (M3 in the parallel-pipelines plan); the default flips to `part14` then. Switching an existing project to a different pipeline requires re-ingesting sources, since per-source graphs are written in the chosen pipeline's idiom.
 
 ### Future: triplestore migration
 
