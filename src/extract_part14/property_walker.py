@@ -425,8 +425,18 @@ def walk_stage2(
     rdl_resolvers:    list[RdlResolver] | None = None,
     console=None,
 ) -> Graph:
-    """Run stage 2 across every extracted entity. Returns triples to add to
-    the source graph."""
+    """Per-entity property extraction (Pass C of the three-pass model).
+
+    Reads multi-typing off `entity.types` (falls back to [type_uri] for
+    single-typed entities). Candidate properties = union of
+    `extractable_properties_for(t)` across all of an entity's types.
+
+    Validates domain (each property's rdfs:domain satisfied by at least
+    one of the entity's types) and range (URIRef values typed compatibly
+    with the property's declared range). Triples that fail either guard
+    are dropped with a warning, not silently — same behavior as the old
+    branch walker.
+    """
     g = Graph()
     g.bind("dg",   DG)
     g.bind("lis",  LIS)
@@ -435,7 +445,17 @@ def walk_stage2(
     g.bind("xsd",  XSD)
 
     for entity in extracted_entities:
-        properties = extractable_properties_for(entity.type_uri, ontology)
+        all_types = entity.types or [entity.type_uri]
+
+        seen_props: set[URIRef] = set()
+        properties: list[URIRef] = []
+        for t in all_types:
+            for p in extractable_properties_for(t, ontology):
+                if p in seen_props:
+                    continue
+                seen_props.add(p)
+                properties.append(p)
+
         if not properties:
             continue
 
@@ -452,13 +472,39 @@ def walk_stage2(
             model            = model,
         )
         for item in items:
+            # Domain guard: at least one of the entity's types must satisfy
+            # the property's rdfs:domain (domain-less props pass through).
+            if not axioms.domain_satisfied(ontology, all_types, item.prop):
+                logger.warning(
+                    "stage2 %s: domain violation %s — entity types %s; skipping",
+                    entity.label, _local(item.prop),
+                    [_local(t) for t in all_types],
+                )
+                continue
+
             range_uri = axioms.range_of(ontology, item.prop)
             value = coerce_value(
                 item.result, range_uri, extracted_entities,
                 rdl_resolvers=rdl_resolvers,
             )
-            if value is not None:
-                g.add((entity.uri, item.prop, value))
+            if value is None:
+                continue
+
+            # Range guard: only enforced for URIRef values pointing at a
+            # known entity. Literal values are validated by coerce_literal.
+            if isinstance(value, URIRef):
+                target = next((e for e in extracted_entities if e.uri == value), None)
+                if target is not None:
+                    target_types = target.types or [target.type_uri]
+                    if not axioms.range_satisfied(ontology, target_types, item.prop):
+                        logger.warning(
+                            "stage2 %s: range violation %s → %s (a %s); skipping",
+                            entity.label, _local(item.prop), value,
+                            [_local(t) for t in target_types],
+                        )
+                        continue
+
+            g.add((entity.uri, item.prop, value))
 
     return g
 
@@ -545,80 +591,6 @@ def infer_cross_entity_links(
         console.print(f"  inferred [bold]{inferred}[/bold] cross-entity link(s) "
                       f"[dim]from quote co-occurrence[/dim]")
     return new
-
-
-def resolve_deferred_references(
-    deferred,                                       # list[DeferredReference]
-    extracted_entities: list[ExtractedEntity],
-    *,
-    ontology:      Graph | None = None,
-    rdl_resolvers: list[RdlResolver] | None = None,
-    confidence_floor: float = 0.5,
-    console=None,
-) -> Graph:
-    """After all branches have run (and entities of every class are known),
-    bind deferred property values to URIs.
-
-    Resolution per deferred ref:
-      1. Match the cited name against any extracted entity's label → use its URI
-         (subject to range validation against the loaded *ontology*).
-      2. Try registered RDL resolvers in order → use the first confident hit.
-      3. Otherwise emit the name as a plain Literal (so the value isn't lost).
-    """
-    g = Graph()
-    g.bind("dg",   DG)
-    g.bind("lis",  LIS)
-
-    label_to_entity = {e.label: e for e in extracted_entities}
-    resolved = unresolved = rejected_range = 0
-
-    for ref in deferred:
-        # 1. Known-entity match
-        match = label_to_entity.get(ref.name)
-        if match is not None:
-            # Range validation — only when ontology was passed.
-            if ontology is not None and not axioms.range_satisfied(
-                ontology, [match.type_uri], ref.predicate
-            ):
-                logger.warning(
-                    "deferred-ref: range violation %s obj=%s (a %s) — skipping",
-                    ref.predicate, match.uri, match.type_uri,
-                )
-                rejected_range += 1
-                continue
-            g.add((ref.subject, ref.predicate, match.uri))
-            resolved += 1
-            continue
-
-        # 2. RDL resolution
-        bound = False
-        if rdl_resolvers:
-            for resolver in rdl_resolvers:
-                hit = resolver.resolve(ref.name, kind_hint=ref.range_uri)
-                if hit.uri is not None and hit.confidence >= confidence_floor:
-                    g.add((ref.subject, ref.predicate, hit.uri))
-                    resolved += 1
-                    bound = True
-                    break
-        if bound:
-            continue
-
-        # 3. Fallback literal
-        g.add((ref.subject, ref.predicate, Literal(ref.name)))
-        unresolved += 1
-
-    if console and (resolved or unresolved or rejected_range):
-        msg = f"  resolved [bold]{resolved}[/bold] cross-entity refs"
-        bits = []
-        if unresolved:
-            bits.append(f"{unresolved} fell back to literal")
-        if rejected_range:
-            bits.append(f"{rejected_range} rejected by range")
-        if bits:
-            msg += f" ([dim]{', '.join(bits)}[/dim])"
-        console.print(msg)
-
-    return g
 
 
 def _local(uri: URIRef) -> str:

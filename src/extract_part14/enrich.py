@@ -97,11 +97,19 @@ def find_typed_entities(
         # Recover supporting quotes for this entity
         evidence = _recover_evidence(source_graph, s)
 
+        # Recover LLM-suggested specific class names for RDL probing
+        type_hints = [
+            str(o) for o in source_graph.objects(s, DG.typeHint)
+            if isinstance(o, Literal)
+        ]
+
         entities.append(ExtractedEntity(
-            uri      = s,
-            type_uri = primary,
-            label    = label,
-            evidence = evidence,
+            uri        = s,
+            type_uri   = primary,
+            label      = label,
+            evidence   = evidence,
+            types      = [t for t in extractable_types],
+            type_hints = type_hints,
         ))
         seen.add(s)
 
@@ -177,6 +185,15 @@ def refine_types(
 
     for entity in entities:
         added: list[URIRef] = []
+        # Probe set: bare label first, then LLM-suggested type hints. Hints
+        # let us catch role refinements ("patient" → pca:Patient) and
+        # type-discovery ("EUR" → pca:Currency) without relying on the
+        # entity's label happening to match a canonical RDL term.
+        probes: list[str] = [entity.label]
+        for hint in entity.type_hints:
+            if hint and hint not in probes:
+                probes.append(hint)
+
         for resolver in rdl_resolvers:
             # Scope filter: skip the resolver if it declares a `covers` set
             # and entity's type isn't (transitively) in it.
@@ -186,20 +203,20 @@ def refine_types(
                 skipped_out_of_scope += 1
                 continue
 
-            # Bare label as the probe — RDL labels are short and canonical;
-            # appending context confuses exact match and never resolves.
-            hit = resolver.resolve(entity.label, kind_hint=entity.type_uri)
-            if hit.uri is None or hit.confidence < confidence_floor:
-                continue
-            # Idempotency
-            if (entity.uri, RDF.type, hit.uri) in g:
-                continue
-            g.add((entity.uri, RDF.type, hit.uri))
-            new_triples += 1
-            added.append(hit.uri)
-            if console:
-                console.print(f"  [bold]{entity.label}[/bold] → "
-                              f"[dim]+ {_curie(hit.uri)} (conf {hit.confidence:.2f})[/dim]")
+            for probe in probes:
+                hit = resolver.resolve(probe, kind_hint=entity.type_uri)
+                if hit.uri is None or hit.confidence < confidence_floor:
+                    continue
+                # Idempotency
+                if (entity.uri, RDF.type, hit.uri) in g:
+                    continue
+                g.add((entity.uri, RDF.type, hit.uri))
+                new_triples += 1
+                added.append(hit.uri)
+                if console:
+                    via = "" if probe == entity.label else f" [dim]via hint {probe!r}[/dim]"
+                    console.print(f"  [bold]{entity.label}[/bold] → "
+                                  f"[dim]+ {_curie(hit.uri)} (conf {hit.confidence:.2f}){via}[/dim]")
 
         if added:
             refined[entity.uri] = added

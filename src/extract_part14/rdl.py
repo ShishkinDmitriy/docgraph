@@ -132,6 +132,11 @@ POSC_CAESAR = RdlConfig(
         "PhysicalQuantity",
         "ScalarQuantityDatum",
         "Activity",
+        # RealizableEntity covers Role + Disposition (Part 14 §E.6 BFO-style).
+        # POSC may carry industrial role classes (operator, contractor, ...)
+        # but won't have healthcare roles — type-hint probing still gives the
+        # generic lis:Role a fair shot at refinement.
+        "RealizableEntity",
     )),
 )
 

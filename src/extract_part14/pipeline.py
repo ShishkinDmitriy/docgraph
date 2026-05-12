@@ -24,13 +24,12 @@ from src.extract_part14.classify import (
 )
 from src.extract_part14.loader import build_dataset, union_view
 from src.extract_part14.structural import DG, LIS, build_chain
-from src.extract_part14.bitmap import select_relevant_classes
 from src.extract_part14.property_walker import (
     infer_cross_entity_links,
-    resolve_deferred_references,
+    walk_stage2,
 )
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
-from src.extract_part14.walker import walk_branches
+from src.extract_part14.root_walker import walk_roots
 from src.ingest import (
     IngestError,
     SOURCE_NS,
@@ -196,73 +195,45 @@ def extract_pdf_part14(
     else:
         console.print("  [yellow]no excerpt for subject classification[/yellow]")
 
-    # ── M2 — bitmap selector (one LLM call to pick relevant classes) ──
-    branches: list | None = None
-    if full_markdown.strip():
-        console.print("  [bold]selecting relevant classes[/bold] (bitmap)...")
-        bitmap_result = select_relevant_classes(
-            ontology         = ontology,
-            document_title   = document_title,
-            document_excerpt = excerpt,
-            client           = client,
-            model            = model,
-            namespace        = str(LIS),     # seed top-level scan from LIS-14
-                                              # only; descent crosses namespaces
-                                              # so loaded domain ontologies still
-                                              # surface as sub-branches.
-        )
-        branches = bitmap_result.selected
-        sel_labels = ", ".join(
-            str(c).rsplit("/", 1)[-1].rsplit("#", 1)[-1] for c in branches
-        ) or "(none)"
-        console.print(f"  selected: [bold]{len(branches)}[/bold] classes — "
-                      f"[dim]{sel_labels}[/dim]")
-        if bitmap_result.coupling_added:
-            coupled_labels = ", ".join(
-                str(c).rsplit("/", 1)[-1].rsplit("#", 1)[-1]
-                for c in bitmap_result.coupling_added
-            )
-            console.print(f"  [dim]+{len(bitmap_result.coupling_added)} via range coupling: "
-                          f"{coupled_labels}[/dim]")
-        if bitmap_result.rationale:
-            console.print(f"  [dim]rationale: {bitmap_result.rationale}[/dim]")
-
-    # ── Per-branch combined walker (entities + properties + quotes) ──
+    # ── Pass A — three-root extraction (entities + multi-typing + roles) ──
     extracted: list = []
-    deferred:  list = []
+    roles:     list = []
     if full_markdown.strip():
-        console.print(f"  [bold]extracting entities + properties[/bold] (per-branch combined)...")
-        branch_graph, extracted, deferred = walk_branches(
-            full_markdown   = full_markdown,
-            base_ns         = base_ns,
-            md_source_uri   = md_uri,
-            ontology        = ontology,
-            client          = client,
-            model           = model,
-            branches        = branches,
-            console         = console,
+        console.print(f"  [bold]extracting entities[/bold] (Pass A — Object/Aspect/Activity roots)...")
+        roots_graph, extracted, roles = walk_roots(
+            full_markdown = full_markdown,
+            base_ns       = base_ns,
+            md_source_uri = md_uri,
+            ontology      = ontology,
+            client        = client,
+            model         = model,
+            console       = console,
         )
-        for triple in branch_graph:
+        for triple in roots_graph:
             g.add(triple)
-        for prefix, ns in branch_graph.namespaces():
+        for prefix, ns in roots_graph.namespaces():
             g.bind(prefix, ns, override=False)
         console.print(f"  → {len(extracted)} entit{'y' if len(extracted) == 1 else 'ies'}, "
-                      f"{len(deferred)} cross-entity refs to resolve")
+                      f"{len(roles)} role individual{'s' if len(roles) != 1 else ''}")
 
-    # ── Late resolution: bind cross-entity refs to URIs (or RDL hits or literals) ──
-    if deferred:
-        console.print(f"  [bold]resolving cross-entity references[/bold]...")
-        # POSC Caesar — Part 14-aligned RDL.
+    # ── Pass C — per-entity property extraction ──
+    if extracted:
+        console.print(f"  [bold]extracting properties[/bold] (Pass C — per entity)...")
+        document_context = _build_document_context(
+            title=document_title, description=document_description, markdown=full_markdown,
+        )
         rdl_cache_dir = cache_dir(project_root) / "rdl"
         rdl_resolvers = [RdlResolver(POSC_CAESAR, cache_dir=rdl_cache_dir)]
-        resolution_graph = resolve_deferred_references(
-            deferred,
-            extracted_entities=extracted,
-            ontology=ontology,
-            rdl_resolvers=rdl_resolvers,
-            console=console,
+        props_graph = walk_stage2(
+            extracted_entities = extracted,
+            ontology           = ontology,
+            document_context   = document_context,
+            client             = client,
+            model              = model,
+            rdl_resolvers      = rdl_resolvers,
+            console            = console,
         )
-        for triple in resolution_graph:
+        for triple in props_graph:
             g.add(triple)
 
     # ── Inferred cross-entity links — fills missing class-ranged property
