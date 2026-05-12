@@ -1,14 +1,17 @@
 @prefix tpl:  <http://example.org/docgraph/template#> .
+@prefix dg:   <http://example.org/docgraph/meta#> .
 @prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .
 
 tpl:Template a owl:Class ;
     rdfs:label "Template" ;
-    rdfs:comment "ISO 15926 Part 7-style lifted/lowered template." .
+    rdfs:comment "ISO 15926 Part 7-style lifted/lowered template." ;
+    dg:extractable false .                # plumbing — not a domain class
 
 tpl:Slot a owl:Class ;
-    rdfs:label "Slot" .
+    rdfs:label "Slot" ;
+    dg:extractable false .
 
 tpl:slot a owl:ObjectProperty ;
     rdfs:domain tpl:Template ;

@@ -86,11 +86,18 @@ def _existing_by_hash(reg: Graph, file_hash: str) -> URIRef | None:
 
 
 def remove_source(project_root: Path, slug: str) -> None:
-    """Delete a source's graph file (real or symlink) and its registry entry."""
+    """Delete all of a source's per-stage graph files and its registry entry.
+
+    Removes `<slug>.ttl` (legacy single-file layout), `<slug>.convert.ttl`,
+    `<slug>.extract.ttl`, `<slug>.enrich.ttl`, and any other `<slug>.*.ttl`
+    that future stages might add.
+    """
     g_dir = graphs_dir(project_root)
-    graph_file = g_dir / f"{slug}.ttl"
-    if graph_file.is_symlink() or graph_file.exists():
-        graph_file.unlink()
+    candidates = [g_dir / f"{slug}.ttl"]
+    candidates.extend(g_dir.glob(f"{slug}.*.ttl"))
+    for graph_file in candidates:
+        if graph_file.is_symlink() or graph_file.exists():
+            graph_file.unlink()
 
     reg_path = sources_path(project_root)
     reg = Graph()

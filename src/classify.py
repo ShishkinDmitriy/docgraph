@@ -42,7 +42,7 @@ def information_object_subclasses(ds: Dataset) -> list[TypeCandidate]:
     """Transitive subclasses of ``lis:InformationObject`` (excluding the class itself)."""
     query = """
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX lis:  <http://standards.iso.org/iso/15926/part14/>
+    PREFIX lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/>
     SELECT DISTINCT ?cls ?label ?comment WHERE {
       ?cls rdfs:subClassOf+ lis:InformationObject .
       OPTIONAL { ?cls rdfs:label   ?label }

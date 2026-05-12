@@ -17,7 +17,7 @@ hardcoding any one of them.
 
 The original example (German invoice + EU standard defining Invoice + meta-
 document classifying types of standards) is one of many. **Current focus**:
-classification (Q1/Q2), template-instance recognition, and template discovery.
+classification (subject + form), template-instance recognition, and template discovery.
 
 ## Companion docs
 
@@ -38,6 +38,9 @@ Foundational reference material lives in `docs/architecture/`:
 - [`templates.md`](docs/architecture/templates.md) — the Part 7-style
   lifted/lowered template system; recognition / expansion / SPARQL
   translation; library / structural / learned discovery.
+- [`extraction.md`](docs/architecture/extraction.md) — extraction as a
+  decision-tree walk over the upper ontology; per-branch policy;
+  document-bounded descent; stub-vs-extract decision.
 
 This file (ARCHITECTURE.md) holds the active design surface: declares-axis,
 modality, templates pointer + 14-prompt connection, storage layout,
@@ -81,8 +84,8 @@ Default flips from `part2` to `part14` at M3:
   pipeline triple. Parity with current Part 2 init flow.
 - **M1 — structural-only ingest**: `docgraph add file.pdf` against a Part 14
   project produces a valid Part 14 named graph with file/document/chapter/
-  quote chain (`lis:representedBy` + `lis:hasPart`) plus Q1 subject
-  classification. **Skips** 14-aspect extraction.
+  quote chain (`lis:representedBy` + `lis:hasArrangedPart`) plus subject
+  classification. **Skips** branch extraction.
 - **M2 — partial aspect coverage**: template-driven extraction for 5 of the
   14 aspects (start with the cheapest: identifiers, classes, properties,
   individuals, classifications). Templates land under `data/templates/iso14/`.
@@ -121,11 +124,11 @@ A receipt PDF → `dg:Individuals` only. A standards PDF defining what an
 Invoice is → `dg:Classes` and `dg:Properties` (and possibly some illustrative
 individuals).
 
-This **declares-axis** is orthogonal to the **subject (Q1)** and **form (Q2)**
-classification — see "Classification" below. A document that *defines*
+This **declares-axis** is orthogonal to **subject classification** and **form
+classification** — see "Classification" below. A document that *defines*
 `schema:Invoice` is not the same as a document that *is* an instance of
-`schema:Invoice`; Q1/Q2 answer the latter, the declares-axis answers the
-former. Both can apply to the same source.
+`schema:Invoice`; subject + form answer the latter, the declares-axis answers
+the former. Both can apply to the same source.
 
 ---
 
@@ -195,7 +198,7 @@ storage layout, domain libraries as template directories, the three-source
 discovery model (library / structural / learned), and cascade behaviors —
 lives in **[`docs/architecture/templates.md`](docs/architecture/templates.md)**.
 
-### 14-prompt classifier as an in-progress template library
+### 14-prompt classifier as the Part 2 tree's top level
 
 The existing pipeline at `src/classify_part2/` runs **14 prompts** (one per
 ISO 15926 Part 2 aspect: activities, classes, connections, identifiers,
@@ -204,16 +207,19 @@ whole-parts, …). Each prompt's converter
 (`src/classify_part2/convert/<aspect>.py`) takes the LLM's JSON output and
 emits a reified Part 2 cluster.
 
-Mapped onto the template model: **each converter's output is the lowered body
-of a corresponding template** in the library. The 14 prompts are doing
-template expansion by hand today; the migration is mechanical — each
-converter becomes a template definition under `data/templates/iso/`, and the
-generic expander (`src/templates/expand.py`) replaces the per-converter
-Python.
+Mapped onto the decision-tree model above: **the 14 prompts are exactly
+the tree's top-level branches for the Part 2 pipeline** — one prompt per
+Part 2 top-level class. Each converter's output is the cluster of triples
+those branch-instances expand into, plus (where templates apply) leaf-level
+template-instance fills. What's hardcoded today (the list of 14 aspects, the
+Python-per-aspect shape) becomes data-driven once `src/extract_part14/` is
+built: branches are loaded from `data/branches/<pipeline>/`, the per-branch
+prompt is templated, and the per-aspect Python converters are replaced by
+the generic walker.
 
 Until that migration lands, the 14-prompt pipeline keeps its current shape;
-the template engine (`src/templates/`) is developed in parallel against
-synthetic and user-supplied templates.
+the template engine (`src/templates/`) and the decision-tree walker are
+developed in parallel against the new Part 14 pipeline.
 
 ---
 
@@ -326,19 +332,19 @@ references it by path, but the graph is ours.
 `dg:IngestionRecord`, `dg:sourcePath`, `dg:graphFile`, `dg:addedAt`, `dg:defines`,
 `dg:Classes`, `dg:Properties`, `dg:Individuals` are docgraph-specific.
 
-## Classification — two questions (Q1 + Q2)
+## Classification — subject and form
 
-Classification of an ingested document splits into two independent questions asked in
-order. They have different scopes, different candidate sets, and different cost
-profiles.
+Classification of an ingested document splits into two independent steps run
+in order. They have different scopes, different candidate sets, and different
+cost profiles.
 
 These are orthogonal to the **declares-axis** above (*what does this document
-define?* — Classes / Properties / Individuals). Q1/Q2 ask about the
-document's subject and form. The declares-axis is structural inspection of
-triples; Q1/Q2 are LLM-driven semantic calls. Both result sets land on the
-same `<source>` IngestionRecord but answer different questions.
+define?* — Classes / Properties / Individuals). Subject + form ask about the
+document's content; the declares-axis is structural inspection of triples,
+while subject + form are LLM-driven semantic calls. Both result sets land on
+the same `<source>` IngestionRecord but answer different questions.
 
-### Q1 — Subject: what is this document *about*?
+### Subject classification — what is this document *about*?
 
 - **Stored as**: `<source> dg:isAbout <UpperClass>, …` (zero or more values).
 - **Candidate scope**: a curated **upper-level Part 2 class set** (~15 classes:
@@ -365,11 +371,11 @@ same `<source>` IngestionRecord but answer different questions.
   - Sensor reading → `dg:isAbout iso15926:Quality`.
   - Poetry book → `dg:isAbout iso15926:ArrangedIndividual` (vague — and that
     vagueness is itself the "outside our domain" signal).
-- **Doubles as the uncovered diagnostic**: if Q1 returns only the most
-  generic subjects (`ArrangedIndividual` and nothing more specific) with low
-  confidence, the document is outside the upper ontology's resolution.
+- **Doubles as the uncovered diagnostic**: if the subject step returns only
+  the most generic answers (`ArrangedIndividual` and nothing more specific)
+  with low confidence, the document is outside the upper ontology's resolution.
 
-### Q2 — Form: what *kind of document* is this?
+### Form classification — what *kind of document* is this?
 
 - **Stored as**: `<source> rdf:type <FormClass>` (single value).
 - **Candidate scope**: leaf classes from **user-ingested ontologies only**.
@@ -389,9 +395,9 @@ same `<source>` IngestionRecord but answer different questions.
   store narrows to top-30 by cosine similarity before the LLM call; otherwise the
   candidate list is sent intact. Below 30 the prompt is cheap enough that filtering
   loses information without saving meaningfully.
-- **Conditionally runs**: when no user ontology is loaded, Q2 is skipped with a clear
-  message ("no domain ontology — `docgraph add <ontology.ttl>` first"), not an opaque
-  "uncovered" gate.
+- **Conditionally runs**: when no user ontology is loaded, form classification is
+  skipped with a clear message ("no domain ontology — `docgraph add <ontology.ttl>`
+  first"), not an opaque "uncovered" gate.
 
 ### Why the form-vs-subject distinction matters
 
@@ -415,20 +421,20 @@ fin:Payout       rdfs:subClassOf fin:Transaction .
 ```
 
 A specific Zahnrechnung answers both questions from the right branches:
-- Q1 (subject) → `dg:isAbout iso15926:Activity` — the underlying payment/treatment.
-- Q2 (form)   → `rdf:type fin:DemandForPayment` — the layout/document kind.
+- Subject → `dg:isAbout iso15926:Activity` — the underlying payment/treatment.
+- Form    → `rdf:type fin:DemandForPayment` — the layout/document kind.
 
 If a domain ontology mixes the two — e.g., declares "Invoice" as both a form and an
 event under one class — both questions return the same answer and the distinction
 collapses. That's a *modelling* failure, not a pipeline failure.
 
-### Q1 narrowing Q2 (deferred)
+### Subject narrowing form (deferred)
 
-The natural follow-up question is whether Q1's answer can pre-filter Q2's candidate
-set ("the document is about an Activity → consider only form classes structurally
-related to Activity"). This is a real optimization for projects with 100+ form classes,
-but requires a relevance-mapping mechanism between forms and subjects. Three honest
-options when the time comes:
+The natural follow-up question is whether the subject answer can pre-filter the
+form candidate set ("the document is about an Activity → consider only form
+classes structurally related to Activity"). This is a real optimization for
+projects with 100+ form classes, but requires a relevance-mapping mechanism
+between forms and subjects. Three honest options when the time comes:
 
 - Embedding affinity between form and subject `class_text`s.
 - Property analysis: a form is relevant to a subject if any of its declared
@@ -436,9 +442,9 @@ options when the time comes:
 - LLM-judged once at ontology-add: "for each form class, what upper-ontology subject is
   it most concerned with?" Tag as `dg:concernsSubject`.
 
-For current scales (small handcrafted ontologies), independent Q1 + Q2 is sufficient.
-The cascade is future work; the embedding store is already in place to power option 1
-when needed.
+For current scales (small handcrafted ontologies), independent subject + form
+classification is sufficient. The cascade is future work; the embedding store
+is already in place to power option 1 when needed.
 
 ### Coverage signals
 
@@ -446,72 +452,81 @@ Per ingest, the default graph carries:
 
 ```turtle
 <ext/<slug>>
-    dg:subjectConfidence  0.81 ;            # Q1's headline confidence
-    dg:typeConfidence     0.92 ;            # Q2's headline confidence (if Q2 ran)
-    dg:isAbout            iso15926:Activity, iso15926:Person .  # Q1 result
+    dg:subjectConfidence  0.81 ;            # subject classification confidence
+    dg:typeConfidence     0.92 ;            # form classification confidence (if it ran)
+    dg:isAbout            iso15926:Activity, iso15926:Person .  # subject result
 ```
 
-Reading them together: high `subjectConfidence` + Q2 didn't run → "we know
-what it's about; you haven't loaded a form ontology yet". High
+Reading them together: high `subjectConfidence` + form classification didn't
+run → "we know what it's about; you haven't loaded a form ontology yet". High
 `subjectConfidence` + low `typeConfidence` → "we know the general topic; no
 loaded form fits — the document is outside this project's domain coverage".
 
 ---
 
-## Extraction pipeline (full sequence)
+## Extraction pipeline — a decision tree
 
-```
-docgraph add <file>
-    │
-    ├─ 0. Validate, hash for idempotency, check existing entry.
-    │
-    ├─ 1. Register file as iso15926:ArrangedIndividual + prov:Entity
-    │     (file metadata: hash, size, mime, pdfinfo: pages, title, ...).
-    │     Mint the document ArrangedIndividual + reified RepresentationOfThing
-    │     linking file → document (per the information-objects chain above).
-    │
-    ├─ 2. Format-specific extraction (front half).
-    │     ├─ [.ttl / .n3]  Parse → candidate triples (the source's own vocab).
-    │     └─ [.pdf]        PDF → Markdown via Claude vision (cached) →
-    │                      LLM extracts candidate triples from the Markdown.
-    │                      Both PDF→MD and the extract are recorded as
-    │                      prov:Activity in the default graph.
-    │                      Mint chapter/quote ArrangedIndividuals + composition
-    │                      tuples while walking the markdown structure.
-    │
-    ├─ 3. Structural inspection — what does this source declare?
-    │     Emit <source> dg:defines dg:Classes/Properties/Individuals
-    │     (see "What does a document declare?" above).
-    │
-    ├─ 4. 14-prompt Part 2 classifier (src/classify_part2/).
-    │     Run the per-aspect prompts (activities, classes, connections,
-    │     identifiers, individuals, lifecycle, participations, properties,
-    │     roles, temporal, whole-parts, …). Each converter emits a reified
-    │     Part 2 cluster — equivalent to expanding the lowered body of the
-    │     corresponding library template (see "Templates" above).
-    │
-    ├─ 5. Q1 — Subject identification (LLM, semantic).
-    │     Candidates: ~15 curated upper-level Part 2 classes, sent in full.
-    │     Emit <source> dg:isAbout <UpperClass>, …  Always runs.
-    │
-    ├─ 6. Q2 — Form classification (LLM, semantic; only when domain ontology loaded).
-    │     Candidates: leaves of user-ingested ontologies.
-    │     If ≥ 30: embedding top-k pre-filter; else send all.
-    │     Emit <source> rdf:type <FormClass> in the extraction graph.
-    │     Skipped (with clear message) when no domain ontology is loaded.
-    │
-    ├─ 7. Template-instance recognition + filling (in progress).
-    │     Fold extracted facts against the loaded template library by
-    │     recognition (see templates.md). The un-folded remainder feeds
-    │     the discovery mechanisms (structural / learned).
-    │
-    └─ 8. Emit named graph and register in sources.ttl.
-```
+The pipeline is a decision tree, not a flat sequence. Its structure follows
+the upper ontology's class hierarchy: each top-level class is a branch, and
+the document is "extracted" by walking the branches relevant to its
+form/subject and asking, per branch, what instances the document contains.
+
+Three layers:
+
+1. **The tree's shape comes from the upper ontology.** Part 2 has ~14
+   top-level classes (Activity, Identification, WholePartTemplate, …) —
+   hence the existing 14-prompt classifier in `src/classify_part2/`.
+   Part 14 has ~12 (Activity, Aspect, Compound, Event, FunctionalObject,
+   InanimatePhysicalObject, InformationObject, Location, Object, …) —
+   `src/extract_part14/` will have ~12 prompts. Branches are *not*
+   hardcoded; they're a data-driven walk of `rdfs:subClassOf` from the
+   loaded upper ontology.
+
+2. **Subject + form classification weight the branches.** They prune the tree
+   (skip irrelevant branches) and prime the surviving ones with form context
+   for richer prompts. An Invoice's
+   extraction visits the Activity / Object / InformationObject branches
+   with "this is an Invoice" as preamble; PhysicalObject and Location
+   are skipped. Form classification is a *speedup*, not a fallback —
+   for unknown forms the tree still walks all branches (the current
+   exhaustive 14-prompt behavior).
+
+3. **Templates are leaves; descent is document-bounded.** Once a branch
+   returns instances, template recognition tries to fold them into known
+   patterns. Anything that can't be folded becomes a typed reference;
+   bare names without descriptive content become stubs in
+   `_unresolved.ttl`. The walker stops a branch when no further evidence
+   is in the document (or when confidence/cost thresholds are crossed)
+   — it doesn't chase relationships beyond what the document supports.
+
+The decision tree replaces the flat "extract every aspect on every
+document" model. Cost scales with document content (~5 LLM calls for a
+1-page invoice; ~30 for a 200-page standard in the branches that matter),
+not with ontology size.
+
+The full descent algorithm, per-branch policy data model, stopping
+conditions, and stub-vs-extract decision live in
+[`docs/architecture/extraction.md`](docs/architecture/extraction.md).
+
+### CLI mapping
+
+The three extraction commands map onto layers of the tree:
+
+| Command | Tree position | Cost | Cache |
+|---|---|---|---|
+| `docgraph convert` | format detection + file → markdown | High (vision LLM for PDF) | `cache/pdfmd/<hash>.md` |
+| `docgraph classify` | subject + form classification — picks branch weights | Low (~2 LLM calls) | `cache/classify/<slug>.json` |
+| `docgraph extract` | walks the weighted tree → fills templates / mints stubs | Variable (per-branch prompts; document-bounded) | `cache/extract/<slug>.ttl` |
+| `docgraph add` | the whole tree, end to end | High first time, low on rerun | (uses caches above) |
+
+Each command rebuilds only its own cache; downstream caches are
+invalidated automatically when their upstream changes. `--force` re-runs
+the named step regardless of cache state.
 
 The extraction graph is described as a `prov:Entity` in the default graph,
 generated by the LLM activities above. See
-[`docs/architecture/provenance.md`](docs/architecture/provenance.md) for the
-cascade story.
+[`docs/architecture/provenance.md`](docs/architecture/provenance.md) for
+the cascade story.
 
 ---
 

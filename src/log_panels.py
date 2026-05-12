@@ -35,5 +35,23 @@ def log_response(stage: str, response: str, *, logger: logging.Logger,
     title = f"[bold green]LLM →[/bold green]  {stage}"
     if metadata:
         title += f"  [dim]{metadata}[/dim]"
-    body = Syntax(response, "json", theme="monokai", word_wrap=True) if as_json else response
+    if as_json:
+        body = Syntax(_strip_code_fence(response), "json", theme="monokai", word_wrap=True)
+    else:
+        body = response
     _console.print(Panel(body, title=title, border_style="green", title_align="left"))
+
+
+def _strip_code_fence(text: str) -> str:
+    """Strip ```json ... ``` markdown code fences that LLMs sometimes wrap
+    JSON responses in. Same logic the parsers use, kept here so the panel
+    renders clean JSON for syntax highlighting."""
+    s = text.strip()
+    if not s.startswith("```"):
+        return s
+    # Drop the leading fence (with optional language tag like ```json)
+    after_open = s.split("\n", 1)[1] if "\n" in s else s[3:]
+    # Drop the closing fence
+    if after_open.rstrip().endswith("```"):
+        after_open = after_open.rstrip()[:-3]
+    return after_open.strip()

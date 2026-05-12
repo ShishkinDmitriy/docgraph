@@ -1,12 +1,12 @@
 @prefix schema: <https://schema.org/> .
-@prefix lis:    <http://standards.iso.org/iso/15926/part14/> .
+@prefix lis:    <http://rds.posccaesar.org/ontology/lis14/rdl/> .
 @prefix owl:    <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 
 <http://example.org/docgraph/bridge/schemaorg-lis14> a owl:Ontology ;
     rdfs:label "Schema.org → ISO 15926 Part 14 bridge" ;
     rdfs:comment "Subclass alignment from schema.org receipt/invoice vocabulary to ISO 15926 Part 14 upper classes." ;
-    owl:imports <http://standards.iso.org/iso/15926/part14> .
+    owl:imports <http://rds.posccaesar.org/ontology/lis14/ont/core> .
 
 # Schema.org has no dedicated Receipt type. Per schema.org, schema:Order is
 # "a confirmation of a transaction (a receipt)"; schema:Invoice is "a statement

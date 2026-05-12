@@ -26,17 +26,15 @@ from pathlib import Path
 from rdflib import Graph, Literal, Namespace, URIRef, RDF, RDFS, XSD
 from rich.console import Console
 
-from src.classifier import pdf_to_markdown
 from src.classify_part2 import pipeline as classify_pipeline
 from src.classify_part2.context import ConversionContext
 from src.classify_part2.ns import EXT_NS_FOR
-from src.extractor import extract_pdf
 from src.ingest import (
     DG, ISO15926, SOURCE_NS,
     IngestError, _check_existing, _mime_type, _register_source, _unique_slug,
     compute_hash, make_slug,
 )
-from src.markdown_io import md_paths_for_pdf, save_markdown
+from src.markdown_io import load_or_extract, md_paths_for_pdf
 from src.models import ModelConfig
 from src.pdfinfo import pdfinfo
 from src.project import (
@@ -108,10 +106,10 @@ def ingest_pdf(
             console.print(f"  [yellow]--reconvert[/yellow]: dropped cache "
                           f"[dim]{md.name}[/dim]")
     conv_started = _now()
-    console.print("  converting PDF → Markdown...")
-    pdf_block = extract_pdf(source)
-    docs = pdf_to_markdown(pdf_block, client, model, note=note)
-    save_markdown(source, docs, console, cache)
+    docs = load_or_extract(
+        source, force=reconvert, client=client, model=model,
+        con=console, note=note, cache_dir=cache,
+    )
     conv_ended = _now()
     md_files = md_paths_for_pdf(source, cache)
     if not md_files:

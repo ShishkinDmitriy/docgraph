@@ -1,0 +1,22 @@
+@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix lis: <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<http://example.org/docgraph/dg-part14-alignments>  a owl:Ontology ;
+    rdfs:label   "DocGraph Part 14 alignments" ;
+    rdfs:comment "Subclass alignments wiring DocGraph's structural classes (dg:Document, dg:Chapter, dg:Quote, dg:File, …) into the ISO 15926-14 (LIS-14) upper ontology. Loaded only by the part14 pipeline." .
+
+# ── Information-objects chain (file → document → chapter → quote) ─────────────
+# The Document, Chapter, and Quote are abstract information things — they live
+# in the InformationObject branch of LIS-14.
+dg:Document  rdfs:subClassOf lis:InformationObject .
+dg:Chapter   rdfs:subClassOf lis:InformationObject .
+dg:Quote     rdfs:subClassOf lis:InformationObject .
+
+# The File is the digital artifact (bytes); it represents the Document. Files
+# are PhysicalObjects in the Part 14 sense (they have a physical/digital
+# existence, not just abstract content).
+dg:File         rdfs:subClassOf lis:PhysicalObject .
+dg:PdfFile      rdfs:subClassOf dg:File .
+dg:MarkdownFile rdfs:subClassOf dg:File .

@@ -21,7 +21,8 @@ from pathlib import Path
 from rich.console import Console
 
 DOCGRAPH_DIR                     = ".docgraph"
-META_FILENAME                    = "meta.ttl"
+META_FILENAME                    = "meta.ttl"            # part2 pipeline only
+CONFIG_FILENAME                  = "config.ttl"          # part14 pipeline
 ISO15926_FILENAME                = "iso-15926-2.rdf"
 ISO15926_ANNOTATIONS_FILENAME    = "iso-15926-2-annotations.rdf"
 PROV_O_FILENAME                  = "prov-o.ttl"
@@ -30,6 +31,12 @@ SOURCES_FILENAME                 = "sources.ttl"
 GRAPHS_SUBDIR                    = "graphs"
 UNRESOLVED_FILENAME              = "_unresolved.ttl"
 CACHE_SUBDIR                     = "cache"
+
+# Pipelines (see ARCHITECTURE.md § Pipelines — Part 2 and Part 14 in parallel)
+PIPELINE_PART2  = "part2"
+PIPELINE_PART14 = "part14"
+PIPELINES       = (PIPELINE_PART2, PIPELINE_PART14)
+DEFAULT_PIPELINE = PIPELINE_PART2   # flips to PART14 once classify_part14 reaches M3 parity
 
 # Bundled upper-ontology sources.
 _VENDOR_ONTOLOGIES_DIR          = Path(__file__).parent.parent / "vendor" / "ontologies"
@@ -68,6 +75,10 @@ def docgraph_dir(project_root: Path) -> Path:
 
 def meta_path(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / META_FILENAME
+
+
+def config_path(project_root: Path) -> Path:
+    return project_root / DOCGRAPH_DIR / CONFIG_FILENAME
 
 
 def iso15926_path(project_root: Path) -> Path:
@@ -221,6 +232,30 @@ _SOURCES_TTL = """\
 # dg:IngestionRecord (admin) and iso15926:WholeLifeIndividual (the file itself).
 """
 
+# Minimal per-project header for the part14 pipeline. No copies of foundational
+# ontologies — the loader reads them from vendor/ontologies/ at startup based on
+# the dg:pipeline value below. See ARCHITECTURE.md § Storage layout.
+_CONFIG_TTL_PART14 = """\
+@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<> a dg:DocgraphProject ;
+    dg:pipeline   dg:Part14Pipeline ;
+    dg:createdAt  "{created_at}"^^xsd:date ;
+    dg:version    "0.1.0" .
+"""
+
+_TEMPLATES_REGISTRY_TTL = """\
+@prefix dg:  <http://example.org/docgraph/meta#> .
+
+# Registry of user-authored templates loaded by this project.
+# Each entry: a dg:TemplateRegistration with dg:templatePath pointing at a TTL
+# file in the project repo (typically under data/templates/<custom>/).
+# Bundled templates (data/templates/iso14/, data/templates/bridges/) and the
+# core tpl: vocabulary are not registered here — the loader picks them up
+# automatically based on the project's pipeline.
+"""
+
 
 def reset_sources(project_root: Path) -> None:
     """Overwrite sources.ttl with an empty registry (header only)."""
@@ -280,11 +315,26 @@ def ensure_layout(project_root: Path, console: Console | None = None) -> None:
             console.print(f"  [dim]- {f} (stale)[/dim]")
 
 
-def init_project(target: Path, console: Console, *, force: bool = False) -> None:
+def init_project(
+    target: Path,
+    console: Console,
+    *,
+    force: bool = False,
+    pipeline: str = DEFAULT_PIPELINE,
+) -> None:
     """Create the ``.docgraph/`` directory inside *target*.
 
+    *pipeline* picks the upper-ontology pipeline:
+      "part2"  — legacy: writes meta.ttl, copies foundationals into .docgraph/
+      "part14" — modern: writes config.ttl only; loader reads foundationals
+                 from vendor/ontologies/ at startup
+
     Raises ``FileExistsError`` if ``.docgraph/`` already exists and *force* is False.
+    Raises ``ValueError`` for an unknown pipeline.
     """
+    if pipeline not in PIPELINES:
+        raise ValueError(f"unknown pipeline {pipeline!r}; expected one of {PIPELINES}")
+
     dg_dir   = target / DOCGRAPH_DIR
     g_dir    = dg_dir / GRAPHS_SUBDIR
     c_dir    = dg_dir / CACHE_SUBDIR
@@ -297,19 +347,31 @@ def init_project(target: Path, console: Console, *, force: bool = False) -> None
     dg_dir.mkdir(parents=True)
     g_dir.mkdir()
     c_dir.mkdir()
-    console.print(f"  created [dim]{dg_dir}[/dim]")
+    console.print(f"  created [dim]{dg_dir}[/dim] (pipeline: [bold]{pipeline}[/bold])")
 
-    (dg_dir / META_FILENAME).write_text(_META_TTL)
-    console.print(f"  wrote   [dim]{META_FILENAME}[/dim]")
+    if pipeline == PIPELINE_PART2:
+        # Legacy layout: per-project copies of foundationals + verbose meta.ttl.
+        (dg_dir / META_FILENAME).write_text(_META_TTL)
+        console.print(f"  wrote   [dim]{META_FILENAME}[/dim]")
 
-    for source, fname, label in _BUNDLED_ONTOLOGIES:
-        if not source.is_file():
-            raise FileNotFoundError(
-                f"Bundled ontology not found at {source} ({label}). "
-                "docgraph install is incomplete."
-            )
-        shutil.copy2(source, dg_dir / fname)
-        console.print(f"  copied  [dim]{fname}[/dim] ({label})")
+        for source, fname, label in _BUNDLED_ONTOLOGIES:
+            if not source.is_file():
+                raise FileNotFoundError(
+                    f"Bundled ontology not found at {source} ({label}). "
+                    "docgraph install is incomplete."
+                )
+            shutil.copy2(source, dg_dir / fname)
+            console.print(f"  copied  [dim]{fname}[/dim] ({label})")
+    else:
+        # part14: tiny config.ttl + empty templates registry. Loader reads
+        # foundationals from vendor/ontologies/ at startup.
+        from datetime import date
+        (dg_dir / CONFIG_FILENAME).write_text(
+            _CONFIG_TTL_PART14.format(created_at=date.today().isoformat())
+        )
+        console.print(f"  wrote   [dim]{CONFIG_FILENAME}[/dim]")
+        (dg_dir / "templates.ttl").write_text(_TEMPLATES_REGISTRY_TTL)
+        console.print(f"  wrote   [dim]templates.ttl[/dim]")
 
     (dg_dir / SOURCES_FILENAME).write_text(_SOURCES_TTL)
     console.print(f"  wrote   [dim]{SOURCES_FILENAME}[/dim]")
@@ -320,4 +382,29 @@ def init_project(target: Path, console: Console, *, force: bool = False) -> None
     console.print(
         f"\n[green]Initialised docgraph project in[/green] [bold]{target}[/bold]\n"
         f"Add a source with [dim]docgraph add <file>[/dim]."
+    )
+
+
+def read_pipeline(project_root: Path) -> str:
+    """Return the project's pipeline ("part2" or "part14").
+
+    For projects with config.ttl (part14 layout), reads dg:pipeline directly.
+    For projects with meta.ttl (legacy part2 layout), returns "part2".
+    Raises FileNotFoundError if neither file exists.
+    """
+    cfg = config_path(project_root)
+    if cfg.is_file():
+        text = cfg.read_text(encoding="utf-8")
+        if "Part14Pipeline" in text:
+            return PIPELINE_PART14
+        if "Part2Pipeline" in text:
+            return PIPELINE_PART2
+        # config.ttl present but no recognized pipeline triple — default to part14
+        # since config.ttl is the part14-era artifact.
+        return PIPELINE_PART14
+    if meta_path(project_root).is_file():
+        return PIPELINE_PART2
+    raise FileNotFoundError(
+        f"Neither {CONFIG_FILENAME} nor {META_FILENAME} found in "
+        f"{project_root / DOCGRAPH_DIR}; project is not properly initialised."
     )
