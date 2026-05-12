@@ -429,6 +429,39 @@ property_label = class_label
 property_definition = class_definition
 
 
+def scope_notes(dataset: Graph, term: URIRef) -> list[str]:
+    """All `skos:scopeNote` annotations on *term*.
+
+    Scope notes carry behavioral guidance — clarifications about how a
+    class or property should be USED — that go beyond the class's
+    definition. The extraction prompts surface these directly to the LLM
+    so per-class corrections can live in the ontology rather than baked
+    into Python templates. Multiple notes per term are allowed and are
+    rendered as separate lines.
+    """
+    out: list[str] = []
+    for o in dataset.objects(term, SKOS.scopeNote):
+        s = str(o).strip()
+        if s:
+            out.append(s)
+    return out
+
+
+def examples(dataset: Graph, term: URIRef) -> list[str]:
+    """All `skos:example` annotations on *term*.
+
+    Companion to `scope_notes` — concrete usage examples shown alongside
+    the behavioral guidance. Multiple examples per term are allowed (each
+    `skos:example` triple adds one); preserves no particular order.
+    """
+    out: list[str] = []
+    for o in dataset.objects(term, SKOS.example):
+        s = str(o).strip()
+        if s:
+            out.append(s)
+    return out
+
+
 def is_extractable(dataset: Graph, term: URIRef) -> bool:
     """Return False if *term* carries `dg:extractable false`, else True.
 

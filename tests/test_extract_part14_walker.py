@@ -70,18 +70,23 @@ def test_quote_different_text_different_uri():
 
 # ── Entity URI minting ─────────────────────────────────────────────────────
 
-def test_mint_entity_uri_slugs_branch_and_name():
+def test_mint_entity_uri_uses_single_namespace():
+    """Entities mint directly under base_ns — no per-type sub-path. The
+    slash-free local name lets rdflib's Turtle serializer use the bound
+    `ex:` prefix instead of falling back to the full URI form."""
     base_ns = Namespace("http://example.org/src/")
-    u = mint_entity_uri("Person", "Dr. Polina Liebermann", base_ns)
-    # Branch slug + name slug, both lowercase, non-alnum collapsed to -
-    assert str(u) == "http://example.org/src/person/dr-polina-liebermann"
+    u = mint_entity_uri("Dr. Polina Liebermann", base_ns)
+    assert str(u) == "http://example.org/src/dr-polina-liebermann"
+    # No slash in the local part — that's what lets Turtle use the prefix.
+    assert "/" not in str(u).replace(str(base_ns), "")
 
 
 def test_mint_entity_uri_handles_empty_name():
-    """Empty-after-slugging name falls back to a content hash, not a bare slash."""
+    """Empty-after-slugging name falls back to a content hash, not an
+    empty local name."""
     base_ns = Namespace("http://example.org/src/")
-    u = mint_entity_uri("Org", "  !!  ", base_ns)
-    assert "org/anon-" in str(u)
+    u = mint_entity_uri("  !!  ", base_ns)
+    assert str(u).startswith("http://example.org/src/anon-")
 
 
 # ── ExtractedEntity multi-typing field ─────────────────────────────────────

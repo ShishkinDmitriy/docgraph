@@ -1,11 +1,12 @@
-@prefix dg:  <http://example.org/docgraph/meta#> .
-@prefix lis: <http://rds.posccaesar.org/ontology/lis14/rdl/> .
-@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix dg:   <http://example.org/docgraph/meta#> .
+@prefix lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 
 <http://example.org/docgraph/dg-part14-alignments>  a owl:Ontology ;
     rdfs:label   "DocGraph Part 14 alignments" ;
-    rdfs:comment "Subclass alignments wiring DocGraph's structural classes (dg:Document, dg:Chapter, dg:Quote, dg:File, …) into the ISO 15926-14 (LIS-14) upper ontology. Loaded only by the part14 pipeline." .
+    rdfs:comment "Subclass alignments wiring DocGraph's structural classes (dg:Document, dg:Chapter, dg:Quote, dg:File, …) into the ISO 15926-14 (LIS-14) upper ontology. Loaded only by the part14 pipeline. Also carries skos:scopeNote and skos:example overlays on selected LIS-14 terms — behavioral guidance the extraction prompts surface to the LLM where the upstream rdfs:comment isn't actionable enough." .
 
 # ── Information-objects chain (file → document → chapter → quote) ─────────────
 # The Document, Chapter, and Quote are abstract information things — they live
@@ -20,3 +21,101 @@ dg:Quote     rdfs:subClassOf lis:InformationObject .
 dg:File         rdfs:subClassOf lis:PhysicalObject .
 dg:PdfFile      rdfs:subClassOf dg:File .
 dg:MarkdownFile rdfs:subClassOf dg:File .
+
+# ── LLM prompt overlays (skos:scopeNote + skos:example) ──────────────────────
+# Behavioral corrections for classes/properties the LLM has mis-applied in
+# observed runs. Kept narrow — add only where the upstream definition wasn't
+# enough to steer the LLM correctly. Add new entries only when an actual
+# mis-application is observed; don't pre-emptively annotate.
+
+lis:QuantityDatum
+    skos:scopeNote "ONLY for measured quantities with a numeric value and a unit of measure (mass, length, monetary amount). Identifiers (invoice numbers, tax IDs, account numbers, IBANs), phone numbers, email addresses, and bare dates are NOT QuantityDatum — type them as lis:InformationObject (or a more specific InformationObject subclass)." ;
+    skos:example   "GOOD: an entity 'EUR 115.84' typed as lis:ScalarQuantityDatum with datumValue '115.84' and datumUOM <eur>." ,
+                   "BAD: an entity '1352' (invoice number) typed as lis:QuantityDatum — it's an identifier, not a measurement; use lis:InformationObject." ,
+                   "BAD: a phone number '030 676 6184' typed as lis:QuantityDatum — use lis:InformationObject." .
+
+lis:Function
+    skos:scopeNote "Name a function by WHAT IT DOES, not by appending '_function' or 'Function' to another entity's name. The type lis:Function is already captured via rdf:type — the name should distinguish this function from others." ;
+    skos:example   "GOOD: 'tooth_cleaning' (typed as lis:Function via rdf:type)." ,
+                   "BAD: 'tooth_cleaning_function' — the '_function' suffix duplicates the rdf:type." .
+
+lis:Quality
+    skos:scopeNote "Name a quality by WHAT IT IS (the quality itself), not by appending '_quality' or 'Quality' to another entity's name. The type lis:Quality is in rdf:type — the name should distinguish this quality." ;
+    skos:example   "GOOD: 'tax_exempt' (a Disposition/Quality) or 'service_completeness'." ,
+                   "BAD: 'service_quality' — uninformative; use the specific quality being captured." .
+
+lis:Disposition
+    skos:scopeNote "A latent property realized in specific conditions (e.g., 'tax_exempt', 'fragile', 'flammable'). Name the disposition itself, not '<thing>_disposition'." ;
+    skos:example   "GOOD: 'tax_exempt' typed as lis:Disposition." ,
+                   "BAD: 'tax_exemption_status_disposition'." .
+
+# ── Property overlays ────────────────────────────────────────────────────────
+
+lis:datumValue
+    skos:scopeNote "Attach ONLY to entities of type lis:QuantityDatum or its subclasses (e.g., lis:ScalarQuantityDatum). Do NOT attach to Persons (use rdfs:label for names), Locations (use containedBy / hasLocation), Activities, or generic InformationObjects." ;
+    skos:example   "GOOD: <eur-115-84> lis:datumValue '115.84' (the entity is a ScalarQuantityDatum)." ,
+                   "BAD: <person/dmitrii> lis:datumValue '07.02.1989' — a Person isn't a QuantityDatum." .
+
+lis:datumUOM
+    skos:scopeNote "Pairs with lis:datumValue. If you assert a datumValue you SHOULD also assert datumUOM pointing at a lis:UnitOfMeasure entity — otherwise the value is ambiguous (115.84 what?). If no unit is identifiable from the document, omit both." ;
+    skos:example   "GOOD: <amount> lis:datumValue '115.84' ; lis:datumUOM <unitofmeasure/eur>." ,
+                   "BAD: <amount> lis:datumValue 'EUR 115.84' — the unit should be a separate UnitOfMeasure entity via datumUOM, not baked into the value string." .
+
+lis:hasParticipant
+    skos:scopeNote "Domain is lis:Activity. The participant is an entity that takes part in the activity. If the participant plays a specific named role (patient, practitioner, payer), record the role separately via the participant's role_hint in the Activity extraction — DO NOT collapse the role into hasParticipant." ;
+    skos:example   "GOOD: <activity> lis:hasParticipant <person/dmitrii> — plus a separate Role for 'patient' via role_hint." ,
+                   "BAD: minting a synthetic 'patient' entity and attaching it via hasParticipant — patient is a role, not the player." .
+
+# ── Definition overrides ────────────────────────────────────────────────────
+# Many LIS-14 classes and properties have rdfs:comment that's only a
+# cross-reference to BFO or ISO 15926 Part 2/12 ("Inspired by BFO_0000017"),
+# which is useless to the LLM. `axioms.class_definition` prioritizes
+# skos:definition over rdfs:comment — so providing skos:definition here
+# overrides the bare upstream comment with something actionable.
+#
+# Only override where the upstream comment is uninformative. Where POSC's
+# rdfs:comment is substantive, leave it alone.
+
+lis:Aspect
+    skos:definition "A property, quality, role, function, or other dependent characteristic of some entity. Unlike Objects (which exist on their own) and Activities (which happen over time), an Aspect attaches to or characterizes another entity. Examples: the mass of a hammer, the role of patient in a treatment, the function of cleaning teeth." .
+
+lis:RealizableEntity
+    skos:definition "A latent characteristic of an entity that may become real through a specific activity. Includes Role (a part played in an activity), Disposition (a tendency to behave a certain way when triggered), and Function (an intended purpose). The realization happens via lis:realizedIn pointing to the activity in which the characteristic comes into play." .
+
+lis:Disposition
+    skos:definition "A latent tendency of an entity to behave a certain way when conditions occur. Examples: fragility (realized when dropped), solubility (realized when placed in liquid), tax-exempt status (realized at billing time). Named for the disposition itself, not for the entity that has it." .
+
+lis:Function
+    skos:definition "An intended purpose or role-as-tool that an entity has, realized when the entity is used for that purpose. A hammer has a nail-driving function realized in a NailDriving activity; a service has a cleaning function realized in a Cleaning activity. Named by what the function DOES." .
+
+lis:Quality
+    skos:definition "A characteristic an entity HAS in itself, independently of any activity — mass, color, length, completeness. Distinct from Function (purpose) and Role (part played). For measurable qualities like mass or length, use lis:PhysicalQuantity and pair with a lis:QuantityDatum for the actual value." .
+
+lis:Role
+    skos:definition "A part played by an entity in a specific activity — patient in a treatment, payer in a transaction, tool in a process. The role is realized in the activity (lis:realizedIn) and is held by the participant entity (lis:hasRole / lis:roleOf). Roles are context-dependent: the same entity can play different roles in different activities." .
+
+# ── Property definition overrides ───────────────────────────────────────────
+
+lis:participantIn
+    skos:definition "Inverse of lis:hasParticipant: an entity participates in an activity. Use on Persons, Organizations, PhysicalObjects, or InformationObjects that take part in something." .
+
+lis:concretizedBy
+    skos:definition "Inverse of lis:concretizes: an abstract Activity or Feature is concretized BY an InformationObject that carries information about it (e.g., a service is concretized by its invoice line; a measurement is concretized by its datum)." .
+
+lis:createdBy
+    skos:definition "Inverse of lis:creates: an entity is created by an activity that brings it into being. Use for the genesis of an entity — author of a document, manufacturer of a product, originator of a record." .
+
+lis:hasInstalled
+    skos:definition "Inverse of lis:installedAs: a functional position (FunctionalObject) currently has a specific PhysicalObject installed there. The Part 14 way to represent replaceable parts — the functional position is stable; what's installed there changes over time." .
+
+lis:hasFunctionalPart
+    skos:definition "A System (or composite Object) has FunctionalObject parts that contribute to the system's overall function. Specialization of lis:hasPart for functional/system breakdowns specifically — use it when the part-whole relationship reflects functional decomposition." .
+
+lis:realizes
+    skos:definition "Inverse of lis:realizedIn: an Activity realizes a RealizableEntity (Role, Disposition, or Function). The activity is where the latent characteristic becomes manifest." .
+
+lis:containedBy
+    skos:definition "Spatial containment: an entity is geographically/spatially contained by another. Use for address-in-city, room-in-building, equipment-in-facility relationships." .
+
+lis:subLocationOf
+    skos:definition "Hierarchical location-of-location relationship: a smaller location is part of a larger one (street is a sub-location of city, city of country). Distinct from containedBy which is general spatial containment of any kind of entity." .

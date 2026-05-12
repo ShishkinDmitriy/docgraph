@@ -162,6 +162,40 @@ def test_is_class_range_distinguishes_class_vs_datatype(ontology):
     assert axioms.is_class_range(ontology, URIRef(LIS + "approvedOn")) is False
 
 
+# ── skos:scopeNote / skos:example readers ─────────────────────────────────
+
+def test_scope_notes_returns_overlay_for_quantitydatum(ontology):
+    """dg-part14-alignments.ttl carries a skos:scopeNote on QuantityDatum
+    correcting LLM mis-application to identifiers."""
+    notes = axioms.scope_notes(ontology, URIRef(LIS + "QuantityDatum"))
+    assert len(notes) >= 1
+    # Behavioral content: should mention what it's NOT for
+    joined = " ".join(notes)
+    assert "Identifier" in joined or "identifier" in joined or "invoice number" in joined.lower()
+
+
+def test_examples_returns_multiple_when_present(ontology):
+    """QuantityDatum carries several skos:example annotations."""
+    exs = axioms.examples(ontology, URIRef(LIS + "QuantityDatum"))
+    assert len(exs) >= 2
+    # Should include both GOOD and BAD framings
+    joined = " ".join(exs)
+    assert "GOOD" in joined and "BAD" in joined
+
+
+def test_scope_notes_empty_for_unannotated_class(ontology):
+    """Classes without skos:scopeNote return an empty list, not None."""
+    notes = axioms.scope_notes(ontology, URIRef(LIS + "Person"))
+    assert notes == []
+
+
+def test_scope_notes_works_for_properties_too(ontology):
+    """Same helper reads property annotations — datumValue has overlay."""
+    notes = axioms.scope_notes(ontology, URIRef(LIS + "datumValue"))
+    assert len(notes) >= 1
+    assert "QuantityDatum" in " ".join(notes)
+
+
 def test_domain_satisfied_rejects_violation(ontology):
     """A predicate with a class-domain rejects subjects of incompatible types.
 

@@ -152,7 +152,9 @@ the property's value is one of these):
 
 {known_entities_block}
 
-Reply in JSON only:
+Reply in JSON only. Do NOT add prose before or after the JSON object —
+if you have anything to say about your choices, put it in the optional
+"notes" field below.
 
 {{
   "values": [
@@ -162,13 +164,14 @@ Reply in JSON only:
       "value_entity": "<exact entity name>" or null,
       "evidence":     "<short verbatim quote ≤80 chars proving this value>"
     }}
-  ]
+  ],
+  "notes": "<optional: explanations, ambiguities, or reasons for empty values. Omit when there's nothing to add.>"
 }}
 
 If a property's value is a literal (date, number, string), use "value".
 If it's one of the known entities, use "value_entity" and leave "value" null.
 Empty "values" list is valid if no candidate properties have values in the
-supporting quotes.
+supporting quotes — use "notes" to explain why if helpful.
 """
 
 
@@ -198,15 +201,18 @@ def extract_properties_for_entity(
     known_entities:   list[ExtractedEntity],
     client:           LLMClient,
     model:            ModelConfig,
-) -> list[PropertyExtractionItem]:
+) -> tuple[list[PropertyExtractionItem], str]:
     """One LLM call returning all property values for *entity*.
 
-    Replaces the per-property loop. Returns only properties for which the LLM
-    found a value (omitted properties had no value in the supporting quotes
-    — much cheaper than asking N times for null).
+    Returns (items, notes). `items` is the list of properties for which
+    the LLM found a value (omitted properties had no value in the supporting
+    quotes — much cheaper than asking N times for null). `notes` is the
+    LLM's optional commentary captured from the JSON response's "notes"
+    field; callers may log it to surface ambiguities or empty-result
+    explanations to the user.
     """
     if not candidate_props:
-        return []
+        return [], ""
 
     quotes_block = _format_quotes(entity)
     document_context_block = (
@@ -249,6 +255,13 @@ def _format_candidate_properties(props: list[URIRef], ontology: Graph) -> str:
         # Truncate verbose definitions to keep the prompt small
         pdef_short = (pdef[:120] + "…") if len(pdef) > 120 else pdef
         lines.append(f"  - {curie} (range: {rlabel}) — {pdef_short}")
+        # Optional behavioral guidance attached via skos:scopeNote /
+        # skos:example. Used to correct LLM mis-application of specific
+        # properties (e.g., datumValue's domain restriction).
+        for note in axioms.scope_notes(ontology, p):
+            lines.append(f"      USE: {note}")
+        for ex in axioms.examples(ontology, p):
+            lines.append(f"      EXAMPLE: {ex}")
     return "\n".join(lines)
 
 
@@ -301,7 +314,13 @@ def _format_known_entities(
 def _parse_stage2_batch_response(
     text: str,
     curie_to_prop: dict[str, URIRef],
-) -> list[PropertyExtractionItem]:
+) -> tuple[list[PropertyExtractionItem], str]:
+    """Parse the stage-2 batch response. Returns (items, notes).
+
+    `notes` is the LLM's optional commentary from the JSON's "notes" field.
+    Callers may surface it to the user for diagnostics; an empty string
+    means the LLM had nothing to add (or omitted the field).
+    """
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```", 2)[1] if cleaned.count("```") >= 2 else cleaned
@@ -311,13 +330,14 @@ def _parse_stage2_batch_response(
     end   = cleaned.rfind("}")
     if start == -1 or end == -1:
         logger.warning("stage 2 batch: no JSON object in response %r", text[:200])
-        return []
+        return [], ""
     try:
         obj = json.loads(cleaned[start:end + 1])
     except json.JSONDecodeError as exc:
         logger.warning("stage 2 batch: JSON decode failed (%s)", exc)
-        return []
+        return [], ""
 
+    notes = str(obj.get("notes", "") or "").strip()
     out: list[PropertyExtractionItem] = []
     for raw in obj.get("values", []) or []:
         if not isinstance(raw, dict):
@@ -338,7 +358,7 @@ def _parse_stage2_batch_response(
         if result.value is None and result.value_entity is None:
             continue
         out.append(PropertyExtractionItem(prop=prop, result=result))
-    return out
+    return out, notes
 
 
 def _str_or_none(v) -> str | None:
@@ -462,7 +482,7 @@ def walk_stage2(
         if console:
             console.print(f"  [dim]→ {entity.label}: batch ({len(properties)} candidates)[/dim]")
 
-        items = extract_properties_for_entity(
+        items, notes = extract_properties_for_entity(
             entity           = entity,
             candidate_props  = properties,
             ontology         = ontology,
@@ -471,6 +491,8 @@ def walk_stage2(
             client           = client,
             model            = model,
         )
+        if notes and console:
+            console.print(f"    [dim italic]notes: {notes}[/dim italic]")
         for item in items:
             # Domain guard: at least one of the entity's types must satisfy
             # the property's rdfs:domain (domain-less props pass through).

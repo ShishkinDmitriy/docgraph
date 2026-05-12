@@ -363,3 +363,43 @@ def test_object_subtree_unaffected_by_role_exclusion(ontology):
     # populated with normal Object content.
     assert "lis:Object:" in text
     assert "lis:Person:" in text
+
+
+# ── Prompt overlays: skos:scopeNote + skos:example rendering ───────────────
+
+def test_subtree_renders_scope_note_as_use_line(ontology):
+    """QuantityDatum carries a skos:scopeNote in dg-part14-alignments.ttl —
+    must appear in the subtree rendering as a 'USE:' line."""
+    text = _subtree_text(LIS.Object, ontology)
+    assert "lis:QuantityDatum:" in text
+    # The USE: line follows the class line
+    assert "USE:" in text
+    # Behavioral content from the scope note
+    assert "Identifiers" in text or "invoice number" in text.lower()
+
+
+def test_subtree_renders_examples_as_example_lines(ontology):
+    """skos:example annotations on QuantityDatum render as 'EXAMPLE:' lines."""
+    text = _subtree_text(LIS.Object, ontology)
+    assert "EXAMPLE:" in text
+    # Both GOOD and BAD examples should appear (we wrote at least one of each)
+    assert "GOOD:" in text
+    assert "BAD:" in text
+
+
+def test_subtree_no_overlay_lines_for_unannotated_class(ontology):
+    """A class without skos:scopeNote / skos:example renders cleanly —
+    no spurious USE: or EXAMPLE: lines."""
+    # Use a class that should NOT have an overlay (e.g., lis:Person).
+    text = _subtree_text(LIS.Object, ontology)
+    # Find the Person entry — its block should not have USE:/EXAMPLE: lines
+    # before the next class begins. Cheap check: count overlay lines, they
+    # should match the number of overlays we wrote (currently 4 classes
+    # under the Object tree: QuantityDatum, Function (Aspect — not here),
+    # ...). Just verify Person doesn't introduce them on its line.
+    lines = text.splitlines()
+    person_idx = next(i for i, ln in enumerate(lines) if "lis:Person:" in ln)
+    # The line immediately after Person should be either Person's children
+    # (indented further) or a sibling at the same depth — not a USE: line.
+    next_line = lines[person_idx + 1] if person_idx + 1 < len(lines) else ""
+    assert "USE:" not in next_line

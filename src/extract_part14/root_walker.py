@@ -34,7 +34,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -46,10 +45,10 @@ from src.extract_part14.walker import (
     DG, LIS, OA,
     EvidenceSelector,
     ExtractedEntity,
-    _entity_local,
     _quote_local_name,
     mint_entity_uri,
     mint_quote,
+    slug,
 )
 from src.llm import LLMClient, TextBlock
 from src.log_panels import log_prompt, log_response
@@ -112,6 +111,15 @@ def _subtree_text(root: URIRef, ontology: Graph) -> str:
         curie  = _curie(cls)
         suffix = f" — {defn_short}" if defn_short else ""
         lines.append(f"{indent}- {curie}: {label}{suffix}")
+        # skos:scopeNote → "USE:" guidance lines.
+        # skos:example   → "EXAMPLE:" lines.
+        # Local ontology overrides (dg-part14-alignments.ttl) can attach
+        # these per class to correct LLM mis-use without touching prompts.
+        hint_indent = indent + "    "
+        for note in axioms.scope_notes(ontology, cls):
+            lines.append(f"{hint_indent}USE: {note}")
+        for ex in axioms.examples(ontology, cls):
+            lines.append(f"{hint_indent}EXAMPLE: {ex}")
         for child in sorted(axioms.subclasses(ontology, cls, direct=True), key=str):
             _walk(child, depth + 1)
 
@@ -167,7 +175,9 @@ Document:
 {markdown}
 \"\"\"
 
-Reply in JSON only, no prose:
+Reply in JSON only. Do NOT add prose before or after the JSON — if you
+have anything to say about your choices, put it in the optional "notes"
+field below.
 
 {{
   "instances": [
@@ -177,7 +187,8 @@ Reply in JSON only, no prose:
       "evidence":   [{{"exact": "...", "prefix": "...", "suffix": "..."}}],
       "type_hints": ["..."]
     }}
-  ]
+  ],
+  "notes": "<optional: explanations, ambiguities, or reasons for empty results. Omit when there's nothing to add.>"
 }}
 """
 
@@ -229,7 +240,9 @@ Document:
 {markdown}
 \"\"\"
 
-Reply in JSON only, no prose:
+Reply in JSON only. Do NOT add prose before or after the JSON — if you
+have anything to say about your choices, put it in the optional "notes"
+field below.
 
 {{
   "instances": [
@@ -242,7 +255,8 @@ Reply in JSON only, no prose:
       ],
       "type_hints":   ["..."]
     }}
-  ]
+  ],
+  "notes": "<optional: explanations, ambiguities, or reasons for empty results. Omit when there's nothing to add.>"
 }}
 """
 
@@ -269,8 +283,8 @@ def _extract_root(
     ontology:      Graph,
     client:        LLMClient,
     model:         ModelConfig,
-) -> list[dict]:
-    """One LLM call extracting entities of *root*. Returns parsed instances."""
+) -> tuple[list[dict], str]:
+    """One LLM call extracting entities of *root*. Returns (instances, notes)."""
     label   = axioms.class_label(ontology, root)
     defn    = axioms.class_definition(ontology, root) or "(no definition)"
     subtree = _subtree_text(root, ontology)
@@ -295,7 +309,13 @@ def _extract_root(
     return _parse_instances(text)
 
 
-def _parse_instances(text: str) -> list[dict]:
+def _parse_instances(text: str) -> tuple[list[dict], str]:
+    """Parse the root extraction response. Returns (instances, notes).
+
+    `notes` carries the LLM's optional commentary from the JSON's "notes"
+    field — moves prose explanations into structured output instead of
+    letting them trail the JSON.
+    """
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```", 2)[1] if cleaned.count("```") >= 2 else cleaned
@@ -305,16 +325,17 @@ def _parse_instances(text: str) -> list[dict]:
     end   = cleaned.rfind("}")
     if start == -1 or end == -1:
         logger.warning("root_walker: no JSON object in response %r", text[:200])
-        return []
+        return [], ""
     try:
         obj = json.loads(cleaned[start:end + 1])
     except json.JSONDecodeError as exc:
         logger.warning("root_walker: JSON decode failed (%s)", exc)
-        return []
+        return [], ""
     instances = obj.get("instances", [])
     if not isinstance(instances, list):
-        return []
-    return instances
+        instances = []
+    notes = str(obj.get("notes", "") or "").strip()
+    return instances, notes
 
 
 # ── Walker entry point ─────────────────────────────────────────────────────
@@ -363,7 +384,7 @@ def walk_roots(
         if console:
             console.print(f"  extracting [bold]{root_label}[/bold] entities...")
 
-        instances = _extract_root(
+        instances, notes = _extract_root(
             root_uri,
             is_activity   = is_activity,
             full_markdown = full_markdown,
@@ -372,6 +393,8 @@ def walk_roots(
             client        = client,
             model         = model,
         )
+        if notes and console:
+            console.print(f"    [dim italic]notes: {notes}[/dim italic]")
 
         valid_descendants = _extractable_descendants(root_uri, ontology) | {root_uri}
         curie_to_uri = {_curie(c): c for c in valid_descendants}
@@ -388,10 +411,10 @@ def walk_roots(
                                name, root_label)
                 continue
 
-            # Mint the entity URI from its FIRST (most general) type for slug
-            # stability. Multi-typed entities still get one URI.
-            primary_local = _local(types[0]).lower()
-            entity_uri = URIRef(base_ns[_entity_local(primary_local, name)])
+            # Single namespace: <base_ns><slug(name)>. The bound ex: prefix
+            # then renders cleanly in Turtle. Multi-typed entities still get
+            # one URI — the rdf:type list distinguishes them, not the URI path.
+            entity_uri = mint_entity_uri(name, base_ns)
 
             # Skip duplicates (defensive — same name + same primary type
             # would mint the same URI, which the walker should already
@@ -512,14 +535,17 @@ def _resolve_player_uri(name: str, extracted: list[ExtractedEntity]) -> URIRef |
     return None
 
 
-_SLUG_RX = re.compile(r"[^a-z0-9]+")
-
-
 def _mint_role_uri(role_label: str, activity_uri: URIRef, base_ns: Namespace) -> URIRef:
-    """Stable role URI: <ns>role/<role-slug>-in-<activity-slug>."""
-    role_slug     = _SLUG_RX.sub("-", role_label.lower()).strip("-")[:32]
+    """Stable, prefix-friendly role URI: `<base_ns>role-<rolelabel>-in-<activity>`.
+
+    Kept under the single base namespace (no `role/` sub-path) so rdflib
+    serializes it with the bound `ex:` prefix instead of the long-form
+    URI. The `role-` prefix at the start of the local name still makes
+    role individuals visually distinguishable from regular entities.
+    """
+    role_slug     = slug(role_label, max_len=32)
     activity_slug = str(activity_uri).rsplit("/", 1)[-1][:48]
-    return URIRef(base_ns[f"role/{role_slug}-in-{activity_slug}"])
+    return URIRef(base_ns[f"role-{role_slug}-in-{activity_slug}"])
 
 
 # ── Evidence minting ───────────────────────────────────────────────────────

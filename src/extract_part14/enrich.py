@@ -289,7 +289,7 @@ def extract_unlocked_properties(
             console.print(f"  [dim]→ {entity.label}: "
                           f"{len(new_props)} new propert{'y' if len(new_props) == 1 else 'ies'} unlocked[/dim]")
 
-        items = extract_properties_for_entity(
+        items, notes = extract_properties_for_entity(
             entity           = entity,
             candidate_props  = list(new_props),
             ontology         = ontology,
@@ -298,6 +298,8 @@ def extract_unlocked_properties(
             client           = client,
             model            = model,
         )
+        if notes and console:
+            console.print(f"    [dim italic]notes: {notes}[/dim italic]")
         for item in items:
             range_uri = axioms.range_of(ontology, item.prop)
             value = coerce_value(

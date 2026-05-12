@@ -95,13 +95,24 @@ def mint_quote(
 _SLUG_RX = re.compile(r"[^a-z0-9]+")
 
 
-def _entity_local(branch_label: str, name: str) -> str:
-    branch_slug = _SLUG_RX.sub("-", branch_label.lower()).strip("-")[:32]
-    name_slug   = _SLUG_RX.sub("-", name.lower()).strip("-")[:48]
-    if not name_slug:
-        name_slug = "anon-" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
-    return f"{branch_slug}/{name_slug}"
+def slug(name: str, *, max_len: int = 64) -> str:
+    """Normalize *name* to a Turtle-prefix-friendly local name.
+
+    Lowercase, non-alphanumerics collapsed to hyphens, capped at *max_len*.
+    No slashes — so rdflib's Turtle serializer can render the URI with the
+    bound prefix instead of falling back to the long-form `<...>`. Empty
+    after normalization → deterministic hash-based fallback.
+    """
+    s = _SLUG_RX.sub("-", name.lower()).strip("-")[:max_len]
+    if not s:
+        s = "anon-" + hashlib.sha1(name.encode("utf-8")).hexdigest()[:8]
+    return s
 
 
-def mint_entity_uri(branch_label: str, entity_name: str, base_ns: Namespace) -> URIRef:
-    return URIRef(base_ns[_entity_local(branch_label, entity_name)])
+def mint_entity_uri(entity_name: str, base_ns: Namespace) -> URIRef:
+    """Mint a stable, single-namespace entity URI: `<base_ns><slug(name)>`.
+
+    All extracted entities live directly under *base_ns* — no per-type
+    sub-paths — so the bound `ex:` prefix renders cleanly in Turtle.
+    """
+    return URIRef(base_ns[slug(entity_name)])
