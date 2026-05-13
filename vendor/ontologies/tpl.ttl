@@ -44,7 +44,12 @@ tpl:example a owl:ObjectProperty ;
 
 tpl:subject a owl:ObjectProperty ;
     rdfs:domain tpl:Template ;
-    rdfs:comment "Part 2 reified-relationship class this template anchors on (Activity, Possession, Description, ...). Used for subject-typed candidate selection during LLM filling." .
+    rdfs:comment "Upper-ontology class this template anchors on — used by the registry to look up applicable templates by class. For Part 2 templates this is the reified-relationship class (Activity, Possession, Description, …). For Part 14 templates it's the LIS-14 class whose extraction triggers the template (e.g., lis:ScalarQuantityDatum for the canonical UOM+value+type pattern)." .
+
+tpl:includes a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:range  tpl:Template ;
+    rdfs:comment "This template composes another template — borrowed from OTTR's template-composition idea. The included template's slot list, lifted graph, and natural-language definition are pulled into the prompt alongside this one's so the LLM sees the full structural pattern. Multiple inclusions allowed; cycles are an error." .
 
 tpl:definition a owl:DatatypeProperty ;
     rdfs:domain tpl:Template ;

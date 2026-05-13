@@ -26,6 +26,23 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 DEFAULT_TEMPLATES_DIR = REPO_ROOT / "data" / "templates"
 
 
+_DEFAULT_REGISTRY: "Registry | None" = None
+
+
+def default_registry() -> "Registry":
+    """Load and cache the default template registry on first call.
+
+    Multiple parts of the pipeline (root walker, property walker) need
+    template lookups by subject class. Re-loading the registry per call
+    would be wasteful (file I/O + parsing for every entity); cached at
+    module level since the registry is read-only after load.
+    """
+    global _DEFAULT_REGISTRY
+    if _DEFAULT_REGISTRY is None:
+        _DEFAULT_REGISTRY = Registry.load_default()
+    return _DEFAULT_REGISTRY
+
+
 @dataclass
 class Registry:
     """In-memory template index. One pass at startup; reads all TTLs under

@@ -231,10 +231,15 @@ def extract_pdf_part14(
             client             = client,
             model              = model,
             rdl_resolvers      = rdl_resolvers,
+            base_ns            = base_ns,
             console            = console,
         )
         for triple in props_graph:
             g.add(triple)
+        # Pull template-related namespace bindings (lis14tpl:, slot prefixes)
+        # over so the serialized TTL uses them instead of auto-generated ns1.
+        for prefix, ns in props_graph.namespaces():
+            g.bind(prefix, ns, override=False)
 
     # ── Inferred cross-entity links — fills missing class-ranged property
     # triples by quote co-occurrence (e.g. ScalarQuantityDatum's mention of

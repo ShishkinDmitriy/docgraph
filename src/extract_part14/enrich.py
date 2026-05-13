@@ -289,7 +289,7 @@ def extract_unlocked_properties(
             console.print(f"  [dim]→ {entity.label}: "
                           f"{len(new_props)} new propert{'y' if len(new_props) == 1 else 'ies'} unlocked[/dim]")
 
-        items, notes = extract_properties_for_entity(
+        items, _invocations, notes = extract_properties_for_entity(
             entity           = entity,
             candidate_props  = list(new_props),
             ontology         = ontology,

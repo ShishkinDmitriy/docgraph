@@ -50,6 +50,7 @@ from src.extract_part14.walker import (
     mint_quote,
     slug,
 )
+from src.templates.registry import default_registry
 from src.llm import LLMClient, TextBlock
 from src.log_panels import log_prompt, log_response
 from src.models import ModelConfig
@@ -83,6 +84,37 @@ class Role:
 # Roles only enter the graph through the role pattern; they're never
 # extracted as standalone Aspect instances.
 _SUBTREE_EXCLUDED: set[URIRef] = {LIS.Role}
+
+
+def _render_template_inline(template) -> list[str]:
+    """Compact template rendering for inclusion in the class subtree.
+
+    Shows the natural-language definition + slot list with ranges and
+    per-slot descriptions. The slot descriptions carry the strongest
+    behavioral guidance ("REQUIRED — if no UoM entity exists yet, extract
+    one"); without them the LLM tends to skip required slots when their
+    target entity isn't already extracted.
+    """
+    lines: list[str] = []
+    label = template.label or str(template.uri).rsplit("#", 1)[-1]
+    if template.definition:
+        lines.append(f"TEMPLATE: {label} — \"{template.definition}\"")
+    else:
+        lines.append(f"TEMPLATE: {label}")
+    if template.slots:
+        lines.append("  Slots (fill all together; co-extract — if a target")
+        lines.append("  entity for a required slot doesn't exist yet, extract it):")
+        for s in template.slots:
+            rng = _local(s.range) if s.range else "(any)"
+            opt = " (OPTIONAL)" if s.min_count == 0 else " (REQUIRED)"
+            lines.append(f"    - {s.name} : {rng}{opt}")
+            desc = template.var_descriptions.get(s.name)
+            if desc:
+                # Wrap each description line under the slot's bullet so the
+                # prompt's indentation stays clean.
+                for d_line in desc.splitlines():
+                    lines.append(f"        {d_line}")
+    return lines
 
 
 def _subtree_text(root: URIRef, ontology: Graph) -> str:
@@ -120,6 +152,13 @@ def _subtree_text(root: URIRef, ontology: Graph) -> str:
             lines.append(f"{hint_indent}USE: {note}")
         for ex in axioms.examples(ontology, cls):
             lines.append(f"{hint_indent}EXAMPLE: {ex}")
+        # Templates anchored on this class (tpl:subject). Each template
+        # encodes a multi-triple pattern that should be filled as a unit
+        # — picking this class commits to filling all the template's
+        # slots together.
+        for template in default_registry().by_subject(cls):
+            for line in _render_template_inline(template):
+                lines.append(f"{hint_indent}{line}")
         for child in sorted(axioms.subclasses(ontology, cls, direct=True), key=str):
             _walk(child, depth + 1)
 

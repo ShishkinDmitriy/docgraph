@@ -35,10 +35,13 @@ from rdflib.namespace import RDF, RDFS, XSD
 
 from src.extract_part14 import axioms
 from src.extract_part14.rdl import RdlResolver
-from src.extract_part14.walker import DG, LIS, OA, ExtractedEntity
+from src.extract_part14.walker import DG, LIS, OA, ExtractedEntity, slug
 from src.llm import LLMClient, TextBlock
 from src.log_panels import log_prompt, log_response
 from src.models import ModelConfig
+from src.templates.expand import expand, materialize_lifted
+from src.templates.loader import Template
+from src.templates.registry import default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -130,25 +133,38 @@ def extractable_properties_for(entity_type: URIRef, ontology: Graph) -> list[URI
 # ── LLM call (batch — one call per entity, returns all property values) ──
 
 _STAGE2_BATCH_PROMPT = """\
-You are extracting property values for the entity "{entity_label}" (a
+You are extracting facts about the entity "{entity_label}" (a
 {entity_class}) from its supporting quotes.
 
-You may use ONLY the supporting context below. ONLY include properties
-where the supporting quotes provide a clear value — omit properties with
-no value rather than emitting null. Each value MUST cite a short verbatim
-quote as evidence.
+You have TWO mechanisms — fill them in this priority order:
+
+  1. **Templates** (N-ary patterns) — multi-slot fact-patterns that
+     describe how groups of properties co-occur on this entity's type.
+     Prefer these: a single template invocation captures multiple
+     related facts as one unit. Only emit a template invocation when
+     all REQUIRED slots can be filled from the supporting quotes.
+
+  2. **Properties** (binary patterns) — individual property values that
+     aren't already covered by an emitted template invocation. Use these
+     for one-off facts.
+
+You may use ONLY the supporting context below. Each emitted fact MUST
+cite a short verbatim quote as evidence.
 
 {document_context_block}
 Supporting quotes (cited evidence for this entity):
 
 {quotes_block}
 
-Candidate properties (consider each; emit only the ones with a value):
+{templates_block}
+Candidate properties (binary patterns — emit only those NOT already
+covered by an emitted template invocation, and only when the supporting
+quotes provide a clear value):
 
 {properties_block}
 
-Known entities in this document (use the exact name in "value_entity" if
-the property's value is one of these):
+Known entities in this document (use the exact name in "value_entity" or
+in a slot binding if the value is one of these):
 
 {known_entities_block}
 
@@ -157,6 +173,16 @@ if you have anything to say about your choices, put it in the optional
 "notes" field below.
 
 {{
+  "invocations": [
+    {{
+      "template": "<template CURIE from the templates section above>",
+      "slots": {{
+        "<slot-name>": "<bound entity name>" or "<literal>",
+        ...
+      }},
+      "evidence": "<short verbatim quote ≤80 chars proving the invocation>"
+    }}
+  ],
   "values": [
     {{
       "property":     "<property CURIE from the candidates above>",
@@ -165,13 +191,17 @@ if you have anything to say about your choices, put it in the optional
       "evidence":     "<short verbatim quote ≤80 chars proving this value>"
     }}
   ],
-  "notes": "<optional: explanations, ambiguities, or reasons for empty values. Omit when there's nothing to add.>"
+  "notes": "<optional: explanations, ambiguities, or reasons for empty results. Omit when there's nothing to add.>"
 }}
 
-If a property's value is a literal (date, number, string), use "value".
-If it's one of the known entities, use "value_entity" and leave "value" null.
-Empty "values" list is valid if no candidate properties have values in the
-supporting quotes — use "notes" to explain why if helpful.
+For slot bindings: use literal strings for literal-typed slots (xsd:double,
+xsd:string, etc.); use the EXACT name of a known entity for slot ranges
+that are classes (the materializer resolves the name to a URI). If a
+required slot's target entity doesn't exist yet in the "Known entities"
+list AND the document supports extracting one, omit the invocation —
+extraction of that target should happen in its own pass first.
+
+Empty arrays are valid. Use "notes" to explain anything unusual.
 """
 
 
@@ -192,6 +222,65 @@ class PropertyExtractionItem:
     result:       PropertyResult
 
 
+@dataclass
+class TemplateInvocation:
+    """One filled N-ary template invocation from the LLM batch response.
+
+    `slots` is name → raw string from the LLM (an entity name to be
+    resolved against `known_entities`, or a literal value). The
+    materializer coerces literals to typed forms and resolves entity
+    names to URIs at expansion time.
+    """
+    template_uri: URIRef
+    slots:        dict[str, str]
+    evidence:     str = ""
+
+
+def _applicable_templates(entity: ExtractedEntity) -> list[Template]:
+    """All N-ary templates anchored on any of the entity's types.
+
+    Looks up via tpl:subject on the cached registry. Multi-typing means
+    one entity may have several anchored templates; deduplicate by URI."""
+    seen: set[URIRef] = set()
+    out: list[Template] = []
+    reg = default_registry()
+    for t in (entity.types or [entity.type_uri]):
+        for tmpl in reg.by_subject(t):
+            if tmpl.uri in seen:
+                continue
+            seen.add(tmpl.uri)
+            out.append(tmpl)
+    return out
+
+
+def _format_templates_block(templates: list[Template]) -> str:
+    """Render applicable templates for the stage2 prompt.
+
+    Includes the natural-language definition + slot table with per-slot
+    descriptions — the LLM uses these to decide whether the document
+    supports the pattern and to bind slots correctly.
+    """
+    if not templates:
+        return ""
+    lines = ["Applicable templates (N-ary patterns — prefer these over individual properties):", ""]
+    for t in templates:
+        curie = _curie_for_logging(t.uri)
+        label = t.label or str(t.uri).rsplit("#", 1)[-1]
+        lines.append(f"  {curie} — {label}")
+        if t.definition:
+            lines.append(f'    Definition: "{t.definition}"')
+        for s in t.slots:
+            rng = _curie_for_logging(s.range) if s.range else "(any)"
+            opt = " (OPTIONAL)" if s.min_count == 0 else " (REQUIRED)"
+            lines.append(f"    - slot {s.name} : {rng}{opt}")
+            desc = t.var_descriptions.get(s.name)
+            if desc:
+                for d_line in desc.splitlines():
+                    lines.append(f"        {d_line}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def extract_properties_for_entity(
     entity:           ExtractedEntity,
     candidate_props:  list[URIRef],
@@ -201,18 +290,23 @@ def extract_properties_for_entity(
     known_entities:   list[ExtractedEntity],
     client:           LLMClient,
     model:            ModelConfig,
-) -> tuple[list[PropertyExtractionItem], str]:
-    """One LLM call returning all property values for *entity*.
+) -> tuple[list[PropertyExtractionItem], list[TemplateInvocation], str]:
+    """One LLM call returning property values + template invocations for *entity*.
 
-    Returns (items, notes). `items` is the list of properties for which
-    the LLM found a value (omitted properties had no value in the supporting
-    quotes — much cheaper than asking N times for null). `notes` is the
-    LLM's optional commentary captured from the JSON response's "notes"
-    field; callers may log it to surface ambiguities or empty-result
-    explanations to the user.
+    Returns (items, invocations, notes):
+      - items: binary-property triples the LLM emitted (for properties NOT
+        already covered by an invocation's lowered expansion).
+      - invocations: N-ary template invocations the LLM filled in.
+      - notes: LLM's optional commentary captured from the JSON response's
+        "notes" field.
+
+    Templates are prioritized in the prompt — the LLM is told to fill them
+    first as multi-fact units, then fall through to individual properties
+    for anything not captured by a template.
     """
-    if not candidate_props:
-        return [], ""
+    templates = _applicable_templates(entity)
+    if not candidate_props and not templates:
+        return [], [], ""
 
     quotes_block = _format_quotes(entity)
     document_context_block = (
@@ -221,18 +315,21 @@ def extract_properties_for_entity(
     )
     known_entities_block = _format_known_entities(known_entities, ontology, exclude=entity)
     properties_block     = _format_candidate_properties(candidate_props, ontology)
+    templates_block      = _format_templates_block(templates)
     curie_to_prop        = {_curie_for_logging(p): p for p in candidate_props}
+    curie_to_template    = {_curie_for_logging(t.uri): t for t in templates}
 
     prompt = _STAGE2_BATCH_PROMPT.format(
         entity_label           = entity.label,
         entity_class           = axioms.class_label(ontology, entity.type_uri),
         document_context_block = document_context_block,
         quotes_block           = quotes_block,
+        templates_block        = templates_block,
         properties_block       = properties_block,
         known_entities_block   = known_entities_block,
     )
     stage_label = f"part14/stage2/{entity.label}"
-    meta = f"{model.model_id}  {len(candidate_props)} candidate properties"
+    meta = f"{model.model_id}  {len(candidate_props)} props  {len(templates)} templates"
     log_prompt(stage_label, prompt, logger=logger, metadata=meta)
     response = client.create(
         model_id=model.model_id,
@@ -241,7 +338,7 @@ def extract_properties_for_entity(
     )
     text = "".join(b.text for b in response.content if isinstance(b, TextBlock)).strip()
     log_response(stage_label, text, logger=logger, metadata=meta, as_json=True)
-    return _parse_stage2_batch_response(text, curie_to_prop)
+    return _parse_stage2_batch_response(text, curie_to_prop, curie_to_template)
 
 
 def _format_candidate_properties(props: list[URIRef], ontology: Graph) -> str:
@@ -271,6 +368,7 @@ def _curie_for_logging(uri: URIRef) -> str:
     s = str(uri)
     for ns, prefix in (
         ("http://rds.posccaesar.org/ontology/lis14/rdl/", "lis"),
+        ("http://example.org/docgraph/lis14tpl#",      "lis14tpl"),
         ("http://example.org/docgraph/meta#",          "dg"),
         ("http://www.w3.org/ns/oa#",                   "oa"),
         ("http://www.w3.org/ns/prov#",                 "prov"),
@@ -314,13 +412,16 @@ def _format_known_entities(
 def _parse_stage2_batch_response(
     text: str,
     curie_to_prop: dict[str, URIRef],
-) -> tuple[list[PropertyExtractionItem], str]:
-    """Parse the stage-2 batch response. Returns (items, notes).
+    curie_to_template: dict[str, Template] | None = None,
+) -> tuple[list[PropertyExtractionItem], list[TemplateInvocation], str]:
+    """Parse the stage-2 batch response. Returns (items, invocations, notes).
 
-    `notes` is the LLM's optional commentary from the JSON's "notes" field.
-    Callers may surface it to the user for diagnostics; an empty string
-    means the LLM had nothing to add (or omitted the field).
+    - `items`: binary property values (per the existing schema)
+    - `invocations`: N-ary template invocations from the new `invocations`
+      array. Each carries the template URI and a slot-name → raw-string map.
+    - `notes`: LLM's optional commentary from the "notes" field.
     """
+    curie_to_template = curie_to_template or {}
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```", 2)[1] if cleaned.count("```") >= 2 else cleaned
@@ -330,14 +431,53 @@ def _parse_stage2_batch_response(
     end   = cleaned.rfind("}")
     if start == -1 or end == -1:
         logger.warning("stage 2 batch: no JSON object in response %r", text[:200])
-        return [], ""
+        return [], [], ""
     try:
         obj = json.loads(cleaned[start:end + 1])
     except json.JSONDecodeError as exc:
         logger.warning("stage 2 batch: JSON decode failed (%s)", exc)
-        return [], ""
+        return [], [], ""
 
     notes = str(obj.get("notes", "") or "").strip()
+
+    # Parse invocations first — they have higher priority and influence
+    # what gets emitted from the "values" array (dedupe happens at the
+    # materializer level, not here).
+    # Build a permissive lookup: try the CURIE as rendered, the bracket-
+    # stripped variant, and the full URI form. Avoids losing invocations
+    # when the LLM emits a slightly different shape than the prompt's CURIE.
+    template_lookup: dict[str, Template] = {}
+    for curie, t in curie_to_template.items():
+        template_lookup[curie] = t
+        template_lookup[curie.strip("<>")] = t
+        template_lookup[str(t.uri)] = t
+        template_lookup[f"<{t.uri}>"] = t
+
+    invocations: list[TemplateInvocation] = []
+    for raw in obj.get("invocations", []) or []:
+        if not isinstance(raw, dict):
+            continue
+        curie = str(raw.get("template", "")).strip()
+        tmpl = template_lookup.get(curie) or template_lookup.get(curie.strip("<>"))
+        if tmpl is None:
+            logger.warning("stage 2 batch: unknown template CURIE %r", curie)
+            continue
+        raw_slots = raw.get("slots", {}) or {}
+        if not isinstance(raw_slots, dict):
+            continue
+        slots = {
+            str(k): str(v).strip()
+            for k, v in raw_slots.items()
+            if v is not None and str(v).strip() != ""
+        }
+        if not slots:
+            continue
+        invocations.append(TemplateInvocation(
+            template_uri = tmpl.uri,
+            slots        = slots,
+            evidence     = str(raw.get("evidence", "") or "").strip(),
+        ))
+
     out: list[PropertyExtractionItem] = []
     for raw in obj.get("values", []) or []:
         if not isinstance(raw, dict):
@@ -358,7 +498,7 @@ def _parse_stage2_batch_response(
         if result.value is None and result.value_entity is None:
             continue
         out.append(PropertyExtractionItem(prop=prop, result=result))
-    return out, notes
+    return out, invocations, notes
 
 
 def _str_or_none(v) -> str | None:
@@ -443,6 +583,7 @@ def walk_stage2(
     client:           LLMClient,
     model:            ModelConfig,
     rdl_resolvers:    list[RdlResolver] | None = None,
+    base_ns:          Namespace | None = None,
     console=None,
 ) -> Graph:
     """Per-entity property extraction (Pass C of the three-pass model).
@@ -458,11 +599,12 @@ def walk_stage2(
     branch walker.
     """
     g = Graph()
-    g.bind("dg",   DG)
-    g.bind("lis",  LIS)
-    g.bind("oa",   OA)
-    g.bind("rdfs", RDFS)
-    g.bind("xsd",  XSD)
+    g.bind("dg",        DG)
+    g.bind("lis",       LIS)
+    g.bind("lis14tpl",  Namespace("http://example.org/docgraph/lis14tpl#"))
+    g.bind("oa",        OA)
+    g.bind("rdfs",      RDFS)
+    g.bind("xsd",       XSD)
 
     for entity in extracted_entities:
         all_types = entity.types or [entity.type_uri]
@@ -482,7 +624,7 @@ def walk_stage2(
         if console:
             console.print(f"  [dim]→ {entity.label}: batch ({len(properties)} candidates)[/dim]")
 
-        items, notes = extract_properties_for_entity(
+        items, invocations, notes = extract_properties_for_entity(
             entity           = entity,
             candidate_props  = properties,
             ontology         = ontology,
@@ -493,6 +635,22 @@ def walk_stage2(
         )
         if notes and console:
             console.print(f"    [dim italic]notes: {notes}[/dim italic]")
+
+        # Materialize templates first — they take priority. Track the triples
+        # the lowered expansion emits so the binary-property pass below can
+        # skip duplicates without losing anything.
+        covered: set = set()
+        if invocations:
+            inv_graph, covered = _materialize_invocations(
+                invocations,
+                extracted = extracted_entities,
+                ontology  = ontology,
+                base_ns   = base_ns,
+                console   = console,
+            )
+            for triple in inv_graph:
+                g.add(triple)
+
         for item in items:
             # Domain guard: at least one of the entity's types must satisfy
             # the property's rdfs:domain (domain-less props pass through).
@@ -526,9 +684,207 @@ def walk_stage2(
                         )
                         continue
 
-            g.add((entity.uri, item.prop, value))
+            triple = (entity.uri, item.prop, value)
+            if triple in covered:
+                # Already emitted via a template invocation's lowered
+                # expansion — skip to avoid asserting the same fact twice.
+                continue
+            g.add(triple)
 
     return g
+
+
+def _materialize_invocations(
+    invocations:  list[TemplateInvocation],
+    *,
+    extracted:    list[ExtractedEntity],
+    ontology:     Graph,
+    base_ns:      Namespace | None,
+    console=None,
+) -> tuple[Graph, set]:
+    """Materialize each invocation into (a) a lifted fact-object capturing
+    the invocation as a single typed entity with slot triples, plus (b) the
+    lowered LIS-14 triples from the template's body.
+
+    Returns (graph, covered_triples). `covered_triples` is the set of
+    (s, p, o) tuples emitted by the lowered expansion — callers use it to
+    skip duplicate triples when emitting binary property values.
+    """
+    g = Graph()
+    covered: set = set()
+    registry = default_registry()
+
+    for inv in invocations:
+        tmpl = registry.by_uri.get(inv.template_uri)
+        if tmpl is None:
+            logger.warning("invocation: unknown template %s", inv.template_uri)
+            continue
+
+        # Bind a sensible prefix for this template's slot namespace so the
+        # serialized TTL uses `<slug>slot:datum` instead of `ns1:datum`.
+        slot_ns = f"urn:tpl/{tmpl.slug}/slot/"
+        g.bind(f"{tmpl.slug}-slot", Namespace(slot_ns), override=False)
+
+        bindings = _resolve_slot_bindings(inv.slots, tmpl, extracted, ontology)
+        if bindings is None:
+            # A required slot couldn't be resolved — skip the invocation
+            # rather than emit a half-formed fact.
+            if console:
+                tmpl_label = tmpl.label or _local(tmpl.uri)
+                console.print(f"    [dim yellow]skipped invocation of {tmpl_label} "
+                              f"(unresolved required slot)[/dim yellow]")
+            continue
+
+        try:
+            lifted_graph  = materialize_lifted(tmpl, bindings, ext_ns=base_ns)
+            lowered_graph = expand(tmpl, bindings, ext_ns=base_ns)
+        except Exception as exc:                # pragma: no cover — guard against malformed bindings
+            logger.warning("invocation: materialization failed for %s: %s",
+                           inv.template_uri, exc)
+            continue
+
+        for s, p, o in lifted_graph:
+            if _is_omit_sentinel(s) or _is_omit_sentinel(p) or _is_omit_sentinel(o):
+                continue
+            g.add((s, p, o))
+        for s, p, o in lowered_graph:
+            if _is_omit_sentinel(s) or _is_omit_sentinel(p) or _is_omit_sentinel(o):
+                continue
+            g.add((s, p, o))
+            covered.add((s, p, o))
+
+    return g, covered
+
+
+_OMIT_NS = "urn:docgraph/omit#"
+"""Sentinel namespace for omitted-optional-slot bindings.
+
+When the LLM legitimately leaves an optional slot empty, we still have to
+hand the expander SOME binding (else it mints a stray intermediate URI
+that pollutes the graph). We bind the slot to a sentinel URI in this
+namespace, then post-filter the expanded graph to drop any triple that
+mentions a sentinel — effectively erasing triples that reference the
+omitted slot."""
+
+
+def _is_omit_sentinel(term) -> bool:
+    return isinstance(term, URIRef) and str(term).startswith(_OMIT_NS)
+
+
+def _resolve_slot_bindings(
+    raw_slots: dict[str, str],
+    template:  Template,
+    extracted: list[ExtractedEntity],
+    ontology:  Graph,
+) -> dict[str, object] | None:
+    """Resolve LLM-emitted slot strings into URI / typed-Literal bindings.
+
+    Per slot:
+      - Literal range (xsd:double, xsd:string, ...) → typed Literal via coerce_literal.
+      - Class range (owl:Class) → resolve the raw as a CURIE using the
+        template's source @prefix bindings, then verify the class actually
+        exists in the loaded ontology — guards against the LLM inventing
+        plausible-sounding class names (e.g., "MonetaryQuantityDatum") that
+        the upstream ontology doesn't declare.
+      - Instance range (any other URI class) → case-insensitive label match
+        against `extracted`. If not found, try CURIE resolution.
+
+    Returns the bindings dict, or None if any REQUIRED slot couldn't be
+    resolved — invocation should be skipped rather than emit a half-formed fact.
+
+    Omitted optional slots are bound to a sentinel URI in `_OMIT_NS`; the
+    caller filters triples involving sentinels out of the expanded graph.
+    """
+    OWL_CLASS = URIRef("http://www.w3.org/2002/07/owl#Class")
+    bindings: dict[str, object] = {}
+    prefixes = template.prefixes or {}
+
+    for slot in template.slots:
+        raw = raw_slots.get(slot.name, "").strip()
+        if not raw:
+            if slot.min_count == 0:
+                # Bind to a sentinel; the materializer drops triples that
+                # involve it after expansion.
+                bindings[slot.name] = URIRef(f"{_OMIT_NS}{slot.name}")
+                continue
+            return None         # required slot missing
+
+        if slot.is_literal:
+            bindings[slot.name] = coerce_literal(raw, slot.range)
+            continue
+
+        if slot.range == OWL_CLASS:
+            class_uri = _curie_to_uri(raw, prefixes)
+            if class_uri is not None and _class_declared(ontology, class_uri):
+                bindings[slot.name] = class_uri
+                continue
+            if class_uri is not None:
+                logger.info(
+                    "invocation: slot %r on %s — class %s isn't declared in the "
+                    "loaded ontology; LLM may have invented it. Treating slot as omitted.",
+                    slot.name, template.uri, class_uri,
+                )
+            # Either unresolvable CURIE or class doesn't exist — fall
+            # through to the same handling as instance-slot fallback.
+        else:
+            # Instance slot: try label match in extracted entities first
+            match = next(
+                (e for e in extracted if e.label.casefold() == raw.casefold()),
+                None,
+            )
+            if match is not None:
+                bindings[slot.name] = match.uri
+                continue
+
+            # Fallback: maybe the LLM gave a CURIE for an external entity
+            # (e.g. a unit-of-measure from a reference data library).
+            resolved = _curie_to_uri(raw, prefixes)
+            if resolved is not None:
+                bindings[slot.name] = resolved
+                continue
+
+        if slot.min_count == 0:
+            # Optional and unresolved — drop via sentinel (post-filtered).
+            bindings[slot.name] = URIRef(f"{_OMIT_NS}{slot.name}")
+            continue
+        logger.info(
+            "invocation: required slot %r on %s — couldn't resolve %r; skipping",
+            slot.name, template.uri, raw,
+        )
+        return None
+
+    return bindings
+
+
+def _class_declared(ontology: Graph, class_uri: URIRef) -> bool:
+    """True if *class_uri* appears as an owl:Class (or rdfs:Class) in the
+    loaded ontology — even with no further axioms. Guards against the LLM
+    inventing class names that look syntactically valid but don't exist."""
+    OWL_CLASS = URIRef("http://www.w3.org/2002/07/owl#Class")
+    RDFS_CLASS = URIRef("http://www.w3.org/2000/01/rdf-schema#Class")
+    if (class_uri, RDF.type, OWL_CLASS) in ontology:
+        return True
+    if (class_uri, RDF.type, RDFS_CLASS) in ontology:
+        return True
+    # Also accept any URI that's the subject of an rdfs:subClassOf triple —
+    # some ontologies declare classes implicitly via subClassOf only.
+    RDFS_SUB_CLASS_OF = URIRef("http://www.w3.org/2000/01/rdf-schema#subClassOf")
+    if any(ontology.triples((class_uri, RDFS_SUB_CLASS_OF, None))):
+        return True
+    return False
+
+
+def _curie_to_uri(raw: str, prefixes: dict[str, str]) -> URIRef | None:
+    """Expand a CURIE using the template's source @prefix bindings, or
+    return the raw value as a URI if it already looks like one."""
+    if raw.startswith("http://") or raw.startswith("https://") or raw.startswith("urn:"):
+        return URIRef(raw)
+    if ":" in raw:
+        prefix, _, local = raw.partition(":")
+        ns = prefixes.get(prefix)
+        if ns:
+            return URIRef(ns + local)
+    return None
 
 
 def infer_cross_entity_links(
