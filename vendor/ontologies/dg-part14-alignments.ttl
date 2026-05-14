@@ -49,6 +49,17 @@ lis:Disposition
     skos:example   "GOOD: 'tax_exempt' typed as lis:Disposition." ,
                    "BAD: 'tax_exemption_status_disposition'." .
 
+# ── Reserved-for-evidence properties ─────────────────────────────────────────
+# These are used internally for evidence anchoring — the walker mints
+# `<entity> lis:representedBy <doc#id-N>` triples from the LLM's `evidence`
+# field, not from the property catalog. Mark them dg:extractable false so the
+# mega-walker doesn't surface them in the property list (and so the LLM can't
+# accidentally emit them as binary properties pointing at other entities).
+
+lis:representedBy  dg:extractable false .
+lis:representedIn  dg:extractable false .
+lis:represents     dg:extractable false .
+
 # ── Property overlays ────────────────────────────────────────────────────────
 
 lis:datumValue

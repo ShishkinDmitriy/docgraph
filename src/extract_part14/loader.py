@@ -14,6 +14,7 @@ from rdflib import Dataset, Graph, Namespace, URIRef
 from src.project import (
     PIPELINE_PART14,
     config_path,
+    ext_ontology_path,
     graphs_dir,
     read_pipeline,
     sources_path,
@@ -80,7 +81,14 @@ def build_dataset(project_root: Path) -> Dataset:
     if sp.is_file():
         ds.default_graph.parse(sp, format="turtle")
 
-    # 4. Each registered per-source graph.
+    # 4. Per-project extension ontology — LLM-proposed classes.
+    ext_path = ext_ontology_path(project_root)
+    if ext_path.is_file():
+        graph_uri = URIRef(_FOUNDATIONAL_GRAPH_NS["ext"])
+        g = ds.graph(graph_uri)
+        g.parse(ext_path, format="turtle")
+
+    # 5. Each registered per-source graph.
     g_dir = graphs_dir(project_root)
     if g_dir.is_dir():
         for ttl in sorted(g_dir.glob("*.ttl")):

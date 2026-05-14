@@ -33,6 +33,8 @@ UNRESOLVED_FILENAME              = "_unresolved.ttl"
 CACHE_SUBDIR                     = "cache"
 HTML_SUBDIR                      = "html"
 ANNOTATED_SUBDIR                 = "annotated"
+ONTOLOGIES_SUBDIR                = "ontologies"
+EXT_FILENAME                     = "ext.ttl"
 
 # Pipelines (see ARCHITECTURE.md § Pipelines — Part 2 and Part 14 in parallel)
 PIPELINE_PART2  = "part2"
@@ -132,6 +134,21 @@ def annotated_dir(project_root: Path) -> Path:
     Generated on demand by `docgraph view <slug>` from canonical HTML +
     extracted graph. Never the source of truth — regenerable any time."""
     return project_root / DOCGRAPH_DIR / ANNOTATED_SUBDIR
+
+
+def ontologies_dir(project_root: Path) -> Path:
+    """Per-project mutable ontologies directory.
+
+    Currently holds `ext.ttl` — LLM-proposed extension classes anchored
+    under stable LIS-14 superclasses. Distinct from the immutable bundled
+    foundationals in `vendor/ontologies/`. Loaded by the part14 loader
+    into its own named graph so it's visible to extraction and enrich."""
+    return project_root / DOCGRAPH_DIR / ONTOLOGIES_SUBDIR
+
+
+def ext_ontology_path(project_root: Path) -> Path:
+    """Path to the per-project extension ontology (LLM-proposed classes)."""
+    return ontologies_dir(project_root) / EXT_FILENAME
 
 
 # NOTE: The dg: vocabulary below is duplicated in vendor/ontologies/dg.ttl, which

@@ -18,18 +18,11 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import PROV, RDF, RDFS, XSD
 from rich.console import Console
 
-from src.extract_part14.classify import (
-    classify_subject,
-    subject_candidates,
-)
 from src.extract_part14.loader import build_dataset, union_view
 from src.extract_part14.structural import DG, LIS, build_chain
-from src.extract_part14.property_walker import (
-    infer_cross_entity_links,
-    walk_stage2,
-)
+from src.extract_part14.mega_walker import walk_mega
+from src.extract_part14.property_walker import infer_cross_entity_links
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
-from src.extract_part14.root_walker import walk_roots
 from src.ingest import (
     IngestError,
     SOURCE_NS,
@@ -196,77 +189,36 @@ def extract_pdf_part14(
     ds       = build_dataset(project_root)
     ontology = union_view(ds)
 
-    # ── Subject classification (one LLM call, candidates derived from ontology) ──
-    excerpt = (full_markdown or "").strip()[:1500]
-    if excerpt:
-        candidates = subject_candidates(ontology)
-        console.print(f"  classifying subject ({len(candidates)} candidates from ontology)...")
-        subject = classify_subject(
-            document_title  = document_title,
-            document_excerpt= excerpt,
-            candidates      = candidates,
-            client          = client,
-            model           = model,
-        )
-        for s in subject.subjects:
-            g.add((file_uri, DG.isAbout, s))
-        g.add((file_uri, DG.subjectConfidence,
-               Literal(round(subject.confidence, 3), datatype=XSD.decimal)))
-        if subject.rationale:
-            g.add((file_uri, DG.reason, Literal(subject.rationale)))
-        labels = ", ".join(str(s).rsplit("/", 1)[-1] for s in subject.subjects) or "(none)"
-        console.print(f"  subject: [bold]{labels}[/bold] "
-                      f"(conf {subject.confidence:.2f})")
-    else:
-        console.print("  [yellow]no excerpt for subject classification[/yellow]")
-
-    # ── Pass A — three-root extraction (entities + multi-typing + roles) ──
+    # ── EXTRACT — single mega-call: subject + entities + properties + invocations + roles + ext-class proposals ──
     extracted: list = []
     roles:     list = []
     if full_markdown.strip():
-        console.print(f"  [bold]extracting entities[/bold] (Pass A — Object/Aspect/Activity roots)...")
-        roots_graph, extracted, roles = walk_roots(
-            full_markdown = full_markdown,
-            base_ns       = base_ns,
-            md_source_uri = md_uri,
-            ontology      = ontology,
-            client        = client,
-            model         = model,
-            id_to_class   = id_to_class,
-            class_to_ids  = class_to_ids,
-            console       = console,
-        )
-        for triple in roots_graph:
-            g.add(triple)
-        for prefix, ns in roots_graph.namespaces():
-            g.bind(prefix, ns, override=False)
-        console.print(f"  → {len(extracted)} entit{'y' if len(extracted) == 1 else 'ies'}, "
-                      f"{len(roles)} role individual{'s' if len(roles) != 1 else ''}")
-
-    # ── Pass C — per-entity property extraction ──
-    if extracted:
-        console.print(f"  [bold]extracting properties[/bold] (Pass C — per entity)...")
-        document_context = _build_document_context(
-            title=document_title, description=document_description, markdown=full_markdown,
-        )
         rdl_cache_dir = cache_dir(project_root) / "rdl"
         rdl_resolvers = [RdlResolver(POSC_CAESAR, cache_dir=rdl_cache_dir)]
-        props_graph = walk_stage2(
-            extracted_entities = extracted,
-            ontology           = ontology,
-            document_context   = document_context,
-            client             = client,
-            model              = model,
-            rdl_resolvers      = rdl_resolvers,
-            base_ns            = base_ns,
-            console            = console,
+        result = walk_mega(
+            full_markdown   = full_markdown,
+            document_title  = document_title,
+            document_descr  = document_description,
+            base_ns         = base_ns,
+            md_source_uri   = md_uri,
+            file_uri        = file_uri,
+            ontology        = ontology,
+            client          = client,
+            model           = model,
+            id_to_class     = id_to_class,
+            class_to_ids    = class_to_ids,
+            rdl_resolvers   = rdl_resolvers,
+            console         = console,
         )
-        for triple in props_graph:
+        for triple in result.graph:
             g.add(triple)
-        # Pull template-related namespace bindings (lis14tpl:, slot prefixes)
-        # over so the serialized TTL uses them instead of auto-generated ns1.
-        for prefix, ns in props_graph.namespaces():
+        for prefix, ns in result.graph.namespaces():
             g.bind(prefix, ns, override=False)
+        extracted = result.entities
+        roles     = result.roles
+        console.print(f"  → {len(extracted)} entit{'y' if len(extracted) == 1 else 'ies'}, "
+                      f"{len(roles)} role individual{'s' if len(roles) != 1 else ''}, "
+                      f"{len(result.new_ext_classes)} new ext class(es)")
 
     # ── Inferred cross-entity links — fills missing class-ranged property
     # triples by quote co-occurrence (e.g. ScalarQuantityDatum's mention of

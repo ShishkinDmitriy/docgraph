@@ -96,10 +96,11 @@ def _render_template_inline(template) -> list[str]:
     """
     lines: list[str] = []
     label = template.label or str(template.uri).rsplit("#", 1)[-1]
+    curie = _curie(template.uri)
     if template.definition:
-        lines.append(f"TEMPLATE: {label} — \"{template.definition}\"")
+        lines.append(f"TEMPLATE {curie}  ({label}) — \"{template.definition}\"")
     else:
-        lines.append(f"TEMPLATE: {label}")
+        lines.append(f"TEMPLATE {curie}  ({label})")
     if template.slots:
         lines.append("  Slots (fill all together; co-extract — if a target")
         lines.append("  entity for a required slot doesn't exist yet, extract it):")
@@ -698,6 +699,9 @@ def _curie(uri: URIRef) -> str:
     s = str(uri)
     for ns, prefix in (
         ("http://rds.posccaesar.org/ontology/lis14/rdl/", "lis"),
+        ("http://example.org/docgraph/lis14tpl#",      "lis14tpl"),
+        ("http://example.org/docgraph/template#",      "tpl"),
+        ("http://example.org/docgraph/ext#",           "ext"),
         ("http://example.org/docgraph/meta#",          "dg"),
         ("http://www.w3.org/ns/oa#",                   "oa"),
         ("http://www.w3.org/ns/prov#",                 "prov"),
