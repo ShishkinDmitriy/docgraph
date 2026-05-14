@@ -49,46 +49,22 @@ DG  = Namespace("http://example.org/docgraph/meta#")
 LIS = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
 
 
-# ── Anchor whitelist ─────────────────────────────────────────────────────
+# ── Anchor blacklist ─────────────────────────────────────────────────────
 
-# LIS-14 classes the LLM may use as direct superclasses for proposed ext:
-# classes. Kept narrow — extensions live where they're useful (concrete
-# object types, info-object subtypes, activity sub-kinds), not at over-
-# abstract levels (Aspect, root Object).
-ALLOWED_ANCHORS: set[URIRef] = {
-    # Object branch — concrete physical / functional / informational things
-    LIS.Person,
-    LIS.Organization,
-    LIS.PhysicalObject,
-    LIS.InanimatePhysicalObject,
-    LIS.Organism,
-    LIS.FunctionalObject,
-    LIS.Compound,
-    LIS.Stream,
-    LIS.UnitOfMeasure,
-    LIS.System,
-    LIS.InformationObject,
-    LIS.ScalarQuantityDatum,
-    LIS.QuantityDatum,
-    # Spatial
-    LIS.Location,
-    LIS.Site,
-    LIS.SpatialLocation,
-    # Activity branch
-    LIS.Activity,
-    LIS.Event,
-    # Aspect-tree concretes — Role / Function / Disposition / Quality
-    LIS.Role,
-    LIS.Function,
-    LIS.Disposition,
-    LIS.Quality,
-    LIS.PhysicalQuantity,
+# LIS-14 classes the LLM MAY NOT use as direct superclasses for proposed
+# ext: classes. Anything else in the LIS namespace (and `dg:extractable`)
+# is fair game. Blacklist policy: only block over-abstract roots whose
+# subclasses split into more meaningful kinds — extensions should land at
+# the next level down, where they actually distinguish something.
+BLACKLISTED_ANCHORS: set[URIRef] = {
+    LIS.Object,    # use Person, Organization, PhysicalObject, … instead
+    LIS.Aspect,    # use Quality, Function, Disposition, Role, …
 }
 
 
-def allowed_anchor_uris() -> list[URIRef]:
-    """Sorted list of permitted anchor URIs (for inclusion in the LLM prompt)."""
-    return sorted(ALLOWED_ANCHORS, key=str)
+def is_allowed_anchor(uri: URIRef) -> bool:
+    """True if *uri* is a permitted superclass for a proposed ext: class."""
+    return uri not in BLACKLISTED_ANCHORS
 
 
 # ── Data structure ───────────────────────────────────────────────────────

@@ -215,9 +215,7 @@ def extract_pdf_part14(
         for prefix, ns in result.graph.namespaces():
             g.bind(prefix, ns, override=False)
         extracted = result.entities
-        roles     = result.roles
         console.print(f"  → {len(extracted)} entit{'y' if len(extracted) == 1 else 'ies'}, "
-                      f"{len(roles)} role individual{'s' if len(roles) != 1 else ''}, "
                       f"{len(result.new_ext_classes)} new ext class(es)")
 
     # ── Inferred cross-entity links — fills missing class-ranged property

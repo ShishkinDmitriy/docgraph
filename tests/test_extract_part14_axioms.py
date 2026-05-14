@@ -217,3 +217,22 @@ def test_domain_satisfied_rejects_violation(ontology):
     # And the same property IS satisfied for an Activity
     activity = URIRef(LIS + "Activity")
     assert axioms.domain_satisfied(ontology, [activity], has_participant) is True
+
+
+def test_domains_of_falls_back_to_inverse_range(ontology):
+    """LIS-14 declares `lis:hasParticipant rdfs:domain lis:Activity` but
+    leaves the inverse `lis:participantIn` with no explicit domain. By
+    inverse symmetry the inverse's domain IS the forward's range, and the
+    forward's domain IS the inverse's range — so `range_of` and `domains_of`
+    should derive the missing direction. Catches the prompt asymmetry where
+    `hasParticipant` showed `domain: lis:Activity` but `participantIn`
+    showed `domain: any` (and similarly for range)."""
+    has_participant = URIRef(LIS + "hasParticipant")
+    participant_in  = URIRef(LIS + "participantIn")
+
+    # hasParticipant has explicit domain (Activity), no explicit range
+    assert URIRef(LIS + "Activity") in axioms.domains_of(ontology, has_participant)
+    # participantIn has no explicit domain — derived from hasParticipant's range
+    # (which is itself absent in LIS-14, so this stays empty rather than wrong)
+    # but its range MUST come back as Activity (from hasParticipant's domain)
+    assert axioms.range_of(ontology, participant_in) == URIRef(LIS + "Activity")

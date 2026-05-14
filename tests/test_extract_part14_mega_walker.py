@@ -112,32 +112,6 @@ def test_mega_walker_makes_exactly_one_llm_call(ontology, model):
 
 # ── Subject classification ─────────────────────────────────────────────────
 
-def test_subject_classification_triples_emitted(ontology, model):
-    payload = {
-        "subject": {"classes": ["lis:InformationObject", "lis:Activity"],
-                    "confidence": 0.91, "rationale": "It's an invoice."},
-        "entities": [],
-    }
-    result = _run(payload, ontology=ontology, model=model)
-    file_uri = URIRef("http://example.org/src/test/file")
-    objs = set(result.graph.objects(file_uri, DG.isAbout))
-    assert LIS.InformationObject in objs
-    assert LIS.Activity         in objs
-    confs = list(result.graph.objects(file_uri, DG.subjectConfidence))
-    assert len(confs) == 1
-    rats = list(result.graph.objects(file_uri, DG.reason))
-    assert any("invoice" in str(r).lower() for r in rats)
-
-
-def test_subject_classes_unknown_curie_is_dropped(ontology, model):
-    payload = {"subject": {"classes": ["lis:DoesNotExist", "lis:Activity"]},
-               "entities": []}
-    result = _run(payload, ontology=ontology, model=model)
-    file_uri = URIRef("http://example.org/src/test/file")
-    objs = set(result.graph.objects(file_uri, DG.isAbout))
-    assert objs == {LIS.Activity}
-
-
 # ── Ext class proposals ────────────────────────────────────────────────────
 
 def test_ext_class_proposal_lands_in_graph_and_is_usable_as_type(ontology, model):
@@ -289,33 +263,37 @@ def test_evidence_keeps_id_when_class_only_partial(ontology, model):
     assert frags == ["id-1", "id-2"]
 
 
-# ── Properties + activity → role minting ───────────────────────────────────
+# ── Role pattern via template (replaces the old activities[].role_hint) ────
 
-def test_activity_participant_yields_role_individual(ontology, model):
+def test_role_template_invocation_wires_player_and_activity(ontology, model):
+    """A lis:Role entity becomes fully connected only when the LLM emits a
+    `lis14tpl:RoleRealizedInActivity` invocation binding role/player/activity.
+    Replaces the old special-case ROLES section + activities[] shape."""
     payload = {
-        "subject": {"classes": []},
         "entities": [
             {"name": "Cleaning", "types": ["lis:Activity"],
              "evidence": [{"exact": "cleaning", "anchor": "id-1"}]},
             {"name": "Patient1", "types": ["lis:Person"],
              "evidence": [{"exact": "Dmitrii", "anchor": "id-2"}]},
-        ],
-        "activities": [
-            {"name": "Cleaning",
-             "participants": [
-                 {"name": "Patient1", "role_hint": "patient"}
-             ]}
+            {"name": "patient", "types": ["lis:Role"],
+             "evidence": [{"exact": "patient", "anchor": "id-3"}],
+             "invocations": [
+                 {"template": "lis14tpl:RoleRealizedInActivity",
+                  "slots": {"role": "patient",
+                            "activity": "Cleaning",
+                            "player": "Patient1"},
+                  "evidence": "patient role"}
+             ]},
         ],
     }
     result = _run(payload, ontology=ontology, model=model)
-    assert len(result.roles) == 1
-    role = result.roles[0]
-    assert role.label == "patient"
-    # Role is realized in the Cleaning activity and held by Patient1
+    role     = next(e for e in result.entities if e.label == "patient")
     cleaning = next(e for e in result.entities if e.label == "Cleaning")
     patient  = next(e for e in result.entities if e.label == "Patient1")
-    assert role.activity == cleaning.uri
-    assert role.player   == patient.uri
+    # Lowered role-pattern triples must all land in the graph
+    assert (role.uri,    RDF.type,         LIS.Role)     in result.graph
+    assert (role.uri,    LIS.realizedIn,   cleaning.uri) in result.graph
+    assert (patient.uri, LIS.hasRole,      role.uri)     in result.graph
 
 
 # ── Property catalog excludes reserved evidence-anchor properties ──────────
@@ -332,6 +310,49 @@ def test_property_catalog_excludes_representedBy(ontology):
 
 
 # ── Property-emitter respects domain/range ─────────────────────────────────
+
+def test_object_property_with_literal_value_is_skipped(ontology, model):
+    """Regression: lis:hasQuality "warm, scarlet" — an object property
+    with a literal value — must NOT materialize as a string. The LLM
+    should have minted a separate Quality entity and used value_entity."""
+    payload = {
+        "subject": {"classes": []},
+        "entities": [
+            {"name": "Cloak", "types": ["lis:PhysicalObject"],
+             "evidence": [{"exact": "cloak", "anchor": "id-1"}],
+             "properties": [{"property": "lis:hasQuality",
+                             "value": "warm, scarlet",
+                             "evidence": "scarlet cloak"}]},
+        ],
+    }
+    result = _run(payload, ontology=ontology, model=model)
+    inst = result.entities[0]
+    # No literal-valued hasQuality triple anywhere
+    objs = list(result.graph.objects(inst.uri, LIS.hasQuality))
+    assert objs == [], f"expected no hasQuality triple, got {objs}"
+
+
+def test_object_property_with_value_entity_materializes(ontology, model):
+    """Same property, but the LLM minted a Quality entity and pointed
+    at it via value_entity — this SHOULD materialize as an entity-to-
+    entity triple."""
+    payload = {
+        "subject": {"classes": []},
+        "entities": [
+            {"name": "Cloak", "types": ["lis:PhysicalObject"],
+             "evidence": [{"exact": "cloak", "anchor": "id-1"}],
+             "properties": [{"property": "lis:hasQuality",
+                             "value_entity": "warmth",
+                             "evidence": "warm cloak"}]},
+            {"name": "warmth", "types": ["lis:Quality"],
+             "evidence": [{"exact": "warm", "anchor": "id-2"}]},
+        ],
+    }
+    result = _run(payload, ontology=ontology, model=model)
+    cloak  = next(e for e in result.entities if e.label == "Cloak")
+    warmth = next(e for e in result.entities if e.label == "warmth")
+    assert (cloak.uri, LIS.hasQuality, warmth.uri) in result.graph
+
 
 def test_property_with_domain_violation_is_skipped(ontology, model):
     """A property whose rdfs:domain doesn't match the entity's types is

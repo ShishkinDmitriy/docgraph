@@ -14,13 +14,14 @@ from rdflib import Graph, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from src.extract_part14.ext_ontology import (
-    ALLOWED_ANCHORS,
+    BLACKLISTED_ANCHORS,
     DG,
     EXT,
     LIS,
     ExtClass,
     class_definitions_graph,
     extract_classes_from_graph,
+    is_allowed_anchor,
     merge_proposals,
     normalize_slug,
 )
@@ -211,17 +212,22 @@ def test_merge_does_not_duplicate_alt_labels():
     assert merged["IBAN"].alt_labels.count("IBAN code") == 1
 
 
-# ── Anchor whitelist ───────────────────────────────────────────────────────
+# ── Anchor blacklist ───────────────────────────────────────────────────────
 
-def test_anchor_whitelist_includes_common_concrete_classes():
+def test_blacklist_excludes_only_overly_abstract_roots():
+    """Only the over-abstract roots are blocked — everything else in LIS-14
+    is fair game as an ext: anchor, given the class actually exists."""
+    assert LIS.Object in BLACKLISTED_ANCHORS
+    assert LIS.Aspect in BLACKLISTED_ANCHORS
+
+
+def test_concrete_classes_are_allowed_anchors():
     for cls in (LIS.Person, LIS.Organization, LIS.InformationObject,
                 LIS.FunctionalObject, LIS.Activity, LIS.Site,
                 LIS.Role, LIS.Function, LIS.Disposition):
-        assert cls in ALLOWED_ANCHORS, f"{cls} should be a permitted anchor"
+        assert is_allowed_anchor(cls), f"{cls} should be a permitted anchor"
 
 
-def test_anchor_whitelist_excludes_overly_abstract_roots():
-    """Top-most ontology classes shouldn't be direct extension anchors —
-    extensions live at a more specific level."""
-    assert LIS.Object not in ALLOWED_ANCHORS
-    assert LIS.Aspect not in ALLOWED_ANCHORS
+def test_overly_abstract_roots_are_not_allowed():
+    assert not is_allowed_anchor(LIS.Object)
+    assert not is_allowed_anchor(LIS.Aspect)

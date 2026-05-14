@@ -339,28 +339,22 @@ def test_walk_roots_passes_existing_entities_to_subsequent_prompts(ontology, mod
     assert "Polina" in activity_prompt
 
 
-# ── Role exclusion from Aspect subtree ─────────────────────────────────────
+# ── Aspect subtree includes Role (the role pattern is enforced via a template) ──
 
-def test_aspect_subtree_excludes_role_class(ontology):
-    """lis:Role is reserved for the Activity pass's role-mint mechanism;
-    it must NOT appear in the Aspect subtree, otherwise the Aspect pass
-    will extract parallel role entities that duplicate the Activity-minted
-    role individuals."""
+def test_aspect_subtree_includes_role_class(ontology):
+    """lis:Role is rendered like any other Aspect class. The role pattern
+    (Role + realizedIn + hasRole) is enforced by the
+    `lis14tpl:RoleRealizedInActivity` template the LLM is told to invoke,
+    not by excluding Role from the subtree."""
     text = _subtree_text(LIS.Aspect, ontology)
-    # Role is excluded; its sibling RealizableEntity subclasses (Disposition,
-    # Function) still appear because they're not Role and not under it.
-    assert "lis:Role:" not in text
-    assert "Role —" not in text       # belt-and-suspenders for any rendering
-    # Sanity: other Aspect descendants still show up.
+    assert "lis:Role:" in text
+    # Sibling RealizableEntity subclasses still appear.
     assert "lis:Disposition:" in text or "Disposition" in text
 
 
-def test_object_subtree_unaffected_by_role_exclusion(ontology):
-    """Role exclusion is scoped to the Aspect tree where Role lives; the
-    Object subtree (which has nothing to do with Role) is untouched."""
+def test_object_subtree_populated(ontology):
+    """Spot-check the Object subtree renders its concrete leaves."""
     text = _subtree_text(LIS.Object, ontology)
-    # Role isn't an Object descendant anyway, but verify the subtree is
-    # populated with normal Object content.
     assert "lis:Object:" in text
     assert "lis:Person:" in text
 

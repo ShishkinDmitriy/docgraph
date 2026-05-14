@@ -28,16 +28,17 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import RDF, RDFS, XSD
+from rdflib.namespace import OWL, RDF, RDFS, XSD
 
 from src.extract_part14 import axioms
 from src.extract_part14.ext_ontology import (
     EXT,
     LIS as LIS_NS,
-    ALLOWED_ANCHORS,
+    BLACKLISTED_ANCHORS,
     ExtClass,
     class_definitions_graph,
     extract_classes_from_graph,
+    is_allowed_anchor,
     merge_proposals,
     normalize_slug,
 )
@@ -51,13 +52,8 @@ from src.extract_part14.property_walker import (
 )
 from src.extract_part14.rdl import RdlResolver
 from src.extract_part14.root_walker import (
-    Role,
     _curie,
-    _local,
-    _mint_role_uri,
-    _process_activity_participants,
     _render_template_inline,
-    _resolve_player_uri,
     _resolve_types,
     _subtree_text,
 )
@@ -84,9 +80,8 @@ logger = logging.getLogger(__name__)
 _MEGA_PROMPT = """\
 You are extracting a knowledge graph from a document, end-to-end in one
 call. The output is the document's complete Part 14 knowledge graph:
-subject classification, entities (with types, properties, evidence,
-template invocations, role hints), and any new extension classes
-proposed under stable LIS-14 superclasses.
+entities (with types, properties, evidence, template invocations) and
+any new extension classes proposed under LIS-14 superclasses.
 
 == DOCUMENT ==
 
@@ -98,17 +93,6 @@ Markdown view (each meaningful element ends with `{{#id-N}}` and optionally
 \"\"\"
 {markdown}
 \"\"\"
-
-== ROOT CLASSES (subject classification) ==
-
-The document is FUNDAMENTALLY about one or more of these top-level
-classes (Part 14's three disjoint roots and selected sub-branches):
-
-{subject_candidates_block}
-
-Pick the 1–3 that best describe what the document is about (mutually
-compatible — you can choose more than one if the document genuinely
-covers them).
 
 == ONTOLOGY CLASS TREE ==
 
@@ -131,9 +115,13 @@ When an entity doesn't fit any LIS-14 class or existing ext: class
 naturally — and a more specific class would make the graph more
 expressive — you may propose a new ext: class. Constraints:
 
-  - Each proposed class must be a direct `rdfs:subClassOf` one of the
-    following whitelisted LIS-14 anchors:
-{allowed_anchors_block}
+  - The `anchor` is `rdfs:subClassOf` — pick any LIS-14 class from the
+    class tree above EXCEPT these over-abstract roots, which are too
+    generic to be a useful direct anchor:
+{blacklisted_anchors_block}
+    Land at the most specific class that still genuinely fits — e.g.
+    `lis:InformationObject` for an Invoice (not `lis:Object`),
+    `lis:Activity` for a DentalService (not `lis:Aspect`).
   - Provide `slug` (URI tail, kebab- or PascalCase), `anchor` (LIS-14
     CURIE), `label` (canonical short name), `alt_labels` (synonyms /
     aliases, can include surface forms used in the document), and
@@ -154,9 +142,12 @@ the placement in the hierarchy.
 == PROPERTY CATALOG ==
 
 Properties applicable to extracted entities. Each line shows the
-property CURIE, its rdfs:domain (which classes it can attach to —
-empty means universal), rdfs:range (what kind of value it expects),
-and a one-line description.
+property CURIE, its `domain` (which classes the property may attach
+to — `any` means it applies universally), its `range` (what kind of
+value it expects — a specific class CURIE, `Entity` for any-entity
+object properties, or `Literal` for datatype properties), and a
+one-line description. Only emit a property on an entity whose type
+satisfies the domain.
 
 {property_catalog_block}
 
@@ -164,6 +155,23 @@ For each entity, emit only properties for which the document provides
 a clear value. Use `value` for literals (dates, numbers, strings),
 `value_entity` for object-valued properties pointing at another
 extracted entity (cite that entity's `name` exactly).
+
+  IMPORTANT — Aspects are entities, not strings.
+  When a property's range is an Aspect class (Quality, Function,
+  Disposition, Role) — e.g. `lis:hasQuality`, `lis:hasFunction`,
+  `lis:hasDisposition` — the value MUST be a separate entity that
+  you also list under `entities`. DO NOT pass the description as a
+  literal string.
+
+  GOOD: cloak has hasQuality → entities also includes a Quality entity
+        named "warmth" (typed lis:Quality), and the cloak's property
+        is {{"property": "lis:hasQuality", "value_entity": "warmth"}}.
+  BAD:  {{"property": "lis:hasQuality", "value": "warm, scarlet"}}
+        — this loses the Aspect's identity and won't materialize.
+
+  When in doubt, check the property catalog: any property with range
+  Quality / Function / Disposition / Role / PhysicalQuantity needs a
+  minted Aspect entity.
 
 == TEMPLATES (N-ary patterns) ==
 
@@ -174,17 +182,13 @@ more structured and easier to validate downstream.
 
 {templates_block}
 
-== ROLES ==
-
-Activity participants may carry a role hint when their role IS
-articulated in the document (patient, practitioner, payer, ...). Roles
-are reified as their own entities (`lis:Role`), realized in the
-activity they participate in. Each participant entry under an activity:
-
-  - `name`: the participant entity's exact name (must match a name
-            you emit elsewhere in `entities`).
-  - `role_hint`: optional short role label.
-  - `type_hints`: optional candidate specific role classes.
+  Note: roles are NOT a special case. When the document articulates a
+  role (patient, practitioner, payer, …), mint a Role entity (typed
+  `lis:Role`) AND emit a `lis14tpl:RoleRealizedInActivity` invocation
+  binding the role's `activity` (the lis:Activity entity) and `player`
+  (the participant who holds the role). This is the only correct way
+  to wire a Role — a bare `lis:Role` entity with no template invocation
+  is an orphan.
 
 == RESPONSE FORMAT ==
 
@@ -192,11 +196,6 @@ Reply with JSON only. Do NOT add prose before or after the JSON object;
 put any explanations in the "notes" field.
 
 {{
-  "subject": {{
-    "classes": ["<curie>", ...],
-    "confidence": <0.0..1.0>,
-    "rationale": "<one short sentence>"
-  }},
   "new_classes": [
     {{
       "slug":       "<URI tail>",
@@ -224,14 +223,6 @@ put any explanations in the "notes" field.
       ]
     }}
   ],
-  "activities": [
-    {{
-      "name":     "<activity entity name — matches one in `entities`>",
-      "participants": [
-        {{"name": "<entity name>", "role_hint": "...", "type_hints": ["..."]}}
-      ]
-    }}
-  ],
   "notes": "<optional commentary>"
 }}
 
@@ -246,19 +237,6 @@ Rules:
 
 
 # ── Prompt formatting helpers ────────────────────────────────────────────
-
-def _format_subject_candidates(ontology: Graph) -> str:
-    """Same shape as classify.subject_candidates — labels + definitions
-    for the top-level classes the document might be ABOUT."""
-    from src.extract_part14.classify import subject_candidates
-    candidates = subject_candidates(ontology)
-    lines = []
-    for c in candidates:
-        defn_short = (c.description[:120] + "…") if len(c.description) > 120 else c.description
-        suffix = f" — {defn_short}" if defn_short else ""
-        lines.append(f"  - {_curie(c.uri)}: {c.label}{suffix}")
-    return "\n".join(lines)
-
 
 def _format_class_tree(ontology: Graph) -> str:
     """Combined subtree text for all three roots, plus separator lines."""
@@ -285,8 +263,8 @@ def _format_ext_classes(classes: dict[str, ExtClass]) -> str:
     return "\n".join(lines)
 
 
-def _format_allowed_anchors() -> str:
-    return "\n".join(f"    - {_curie(uri)}" for uri in sorted(ALLOWED_ANCHORS, key=str))
+def _format_blacklisted_anchors() -> str:
+    return "\n".join(f"    - {_curie(uri)}" for uri in sorted(BLACKLISTED_ANCHORS, key=str))
 
 
 def _format_property_catalog(ontology: Graph) -> str:
@@ -305,13 +283,24 @@ def _format_property_catalog(ontology: Graph) -> str:
 
     lines = []
     for p in sorted(properties, key=str):
-        plabel = axioms.property_label(ontology, p)
         pdef   = axioms.property_definition(ontology, p) or "(no definition)"
         pdef_short = (pdef[:140] + "…") if len(pdef) > 140 else pdef
-        prange = axioms.range_of(ontology, p)
-        rlabel = axioms.class_label(ontology, prange) if prange else "(any)"
         curie  = _curie_for_logging(p)
-        lines.append(f"  - {curie} (range: {rlabel}) — {pdef_short}")
+        # Domain — show the explicit class CURIEs the property attaches to,
+        # or "any" when domain-less (universally applicable per LIS-14).
+        domains = axioms.domains_of(ontology, p)
+        dom_label = ", ".join(_curie(d) for d in domains) if domains else "any"
+        # Range — explicit class when declared, otherwise "Entity" for object
+        # properties or "Literal" for datatype properties (avoids the bare
+        # "(any)" that lets the LLM pass strings to object properties).
+        prange = axioms.range_of(ontology, p)
+        if prange is not None:
+            rng_label = _curie(prange)
+        elif axioms.is_object_property(ontology, p):
+            rng_label = "Entity"
+        else:
+            rng_label = "Literal"
+        lines.append(f"  - {curie}  (domain: {dom_label};  range: {rng_label}) — {pdef_short}")
         # Surface scope notes if any (USE: lines from skos:scopeNote)
         for note in axioms.scope_notes(ontology, p):
             lines.append(f"      USE: {note}")
@@ -357,10 +346,9 @@ def _call_llm(
             title=document_title, description=document_descr,
         ),
         markdown                  = markdown,
-        subject_candidates_block  = _format_subject_candidates(ontology),
         class_tree_block          = _format_class_tree(ontology),
         ext_classes_block         = _format_ext_classes(existing_ext),
-        allowed_anchors_block     = _format_allowed_anchors(),
+        blacklisted_anchors_block = _format_blacklisted_anchors(),
         property_catalog_block    = _format_property_catalog(ontology),
         templates_block           = _format_templates(ontology),
     )
@@ -401,9 +389,7 @@ class MegaResult:
     """Everything produced by one mega-walker call, ready to write."""
     graph:           Graph
     entities:        list[ExtractedEntity]
-    roles:           list[Role]
     new_ext_classes: list[ExtClass]
-    subject:         dict
     notes:           str
 
     @property
@@ -431,18 +417,18 @@ def walk_mega(
 ) -> MegaResult:
     """Run the mega-call and materialize the result into a graph.
 
-    The graph holds: subject classification triples, all extracted
-    entities (with type triples, label, dg:typeHint, lis:representedBy
-    fragment URIs), property triples, template invocation lifted+lowered
-    triples, role individuals, and the proposed-extension-class
-    definitions (so the per-doc graph is self-contained).
+    The graph holds: all extracted entities (with type triples, label,
+    dg:typeHint, lis:representedBy fragment URIs), property triples,
+    template invocation lifted+lowered triples, role individuals, and
+    the proposed-extension-class definitions (so the per-doc graph is
+    self-contained).
     """
     id_to_class  = id_to_class  or {}
     class_to_ids = class_to_ids or {}
 
     if console:
-        console.print("  [bold]mega-extraction[/bold] (one call: subject + "
-                      "entities + properties + invocations + roles)...")
+        console.print("  [bold]mega-extraction[/bold] (one call: entities + "
+                      "properties + invocations + roles)...")
 
     # Existing ext classes — visible from the loader's union view of the
     # project so the LLM can reuse before proposing.
@@ -470,7 +456,7 @@ def walk_mega(
 
     # ── New ext class proposals ──
     raw_new = payload.get("new_classes", []) or []
-    proposals = _parse_proposals(raw_new, source_uri=file_uri)
+    proposals = _parse_proposals(raw_new, source_uri=file_uri, ontology=ontology)
     merged_existing, newly_added = merge_proposals(existing_ext, proposals)
     # Add the NEW class declarations to the per-doc graph (self-contained).
     for triple in class_definitions_graph(newly_added):
@@ -489,26 +475,9 @@ def walk_mega(
     for slug, cls in merged_existing.items():
         all_classes[f"ext:{slug}"] = cls.uri
 
-    # ── Subject classification ──
-    subject = payload.get("subject", {}) or {}
-    subject_classes = _resolve_subject(subject.get("classes", []), all_classes)
-    for s in subject_classes:
-        g.add((file_uri, DG.isAbout, s))
-    confidence = subject.get("confidence")
-    if isinstance(confidence, (int, float)):
-        g.add((file_uri, DG.subjectConfidence,
-               Literal(round(float(confidence), 3), datatype=XSD.decimal)))
-    rationale = subject.get("rationale")
-    if isinstance(rationale, str) and rationale.strip():
-        g.add((file_uri, DG.reason, Literal(rationale.strip())))
-    if console and subject_classes:
-        labels = ", ".join(_local(c) for c in subject_classes)
-        console.print(f"  subject: [bold]{labels}[/bold]")
-
     # ── Entities ──
     raw_entities = payload.get("entities", []) or []
     extracted: list[ExtractedEntity] = []
-    activity_uris: dict[str, URIRef] = {}     # name → URI (used by Activities pass)
 
     for inst in raw_entities:
         if not isinstance(inst, dict):
@@ -554,9 +523,6 @@ def walk_mega(
                           if isinstance(h, str) and h.strip()],
         )
         extracted.append(new_entity)
-        # Track Activity URIs for the activities-participants pass below
-        if any(_is_activity(t, ontology) for t in types):
-            activity_uris[name] = entity_uri
 
     # ── Properties (per entity, applied to the graph) ──
     for inst in raw_entities:
@@ -590,6 +556,17 @@ def walk_mega(
             value = coerce_value(result, range_uri, extracted,
                                  rdl_resolvers=rdl_resolvers)
             if value is None:
+                continue
+            # Object properties demand entity-typed values. The LLM should
+            # have minted a separate Aspect (Quality / Function / …) entity
+            # and passed its name via `value_entity`. A literal here means
+            # the LLM gave us a string description instead.
+            if axioms.is_object_property(ontology, prop_uri) and isinstance(value, Literal):
+                logger.warning(
+                    "mega %s: %s expects an entity (object property), got literal %r — skipping; "
+                    "the LLM should have minted a separate Aspect entity and referenced it via value_entity",
+                    name, prop_curie, str(value),
+                )
                 continue
             # Range guard for entity-typed values
             if isinstance(value, URIRef):
@@ -652,22 +629,6 @@ def walk_mega(
                 g.add(triple)
             covered_lowered.update(covered)
 
-    # ── Activity-driven roles ──
-    roles: list[Role] = []
-    for act in (payload.get("activities", []) or []):
-        if not isinstance(act, dict):
-            continue
-        a_name = (act.get("name") or "").strip()
-        a_uri  = activity_uris.get(a_name)
-        if a_uri is None:
-            continue
-        _process_activity_participants(
-            act.get("participants", []) or [],
-            activity_uri=a_uri, base_ns=base_ns,
-            md_source_uri=md_source_uri, extracted=extracted,
-            graph=g, roles=roles,
-        )
-
     notes = (payload.get("notes") or "").strip()
     if notes and console:
         console.print(f"    [dim italic]notes: {notes}[/dim italic]")
@@ -675,16 +636,15 @@ def walk_mega(
     return MegaResult(
         graph           = g,
         entities        = extracted,
-        roles           = roles,
         new_ext_classes = newly_added,
-        subject         = subject,
         notes           = notes,
     )
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
-def _parse_proposals(raw_new: list, *, source_uri: URIRef | None) -> list[ExtClass]:
+def _parse_proposals(raw_new: list, *, source_uri: URIRef | None,
+                     ontology: Graph) -> list[ExtClass]:
     """Parse `new_classes` entries from the LLM response into ExtClass."""
     out: list[ExtClass] = []
     for raw in raw_new:
@@ -694,7 +654,7 @@ def _parse_proposals(raw_new: list, *, source_uri: URIRef | None) -> list[ExtCla
         if not slug:
             continue
         anchor_curie = str(raw.get("anchor", "")).strip()
-        anchor_uri = _resolve_anchor(anchor_curie)
+        anchor_uri = _resolve_anchor(anchor_curie, ontology)
         if anchor_uri is None:
             logger.warning("mega: ext class %s has unresolved/forbidden anchor %r; skipping",
                            slug, anchor_curie)
@@ -712,24 +672,21 @@ def _parse_proposals(raw_new: list, *, source_uri: URIRef | None) -> list[ExtCla
     return out
 
 
-def _resolve_anchor(curie: str) -> URIRef | None:
-    """Resolve a lis: CURIE to a URI, checking it's in ALLOWED_ANCHORS."""
+def _resolve_anchor(curie: str, ontology: Graph) -> URIRef | None:
+    """Resolve a lis: CURIE to a URI for an ext: anchor.
+
+    Accepts any LIS class except over-abstract roots (BLACKLISTED_ANCHORS)
+    and only when the class is actually known in the ontology — protects
+    against typos (e.g. "lis:Persn") landing as orphaned subClassOf links.
+    """
     if not curie.startswith("lis:"):
         return None
     uri = URIRef(str(LIS) + curie[len("lis:"):])
-    return uri if uri in ALLOWED_ANCHORS else None
-
-
-def _resolve_subject(raw_classes: list, all_classes: dict[str, URIRef]) -> list[URIRef]:
-    out: list[URIRef] = []
-    for raw in raw_classes:
-        if not isinstance(raw, str):
-            continue
-        u = all_classes.get(raw.strip())
-        if u is None:
-            continue
-        out.append(u)
-    return out
+    if not is_allowed_anchor(uri):
+        return None
+    if (uri, RDF.type, OWL.Class) not in ontology:
+        return None
+    return uri
 
 
 def _resolve_property(curie: str, ontology: Graph) -> URIRef | None:
@@ -757,13 +714,6 @@ def _process_evidence(raw_evidence: list) -> tuple[list[EvidenceSelector], set[s
         out.append(EvidenceSelector(exact=exact, anchor=anchor))
         cited.add(anchor)
     return out, cited
-
-
-def _is_activity(class_uri: URIRef, ontology: Graph) -> bool:
-    """True if class_uri is lis:Activity or a (transitive) subclass."""
-    if class_uri == LIS.Activity:
-        return True
-    return LIS.Activity in axioms.superclasses(ontology, class_uri, direct=False)
 
 
 def _str_or_none(v) -> str | None:

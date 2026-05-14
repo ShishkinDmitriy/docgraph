@@ -307,6 +307,16 @@ def domain_less_properties(dataset: Graph, namespace: str | None = None) -> list
     return sorted(seen, key=str)
 
 
+def is_object_property(dataset: Graph, prop: URIRef) -> bool:
+    """True if *prop* is declared `rdf:type owl:ObjectProperty`.
+
+    Used by the materializer to refuse literal values for object properties.
+    A literal `lis:hasQuality "warm, scarlet"` triple is a modeling bug —
+    the LLM should mint a separate Quality entity and point at it.
+    """
+    return (prop, RDF.type, OWL.ObjectProperty) in dataset
+
+
 def domain_satisfied(
     dataset:        Graph,
     subject_types:  list[URIRef],
@@ -389,17 +399,53 @@ def is_class_range(dataset: Graph, predicate: URIRef) -> bool:
     return True
 
 
+def domains_of(dataset: Graph, prop: URIRef) -> list[URIRef]:
+    """All `rdfs:domain` classes declared for *prop*. Empty list = no domain.
+
+    Used by the property-catalog renderer to show the LLM where a property
+    is allowed — pre-flight guidance to reduce post-LLM domain violations.
+
+    If *prop* has no declared domain, falls back to the inverse property's
+    `rdfs:range` (which by inverse symmetry IS the domain of *prop*). LIS-14
+    leaves many inverses (e.g. `lis:participantIn`) without explicit domain
+    or range — the constraint lives only on the forward direction.
+    """
+    direct = sorted(
+        {o for o in dataset.objects(prop, RDFS.domain) if isinstance(o, URIRef)},
+        key=str,
+    )
+    if direct:
+        return direct
+    inv = inverse_of(dataset, prop)
+    if inv is not None:
+        inv_range = _range_direct(dataset, inv)
+        if inv_range is not None:
+            return [inv_range]
+    return []
+
+
 def range_of(dataset: Graph, prop: URIRef) -> URIRef | None:
-    """Return the property's `rdfs:range` (first declared), or None."""
-    for row in dataset.query(
-        """
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        SELECT ?r WHERE { ?prop rdfs:range ?r . FILTER(!isBlank(?r)) } LIMIT 1
-        """,
-        initBindings={"prop": prop},
-    ):
-        if isinstance(row[0], URIRef):
-            return row[0]
+    """Return the property's `rdfs:range` (first declared), or None.
+
+    Falls back to the inverse property's `rdfs:domain` when no direct range
+    is declared — same inverse-symmetry logic as `domains_of`.
+    """
+    direct = _range_direct(dataset, prop)
+    if direct is not None:
+        return direct
+    inv = inverse_of(dataset, prop)
+    if inv is not None:
+        for o in dataset.objects(inv, RDFS.domain):
+            if isinstance(o, URIRef):
+                return o
+    return None
+
+
+def _range_direct(dataset: Graph, prop: URIRef) -> URIRef | None:
+    """Direct `rdfs:range` lookup with no inverse fallback (internal)."""
+    for o in dataset.objects(prop, RDFS.range):
+        if isinstance(o, URIRef):
+            return o
     return None
 
 

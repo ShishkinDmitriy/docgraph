@@ -49,7 +49,6 @@ from src.extract_part14.walker import (
     mint_fragment_uri,
     slug,
 )
-from src.templates.registry import default_registry
 from src.llm import LLMClient, TextBlock
 from src.log_panels import log_prompt, log_response
 from src.models import ModelConfig
@@ -76,13 +75,12 @@ class Role:
 
 # ── Class subtree formatting for the prompt ────────────────────────────────
 
-# Classes excluded from any root's class-subtree prompt block. lis:Role is
-# minted by the Activity pass's participant role mechanism — extracting it
-# directly under Aspect would produce parallel role individuals (one ersatz
-# Aspect role + one reified Activity role for the same conceptual role).
-# Roles only enter the graph through the role pattern; they're never
-# extracted as standalone Aspect instances.
-_SUBTREE_EXCLUDED: set[URIRef] = {LIS.Role}
+# Classes excluded from any root's class-subtree prompt block. Currently
+# empty — lis:Role used to live here (it was minted via a separate prompt
+# section) but is now surfaced as a regular Aspect class. The role pattern
+# is enforced via the lis14tpl:RoleRealizedInActivity template, which the
+# LLM must invoke whenever it picks lis:Role as a type.
+_SUBTREE_EXCLUDED: set[URIRef] = set()
 
 
 def _render_template_inline(template) -> list[str]:
@@ -152,13 +150,8 @@ def _subtree_text(root: URIRef, ontology: Graph) -> str:
             lines.append(f"{hint_indent}USE: {note}")
         for ex in axioms.examples(ontology, cls):
             lines.append(f"{hint_indent}EXAMPLE: {ex}")
-        # Templates anchored on this class (tpl:subject). Each template
-        # encodes a multi-triple pattern that should be filled as a unit
-        # — picking this class commits to filling all the template's
-        # slots together.
-        for template in default_registry().by_subject(cls):
-            for line in _render_template_inline(template):
-                lines.append(f"{hint_indent}{line}")
+        # Templates anchored on this class are surfaced separately in the
+        # mega prompt's TEMPLATES section — not duplicated inline here.
         for child in sorted(axioms.subclasses(ontology, cls, direct=True), key=str):
             _walk(child, depth + 1)
 
