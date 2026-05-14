@@ -157,14 +157,18 @@ def build_chain(
         g.add((doc_uri, RDFS.comment, Literal(document_description)))
     g.add((file_uri, LIS.representedBy, doc_uri))
 
-    # Markdown file (also a representation of the document; derived from
-    # the original file). Quotes minted by M2 use this URI as oa:hasSource.
+    # Source-text file: a representation of the document derived from the
+    # original PDF. Either an HTML file (canonical, current pipeline) or a
+    # Markdown file (legacy). Fragment URIs in the extract graph anchor
+    # into this file via standard URL fragments (`<file#id-N>`).
     if md_uri is not None and md_file_path is not None:
-        g.add((md_uri, RDF.type, DG.MarkdownFile))
+        suffix = md_file_path.suffix.lower()
+        is_html = suffix in (".html", ".htm")
+        g.add((md_uri, RDF.type, DG.HtmlFile if is_html else DG.MarkdownFile))
         g.add((md_uri, RDF.type, LIS.PhysicalObject))
         g.add((md_uri, RDF.type, PROV.Entity))
         g.add((md_uri, DG.filePath, Literal(str(md_file_path.relative_to(project_root)))))
-        g.add((md_uri, DG.mimeType, Literal("text/markdown")))
+        g.add((md_uri, DG.mimeType, Literal("text/html" if is_html else "text/markdown")))
         g.add((md_uri, LIS.representedBy, doc_uri))
         g.add((md_uri, PROV.wasDerivedFrom, file_uri))
 

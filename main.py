@@ -14,7 +14,10 @@ from rich.table import Table
 from src.ingest import TTL_SUFFIXES, IngestError, ingest_ttl, list_sources
 from src.ingest_pdf import ingest_pdf
 from src.llm.anthropic import AnthropicClient
-from src.markdown_io import load_or_extract, md_paths_for_pdf
+from src.html_io import (
+    html_paths_for_pdf,
+    load_or_extract_html,
+)
 from src.models import ModelConfig
 from src.project import (
     DEFAULT_PIPELINE,
@@ -24,6 +27,7 @@ from src.project import (
     cache_dir,
     find_project_root,
     graphs_dir,
+    html_dir,
     init_project,
     read_pipeline,
     reset_sources,
@@ -151,16 +155,16 @@ def _ingest_pdf_dispatched(project_root: Path, source: Path, **kwargs):
 @click.option("--note", type=str, default=None,
               help="Free-text hint passed to the converter.")
 @click.option("-f", "--force", is_flag=True,
-              help="Re-run conversion even if cached markdown exists.")
+              help="Re-run conversion even if cached HTML exists.")
 @click.option("--debug", is_flag=True, help="Log every LLM prompt and response.")
 def convert(input_path: Path, note: str | None, force: bool, debug: bool):
-    """Convert a PDF source to Markdown and cache the result.
+    """Convert a PDF source to canonical HTML and cache the result.
 
-    First stage of the extraction pipeline (see ARCHITECTURE.md § Extraction
-    pipeline — a decision tree). Output lands in `.docgraph/cache/pdfmd/`.
+    First stage of the extraction pipeline (see docs/architecture/html-pipeline.md).
+    Output lands in `.docgraph/html/<slug>.html` (one file per detected
+    document — most PDFs are one doc, but invoice + receipt PDFs split).
     Subsequent `docgraph extract` and `docgraph add` invocations reuse this
-    cache, so iterating on classify/extract logic doesn't re-run the
-    expensive vision-LLM call.
+    cache; the markdown view consumed by extraction is derived on demand.
 
     For .ttl/.n3 sources this is a no-op (the file is already its own
     representation).
@@ -178,18 +182,13 @@ def convert(input_path: Path, note: str | None, force: bool, debug: bool):
         sys.exit(2)
 
     client = _anthropic_client()
-    cache = cache_dir(project_root)
-    cache.mkdir(parents=True, exist_ok=True)
-    if force:
-        for md in md_paths_for_pdf(source, cache):
-            md.unlink()
-            console.print(f"  [yellow]--force[/yellow]: dropped cache "
-                          f"[dim]{md.name}[/dim]")
-    docs = load_or_extract(
+    h_dir = html_dir(project_root)
+    h_dir.mkdir(parents=True, exist_ok=True)
+    docs = load_or_extract_html(
         source, force=force, client=client, model=DEFAULT_VISION_MODEL,
-        con=console, note=note, cache_dir=cache,
+        con=console, note=note, html_dir=h_dir,
     )
-    console.print(f"  cached [bold]{len(docs)}[/bold] markdown document(s)")
+    console.print(f"  cached [bold]{len(docs)}[/bold] HTML document(s)")
 
 
 @cli.command()
@@ -298,9 +297,9 @@ def extract(input_path: Path, debug: bool):
 @click.option("--note", type=str, default=None, help="Free-text hint passed to the converter.")
 @click.option("-f", "--force", is_flag=True,
               help="Re-add even if already ingested. Drops the existing entry "
-                   "and reruns extract; cached markdown is reused.")
+                   "and reruns extract; cached HTML is reused.")
 @click.option("--reconvert", is_flag=True,
-              help="Also redo PDF→Markdown conversion (drops cached markdown). "
+              help="Also redo PDF→HTML conversion (drops cached HTML). "
                    "Implies --force.")
 @click.option("--no-diagram", is_flag=True,
               help="Skip diagram generation after a successful PDF ingest.")
@@ -314,8 +313,9 @@ def add(input_path: Path, note: str | None, force: bool, reconvert: bool,
 
     Supported inputs:
       .ttl/.n3  — symlinked into .docgraph/graphs/ and registered (no LLM).
-      .pdf      — converted to Markdown (cached), then classified and
-                  extracted via the 14-prompt ISO 15926-2 pipeline.
+      .pdf      — converted to HTML (canonical, cached at .docgraph/html/),
+                  then extracted via the Part 14 root walker. Extraction
+                  consumes a markdown view derived on demand from the HTML.
 
     Pass --debug to log the full prompt and response for every LLM call.
     """

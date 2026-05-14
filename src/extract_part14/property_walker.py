@@ -386,10 +386,8 @@ def _format_quotes(entity: ExtractedEntity) -> str:
         return "(no supporting quotes)"
     parts = []
     for i, sel in enumerate(entity.evidence, 1):
-        ctx = ""
-        if sel.prefix or sel.suffix:
-            ctx = f"  [context: ...{sel.prefix} __HERE__ {sel.suffix}...]"
-        parts.append(f"[{i}] {sel.exact}{ctx}")
+        anchor = f"  [{{#{sel.anchor}}}]" if sel.anchor else ""
+        parts.append(f"[{i}] {sel.exact}{anchor}")
     return "\n".join(parts)
 
 

@@ -6,14 +6,18 @@ That walker has been superseded by the three-pass root-walker model — see
 across the pipeline still need:
 
   - `DG`, `LIS`, `OA` — namespace constants used everywhere.
-  - `EvidenceSelector` — small dataclass for an `oa:TextQuoteSelector`.
+  - `EvidenceSelector` — small dataclass carrying the LLM's evidence text
+    + the HTML anchor it cited.
   - `ExtractedEntity` — per-entity record carried between passes. Supports
     multi-typing (Part 14 §E.8) via `.types`, plus LLM-supplied type hints
     consumed by enrich.
-  - `mint_quote` — deterministic SHA-1-hashed dg:Quote with an
-    oa:TextQuoteSelector. Idempotent — same exact text → same URI.
-  - `mint_entity_uri` / `_entity_local` — stable URI slugging from
-    (branch_label, entity_name).
+  - `mint_entity_uri` / `slug` — stable URI slugging from an entity name.
+
+The previous `mint_quote` helper (and the `dg:Quote + oa:hasSelector`
+clusters it produced) has been removed in favor of fragment-URI citations:
+each evidence link in the graph is `?entity lis:representedBy <doc#id-N>`
+where `id-N` is the HTML element ID seeded at conversion. See
+`docs/architecture/html-pipeline.md`.
 """
 
 from __future__ import annotations
@@ -22,8 +26,7 @@ import hashlib
 import re
 from dataclasses import dataclass, field
 
-from rdflib import BNode, Graph, Literal, Namespace, URIRef
-from rdflib.namespace import RDF
+from rdflib import Namespace, URIRef  # noqa: F401  (Namespace re-exported)
 
 DG  = Namespace("http://example.org/docgraph/meta#")
 LIS = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
@@ -34,9 +37,15 @@ OA  = Namespace("http://www.w3.org/ns/oa#")
 
 @dataclass
 class EvidenceSelector:
+    """One piece of evidence the LLM cited for an entity.
+
+    `exact` is the verbatim cited text (used for in-memory text matching,
+    e.g. `infer_cross_entity_links`). `anchor` is the `id-N` of the HTML
+    element the LLM identified as the source — used to mint the
+    `lis:representedBy <doc#id-N>` triple in the extract graph.
+    """
     exact:  str
-    prefix: str = ""
-    suffix: str = ""
+    anchor: str = ""
 
 
 @dataclass
@@ -56,38 +65,18 @@ class ExtractedEntity:
     Carried as `dg:typeHint` literals on the entity in the serialized graph."""
 
 
-# ── Quote minting (top-down — quotes only for cited evidence) ──────────────
+# ── Citation URIs (fragment-into-HTML) ─────────────────────────────────────
 
-def _quote_local_name(exact: str) -> str:
-    """Deterministic SHA-1 of the exact text — yields cross-source dedup."""
-    return "quote-" + hashlib.sha1(exact.encode("utf-8")).hexdigest()[:12]
+def mint_fragment_uri(doc_uri: URIRef, anchor: str) -> URIRef:
+    """Mint a fragment URI pointing at HTML element `anchor` inside `doc_uri`.
 
-
-def mint_quote(
-    g: Graph,
-    selector: EvidenceSelector,
-    *,
-    base_ns: Namespace,
-    md_source_uri: URIRef,
-) -> URIRef:
-    """Mint a dg:Quote with an oa:TextQuoteSelector pointing into the
-    markdown source. Idempotent — same text → same URI; calling twice adds
-    the same triples, no duplication."""
-    q_uri = URIRef(base_ns[_quote_local_name(selector.exact)])
-    g.add((q_uri, RDF.type, DG.Quote))
-    g.add((q_uri, RDF.type, LIS.InformationObject))
-    g.add((q_uri, OA.hasSource, md_source_uri))
-
-    sel_node = BNode()
-    g.add((q_uri, OA.hasSelector, sel_node))
-    g.add((sel_node, RDF.type, OA.TextQuoteSelector))
-    g.add((sel_node, OA.exact, Literal(selector.exact)))
-    if selector.prefix:
-        g.add((sel_node, OA.prefix, Literal(selector.prefix)))
-    if selector.suffix:
-        g.add((sel_node, OA.suffix, Literal(selector.suffix)))
-
-    return q_uri
+    Standard URL fragment syntax: `<doc.html#id-7>`. Browsers and URI
+    libraries handle this natively. The HTML element with `id="id-7"` is
+    the citation target — no `dg:Quote` indirection, no `oa:hasSelector`
+    cluster, no text matching at query time.
+    """
+    safe = anchor.lstrip("#").strip()
+    return URIRef(f"{doc_uri}#{safe}")
 
 
 # ── Entity URI minting ─────────────────────────────────────────────────────

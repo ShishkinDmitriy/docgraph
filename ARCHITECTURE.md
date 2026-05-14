@@ -41,6 +41,10 @@ Foundational reference material lives in `docs/architecture/`:
 - [`extraction.md`](docs/architecture/extraction.md) — extraction as a
   decision-tree walk over the upper ontology; per-branch policy;
   document-bounded descent; stub-vs-extract decision.
+- [`html-pipeline.md`](docs/architecture/html-pipeline.md) — canonical-HTML
+  source-of-truth representation; PDF→HTML conversion with seeded IDs on
+  referenceable atomic units; MD-view derivation; fragment-URI citations
+  (`<doc#id-N>`); annotated-view rendering for review/coverage.
 
 This file (ARCHITECTURE.md) holds the active design surface: declares-axis,
 modality, templates pointer + 14-prompt connection, storage layout,

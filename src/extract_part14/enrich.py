@@ -130,21 +130,38 @@ def _most_specific(types: list[URIRef], ontology: Graph) -> URIRef:
 
 
 def _recover_evidence(source_graph: Graph, entity_uri: URIRef) -> list[EvidenceSelector]:
-    """Walk lis:representedBy → oa:hasSelector → oa:exact/prefix/suffix to
-    recover the entity's supporting quotes from a serialized graph."""
+    """Recover the entity's evidence from a serialized graph.
+
+    Two shapes are supported:
+
+    1. **Current** — `lis:representedBy <doc#id-N>` (fragment URI). The
+       anchor is the local part after `#`. There's no `exact` text in the
+       graph; the canonical HTML carries it. We populate `EvidenceSelector`
+       with the anchor only.
+
+    2. **Legacy** — `lis:representedBy <quote-uri>` where `quote-uri` is a
+       `dg:Quote` with `oa:hasSelector` blank node carrying `oa:exact` /
+       `oa:prefix` / `oa:suffix`. Pre-Phase-2 graphs use this shape. We
+       extract `exact` and ignore prefix/suffix (no longer fields on
+       EvidenceSelector).
+    """
     selectors: list[EvidenceSelector] = []
-    for quote_uri in source_graph.objects(entity_uri, LIS.representedBy):
-        for sel_node in source_graph.objects(quote_uri, OA.hasSelector):
+    for ev_uri in source_graph.objects(entity_uri, LIS.representedBy):
+        if not isinstance(ev_uri, URIRef):
+            continue
+        # (1) Fragment URI: <doc#anchor>. No oa:hasSelector triples on it.
+        s = str(ev_uri)
+        if "#" in s:
+            anchor = s.rsplit("#", 1)[-1]
+            if anchor:
+                selectors.append(EvidenceSelector(exact="", anchor=anchor))
+                continue
+        # (2) Legacy dg:Quote shape — walk oa:hasSelector → oa:exact.
+        for sel_node in source_graph.objects(ev_uri, OA.hasSelector):
             exact_terms = list(source_graph.objects(sel_node, OA.exact))
             if not exact_terms:
                 continue
-            prefix_terms = list(source_graph.objects(sel_node, OA.prefix))
-            suffix_terms = list(source_graph.objects(sel_node, OA.suffix))
-            selectors.append(EvidenceSelector(
-                exact  = str(exact_terms[0]),
-                prefix = str(prefix_terms[0]) if prefix_terms else "",
-                suffix = str(suffix_terms[0]) if suffix_terms else "",
-            ))
+            selectors.append(EvidenceSelector(exact=str(exact_terms[0])))
     return selectors
 
 

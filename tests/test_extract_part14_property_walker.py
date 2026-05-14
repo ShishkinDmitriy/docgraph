@@ -241,7 +241,7 @@ def test_walk_stage2_extracts_property(ontology, model):
         label="Professional cleaning",
         evidence=[EvidenceSelector(
             exact="Professional cleaning on 2025-01-17",
-            prefix="performed", suffix="for patient",
+            anchor="id-1",
         )],
     )
 
@@ -321,8 +321,7 @@ def test_walk_stage2_one_call_per_entity(ontology, model):
         uri=URIRef("http://example.org/source/x/activity/cleaning"),
         type_uri=LIS.Activity,
         label="Professional cleaning",
-        evidence=[EvidenceSelector(exact="cleaning on 17.01.2025",
-                                    prefix="performed", suffix="for patient")],
+        evidence=[EvidenceSelector(exact="cleaning on 17.01.2025", anchor="id-1")],
     )
 
     mock = MockBatchPropertyLLM(responses_by_entity={
@@ -360,10 +359,7 @@ def test_infer_cross_entity_links_fills_missing_datumuom(ontology, model):
         uri=URIRef("ex:scalarquantitydatum/invoice-total"),
         type_uri=URIRef(LIS_NS + "ScalarQuantityDatum"),
         label="Invoice Total Amount",
-        evidence=[EvidenceSelector(
-            exact="EUR 115,84",
-            prefix="berechnen: **", suffix="**",
-        )],
+        evidence=[EvidenceSelector(exact="EUR 115,84", anchor="id-1")],
     )
 
     g = Graph()

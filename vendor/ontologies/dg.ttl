@@ -131,6 +131,7 @@ dg:Quote        a owl:Class ; rdfs:label "Quote"        ; dg:extractable false .
 dg:File         a owl:Class ; rdfs:label "File"         ; dg:extractable false .
 dg:PdfFile      a owl:Class ; rdfs:label "PdfFile"      ; rdfs:subClassOf dg:File ; dg:extractable false .
 dg:MarkdownFile a owl:Class ; rdfs:label "MarkdownFile" ; rdfs:subClassOf dg:File ; dg:extractable false .
+dg:HtmlFile     a owl:Class ; rdfs:label "HtmlFile"     ; rdfs:subClassOf dg:File ; dg:extractable false .
 
 # Project-metadata and ingestion-record classes — also plumbing.
 dg:DocgraphProject  dg:extractable false .

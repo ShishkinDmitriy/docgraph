@@ -39,13 +39,21 @@ from src.ingest import (
     compute_hash,
     make_slug,
 )
-from src.markdown_io import load_or_extract, md_paths_for_pdf
+from src.html_io import (
+    build_class_maps,
+    html_paths_for_pdf,
+    load_or_extract_html,
+    render_markdown_view,
+)
+from src.markdown_io import md_paths_for_pdf
 from src.models import ModelConfig
 from src.pdfinfo import pdfinfo
 from src.project import (
     GRAPHS_SUBDIR,
+    HTML_SUBDIR,
     cache_dir,
     graphs_dir,
+    html_dir,
     sources_path,
 )
 
@@ -102,34 +110,51 @@ def extract_pdf_part14(
         console.print(f"  pdfinfo: [dim]{info.get('Pages', '?')} page(s), "
                       f"{info.get('Title') or '(no title)'}[/dim]")
 
-    # ── Convert PDF → Markdown (cached) ──
-    cache = cache_dir(project_root)
-    cache.mkdir(parents=True, exist_ok=True)
-    if reconvert:
-        for md in md_paths_for_pdf(source, cache):
-            md.unlink()
-            console.print(f"  [yellow]--reconvert[/yellow]: dropped cache "
-                          f"[dim]{md.name}[/dim]")
+    # ── Convert PDF → HTML (cached, canonical, immutable) ──
+    # The HTML is the source-of-truth artifact: structure + atomic-unit IDs
+    # seeded by the conversion LLM. Extraction passes consume a Markdown
+    # view rendered mechanically from the HTML — token-efficient for the
+    # LLM, with `{#id-N}` markers per element so evidence cites by anchor.
+    # See docs/architecture/html-pipeline.md.
+    h_dir = html_dir(project_root)
+    h_dir.mkdir(parents=True, exist_ok=True)
 
     convert_started = _now()
-    docs_raw = load_or_extract(
+    docs_raw = load_or_extract_html(
         source, force=reconvert, client=client, model=model,
-        con=console, note=note, cache_dir=cache,
+        con=console, note=note, html_dir=h_dir,
     )
     convert_ended = _now()
 
     if not docs_raw:
-        raise IngestError("conversion produced no markdown documents")
+        raise IngestError("conversion produced no HTML documents")
 
-    # ── Document title / description (from the converter's output) ──
+    # ── Document title / description / source path ──
     primary = docs_raw[0]
     document_title       = primary.get("title", "(untitled)")
     document_description = primary.get("description", "") or ""
-    full_markdown        = "\n\n---\n\n".join(d.get("markdown", "") for d in docs_raw)
+    # Render the markdown view from each HTML document and concatenate. The
+    # extraction LLM sees this; anchor markers (`{#id-N}`) point back into
+    # the canonical HTML for fragment-URI minting.
+    full_markdown        = "\n\n---\n\n".join(
+        render_markdown_view(d.get("html", "")) for d in docs_raw
+    )
 
-    # ── Resolve the markdown cache path for oa:hasSource on extracted quotes ──
-    md_files = md_paths_for_pdf(source, cache)
-    md_file_path = md_files[0] if md_files else None
+    # ── Build id↔class maps for citation-collapse during extraction ──
+    # When all members of a `class-N` group are cited as evidence for one
+    # entity, the walker emits a single `<doc#class-N>` triple instead of
+    # N per-id triples (cleaner graph, same semantics).
+    id_to_class:  dict[str, str]      = {}
+    class_to_ids: dict[str, set[str]] = {}
+    for d in docs_raw:
+        i2c, c2i = build_class_maps(d.get("html", ""))
+        id_to_class.update(i2c)
+        for cls, ids in c2i.items():
+            class_to_ids.setdefault(cls, set()).update(ids)
+
+    # ── Resolve the canonical HTML path for fragment-URI anchoring ──
+    html_files = html_paths_for_pdf(source, h_dir)
+    md_file_path = html_files[0] if html_files else None
 
     # ── CONVERT LAYER — file metadata + structural chain + conversion activity ──
     agent_uri = URIRef(AGENT_NS[make_slug(model.model_id)])
@@ -207,6 +232,8 @@ def extract_pdf_part14(
             ontology      = ontology,
             client        = client,
             model         = model,
+            id_to_class   = id_to_class,
+            class_to_ids  = class_to_ids,
             console       = console,
         )
         for triple in roots_graph:

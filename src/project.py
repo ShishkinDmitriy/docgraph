@@ -31,6 +31,8 @@ SOURCES_FILENAME                 = "sources.ttl"
 GRAPHS_SUBDIR                    = "graphs"
 UNRESOLVED_FILENAME              = "_unresolved.ttl"
 CACHE_SUBDIR                     = "cache"
+HTML_SUBDIR                      = "html"
+ANNOTATED_SUBDIR                 = "annotated"
 
 # Pipelines (see ARCHITECTURE.md § Pipelines — Part 2 and Part 14 in parallel)
 PIPELINE_PART2  = "part2"
@@ -111,6 +113,25 @@ def unresolved_path(project_root: Path) -> Path:
 
 def cache_dir(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / CACHE_SUBDIR
+
+
+def html_dir(project_root: Path) -> Path:
+    """Where canonical (immutable) HTML documents live.
+
+    One HTML file per *document* extracted from a PDF — a single PDF may
+    yield multiple HTML files when it carries several distinct documents
+    (invoice + receipt, article + appendix). The HTML is the source of
+    truth for structure + atomic-unit IDs; the markdown view is derived
+    on demand. See docs/architecture/html-pipeline.md."""
+    return project_root / DOCGRAPH_DIR / HTML_SUBDIR
+
+
+def annotated_dir(project_root: Path) -> Path:
+    """Where derived annotated-HTML viewer artifacts live.
+
+    Generated on demand by `docgraph view <slug>` from canonical HTML +
+    extracted graph. Never the source of truth — regenerable any time."""
+    return project_root / DOCGRAPH_DIR / ANNOTATED_SUBDIR
 
 
 # NOTE: The dg: vocabulary below is duplicated in vendor/ontologies/dg.ttl, which

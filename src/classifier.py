@@ -7,7 +7,7 @@ import re
 from .llm import LLMClient
 from .log_panels import log_prompt, log_response
 from .models import ModelConfig
-from .prompts import MARKDOWN_PROMPT
+from .prompts import HTML_PROMPT, MARKDOWN_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +82,50 @@ def pdf_to_markdown(
         doc.setdefault("title", "Document")
         doc.setdefault("description", "")
         doc.setdefault("issues", [])
+    return docs
+
+
+def pdf_to_html(
+    pdf_block: dict,
+    client: LLMClient,
+    model: ModelConfig,
+    note: str | None = None,
+) -> list[ExtractedDoc]:
+    """PDF → HTML conversion (canonical, immutable artifact).
+
+    Replaces / parallels `pdf_to_markdown`. The LLM produces semantic-free
+    layout HTML with `id="id-N"` attributes seeded on elements containing
+    referenceable atomic units (names, identifiers, dates, quantities,
+    addresses, contact info). See `docs/architecture/html-pipeline.md` and
+    `prompts.HTML_PROMPT` for the full conversion contract.
+
+    Returns a list of dicts, each with keys "title", "description", "html",
+    "stamps", "issues". Keys mirror `pdf_to_markdown` so downstream code
+    can choose either output by attribute name.
+    """
+    prompt = HTML_PROMPT
+    if note:
+        prompt += f"\n\nNote from user: {note}"
+    meta = f"{model.model_id}  max_tokens=8192  (PDF binary content omitted)"
+    log_prompt("pdf_to_html", prompt, logger=logger, metadata=meta)
+    response = client.create(
+        model_id=model.model_id,
+        max_tokens=8192,           # HTML is heavier than markdown; bump headroom
+        messages=[{
+            "role": "user",
+            "content": [pdf_block, {"type": "text", "text": prompt}],
+        }],
+    )
+    raw = response.content[0].text
+    log_response("pdf_to_html", raw, logger=logger, metadata=meta, as_json=True)
+    data = _parse_json_response(raw)
+    docs = data.get("documents", [])
+    for doc in docs:
+        doc.setdefault("stamps", [])
+        doc.setdefault("title", "Document")
+        doc.setdefault("description", "")
+        doc.setdefault("issues", [])
+        doc.setdefault("lang", "und")
     return docs
 
 

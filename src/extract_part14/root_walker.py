@@ -45,9 +45,8 @@ from src.extract_part14.walker import (
     DG, LIS, OA,
     EvidenceSelector,
     ExtractedEntity,
-    _quote_local_name,
     mint_entity_uri,
-    mint_quote,
+    mint_fragment_uri,
     slug,
 )
 from src.templates.registry import default_registry
@@ -188,12 +187,17 @@ For each instance, return:
                 classifications (§E.8): an entity may be e.g. both
                 FunctionalObject AND PhysicalObject AND Driver. List every
                 applicable class — do not pick just one.
-  - "evidence": one or more verbatim text spans that mention this entity.
-                Each is {{exact, prefix, suffix}}:
-                  - "exact"  = verbatim text (10–200 chars typical)
-                  - "prefix" = ~30 chars immediately before
-                  - "suffix" = ~30 chars immediately after
-                Cite ALL spans where this entity is mentioned.
+  - "evidence": one or more references to source-text positions where
+                this entity appears in the document. Each is
+                {{exact, anchor}}:
+                  - "exact"  = verbatim text (the part you're citing)
+                  - "anchor" = the {{#id-N}} marker that appears next to
+                               this text in the markdown (e.g., "id-7").
+                               Just the ID, no leading "#" or braces.
+                The markdown view tags every meaningful element with a
+                {{#id-N}} marker. When citing evidence, find the marker
+                immediately following (or attached to) the cited text and
+                use that ID. Cite ALL anchors where this entity appears.
   - "type_hints": optional list of MORE-SPECIFIC class names (free text)
                   you'd suggest for this entity if asked to refine its
                   typing against a richer reference taxonomy. Used later
@@ -205,6 +209,8 @@ Rules:
   - Empty "instances" list is valid (no entities of this root in the doc).
   - Do NOT re-extract entities listed in "Already extracted" — those are
     typed under another DISJOINT root.
+  - Every evidence entry MUST include an `anchor` matching a {{#id-N}}
+    marker present in the markdown. Skip evidence with no available anchor.
 {existing_block}
 Class tree (root + every extractable descendant):
 {subtree}
@@ -223,7 +229,7 @@ field below.
     {{
       "name":       "...",
       "types":      ["<curie>", ...],
-      "evidence":   [{{"exact": "...", "prefix": "...", "suffix": "..."}}],
+      "evidence":   [{{"exact": "...", "anchor": "id-N"}}],
       "type_hints": ["..."]
     }}
   ],
@@ -249,7 +255,9 @@ For each Activity, return:
                 Use the most distinctive identifier (date, ID, descriptor).
   - "types":    list of class CURIEs from the tree below that ALL apply
                 (multi-typing allowed; see Part 14 §E.8).
-  - "evidence": verbatim text spans citing the activity ({{exact, prefix, suffix}}).
+  - "evidence": one or more {{exact, anchor}} entries citing the activity
+                in the document, where `anchor` is the {{#id-N}} marker
+                next to the cited text in the markdown view (e.g., "id-12").
   - "participants": who/what takes part in this activity. For each:
       * "name":       exact name of the participant entity (will be
                       resolved to an already-extracted entity by label).
@@ -288,7 +296,7 @@ field below.
     {{
       "name":         "...",
       "types":        ["<curie>", ...],
-      "evidence":     [{{"exact": "...", "prefix": "...", "suffix": "..."}}],
+      "evidence":     [{{"exact": "...", "anchor": "id-N"}}],
       "participants": [
         {{"name": "...", "role_hint": "...", "type_hints": ["..."]}}
       ],
@@ -387,6 +395,8 @@ def walk_roots(
     ontology:       Graph,
     client:         LLMClient,
     model:          ModelConfig,
+    id_to_class:    dict[str, str]      | None = None,
+    class_to_ids:   dict[str, set[str]] | None = None,
     console=None,
 ) -> tuple[Graph, list[ExtractedEntity], list[Role]]:
     """Run three-root extraction. Returns (graph, entities, roles).
@@ -474,6 +484,8 @@ def walk_roots(
                 inst.get("evidence", []) or [],
                 entity_uri = entity_uri,
                 graph = g, base_ns = base_ns, md_source_uri = md_source_uri,
+                id_to_class  = id_to_class  or {},
+                class_to_ids = class_to_ids or {},
             )
 
             new_entity = ExtractedEntity(
@@ -596,22 +608,45 @@ def _mint_evidence(
     graph:         Graph,
     base_ns:       Namespace,
     md_source_uri: URIRef,
+    id_to_class:   dict[str, str]      | None = None,
+    class_to_ids:  dict[str, set[str]] | None = None,
 ) -> list[EvidenceSelector]:
+    """Convert LLM-cited evidence into `lis:representedBy` fragment-URI
+    triples on the entity. Returns the in-memory EvidenceSelectors so
+    downstream code (e.g. `infer_cross_entity_links`) can do text matching.
+
+    Citation collapse: when all members of a `class-N` group appear in
+    the evidence anchors, emit one `<doc#class-N>` triple instead of N
+    per-id triples (`html_io.collapse_anchors` does the math). Partial
+    coverage of a class falls back to per-id fragments.
+
+    Each evidence entry must carry an `anchor` matching an `id="id-N"`
+    or `class-N` in the canonical HTML. Entries without an anchor are
+    skipped (they have nowhere to point to in the source-of-truth HTML).
+    """
+    from src.html_io import collapse_anchors
+
+    id_to_class  = id_to_class  or {}
+    class_to_ids = class_to_ids or {}
+
     out: list[EvidenceSelector] = []
+    cited_ids: set[str] = set()
     for raw_ev in raw_evidence:
         if not isinstance(raw_ev, dict):
             continue
-        exact = (raw_ev.get("exact") or "").strip()
-        if not exact:
+        exact  = (raw_ev.get("exact") or "").strip()
+        anchor = (raw_ev.get("anchor") or "").strip().lstrip("#")
+        if not anchor:
             continue
-        sel = EvidenceSelector(
-            exact  = exact,
-            prefix = (raw_ev.get("prefix") or "").strip(),
-            suffix = (raw_ev.get("suffix") or "").strip(),
-        )
-        quote_uri = mint_quote(graph, sel, base_ns=base_ns, md_source_uri=md_source_uri)
-        graph.add((entity_uri, LIS.representedBy, quote_uri))
-        out.append(sel)
+        out.append(EvidenceSelector(exact=exact, anchor=anchor))
+        cited_ids.add(anchor)
+
+    # Collapse the cited-id set into a minimal fragment list (class-N for
+    # fully-covered groups + id-N for the rest).
+    for frag in collapse_anchors(cited_ids, id_to_class, class_to_ids):
+        graph.add((entity_uri, LIS.representedBy,
+                   mint_fragment_uri(md_source_uri, frag)))
+
     return out
 
 
