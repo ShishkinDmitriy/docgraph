@@ -259,13 +259,35 @@ truth. Its purpose is review, coverage exploration, and visual debugging.
 
 ## Coverage
 
-`docgraph coverage <slug>` walks the canonical HTML and the graph, computes:
+`docgraph coverage <slug>` walks the canonical HTML and the graph, prints:
 
-- Elements with at least one citing entity / total elements with `id`.
-- Top uncovered blocks (by `id` ranges or by structural section).
-- Most-cited elements.
+- Total atomic-unit coverage: `covered / total (percent)`.
+- Count of `id-N` vs `class-N` citation fragments.
+- Uncovered atomic units list (id + tag + text + section).
+- Per-section coverage when the conversion LLM tagged sections with
+  `data-note`.
 
-Mechanical, no LLM call. Output is a short diagnostic report.
+Mechanical, no LLM call. Implemented in `src/coverage.py`:
+`compute_coverage(html_text, graph) -> CoverageReport`. An element is
+considered covered when either `<doc#id-N>` is cited directly OR
+`<doc#class-N>` is cited where N is the element's class group.
+
+## Annotated viewer
+
+`docgraph view <slug>` generates `.docgraph/annotated/<slug>.html` from
+canonical HTML + extract graph, and opens it in the browser (suppress
+with `--no-open`). The viewer:
+
+- Adds `data-entity`, `data-label`, `data-types` attributes to every
+  element cited (directly via id or transitively via class).
+- Overlays CSS: cited elements get green outline + ✓ badge with the
+  entity's label; uncovered atomic units get a dashed red outline so the
+  gap is visible at a glance.
+- Inline JS builds a floating sidebar with every distinct entity,
+  click-to-jump to scroll to and flash the first mention.
+
+Fully derived, regenerable any time. Never the source of truth.
+Implemented in `src/annotated_view.py`.
 
 ## Bi-directional derivation
 

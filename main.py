@@ -24,6 +24,7 @@ from src.project import (
     PIPELINE_PART14,
     PIPELINES,
     UNRESOLVED_FILENAME,
+    annotated_dir,
     cache_dir,
     find_project_root,
     graphs_dir,
@@ -434,6 +435,145 @@ def diagram(target: str | None, all_sources: bool, fmt: str, direction: str):
             console.print(f"  [red]error:[/red] {exc}")
         except Exception as exc:
             console.print(f"  [red]unexpected error:[/red] {exc}")
+
+
+@cli.command()
+@click.argument("target", required=True)
+def coverage(target: str):
+    """Report which atomic units of the source HTML are cited in the graph.
+
+    For each element with `id="id-N"` in the canonical HTML, check whether
+    any graph triple cites `<doc#id-N>` directly OR cites a `<doc#class-N>`
+    fragment that covers it. The report shows total coverage, lists
+    uncovered units (so you can see what the extractor missed), and breaks
+    down by data-note section when those are present.
+
+    Pass either a slug (registered in sources.ttl) or a path to the source.
+    """
+    from src.coverage import coverage_for_files
+
+    project_root = _find_project(Path.cwd())
+    slug = _resolve_slug(project_root, target)
+
+    # HTML file naming preserves the PDF stem's case; the slug is lowercased.
+    # Find a file whose name (case-insensitive) matches the slug.
+    h_dir = html_dir(project_root)
+    html_path: Path | None = None
+    if h_dir.exists():
+        for p in h_dir.glob("*.html"):
+            if p.stem.casefold() == slug.casefold():
+                html_path = p
+                break
+    graph_path = graphs_dir(project_root) / f"{slug}.extract.ttl"
+
+    if html_path is None:
+        console.print(f"[red]Error:[/red] no HTML file matching slug {slug!r} "
+                      f"in {h_dir.relative_to(project_root)}/")
+        sys.exit(1)
+    if not graph_path.exists():
+        console.print(f"[red]Error:[/red] {graph_path} not found.")
+        sys.exit(1)
+
+    report = coverage_for_files(html_path, graph_path)
+
+    # Headline
+    console.print(f"\n[bold]Coverage[/bold]  {slug}")
+    console.print(f"  HTML:  [dim]{html_path.relative_to(project_root)}[/dim]")
+    console.print(f"  Graph: [dim]{graph_path.relative_to(project_root)}[/dim]\n")
+
+    if report.total == 0:
+        console.print("  [yellow]No atomic units found in HTML.[/yellow]")
+        return
+
+    pct_color = "green" if report.percent >= 80 else ("yellow" if report.percent >= 50 else "red")
+    console.print(
+        f"  Atomic units cited: "
+        f"[bold]{report.covered}[/bold] / [bold]{report.total}[/bold]  "
+        f"[{pct_color}]({report.percent:.0f}%)[/{pct_color}]"
+    )
+    n_class_cites = sum(1 for c in report.citations if c.startswith("class-"))
+    n_id_cites    = sum(1 for c in report.citations if c.startswith("id-"))
+    console.print(
+        f"  Citation fragments: [bold]{n_id_cites}[/bold] id-N, "
+        f"[bold]{n_class_cites}[/bold] class-N\n"
+    )
+
+    # Uncovered list
+    uncovered = report.uncovered
+    if uncovered:
+        from rich.markup import escape as _esc
+        console.print(f"[bold]Uncovered atomic units[/bold]  ({len(uncovered)})")
+        for u in uncovered:
+            section = f"  [dim]({_esc(u.section)})[/dim]" if u.section else ""
+            text = _esc(u.text) if u.text else "[dim](empty)[/dim]"
+            cls = f"  [dim].{u.css_class}[/dim]" if u.css_class else ""
+            console.print(f"  #[bold]{u.id_}[/bold] <{u.tag}> {text}{cls}{section}")
+        console.print()
+
+    # Per-section breakdown
+    sections: dict[str | None, list[int]] = {}   # section → [covered, total]
+    for u in report.units:
+        sec_bucket = sections.setdefault(u.section, [0, 0])
+        sec_bucket[1] += 1
+        if u.id_ in report.covered_ids:
+            sec_bucket[0] += 1
+    if any(s for s in sections if s):
+        from rich.markup import escape as _esc
+        console.print("[bold]By section[/bold]")
+        for sec, (cov, tot) in sorted(sections.items(), key=lambda kv: (kv[0] or "")):
+            label = _esc(sec) if sec else "[dim](no enclosing data-note)[/dim]"
+            color = "green" if cov == tot else ("yellow" if cov > 0 else "red")
+            console.print(f"  [{color}]{cov}/{tot}[/{color}]  {label}")
+
+
+@cli.command()
+@click.argument("target", required=True)
+@click.option("--no-open", is_flag=True,
+              help="Generate the annotated HTML but don't open it in a browser.")
+def view(target: str, no_open: bool):
+    """Open an annotated HTML view of the document showing extracted entities.
+
+    Generates `.docgraph/annotated/<slug>.html` from the canonical HTML +
+    extract graph: every cited element gets a green highlight + entity
+    label badge; uncovered atomic units stay outlined dashed-red. Hover any
+    cited element to see its URI / types / label; the floating sidebar
+    lists all entities with click-to-jump.
+
+    The annotated view is fully derived — regenerable any time, never the
+    source of truth. Pass --no-open to skip the browser launch.
+    """
+    from src.annotated_view import render_annotated_view
+
+    project_root = _find_project(Path.cwd())
+    slug = _resolve_slug(project_root, target)
+
+    h_dir = html_dir(project_root)
+    html_path: Path | None = None
+    if h_dir.exists():
+        for p in h_dir.glob("*.html"):
+            if p.stem.casefold() == slug.casefold():
+                html_path = p
+                break
+    graph_path = graphs_dir(project_root) / f"{slug}.extract.ttl"
+
+    if html_path is None:
+        console.print(f"[red]Error:[/red] no HTML file matching slug {slug!r}.")
+        sys.exit(1)
+    if not graph_path.exists():
+        console.print(f"[red]Error:[/red] {graph_path} not found.")
+        sys.exit(1)
+
+    out_dir = annotated_dir(project_root)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"{slug}.html"
+
+    annotated = render_annotated_view(html_path, graph_path, title=slug)
+    out_path.write_text(annotated, encoding="utf-8")
+    console.print(f"  wrote   [dim]{out_path.relative_to(project_root)}[/dim]")
+
+    if not no_open:
+        import webbrowser
+        webbrowser.open(out_path.as_uri())
 
 
 @cli.command()

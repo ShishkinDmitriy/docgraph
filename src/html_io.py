@@ -274,9 +274,12 @@ def load_or_extract_html(
 # ── Markdown view derivation (HTML → MD with {#id-N} markers) ─────────────
 
 _TAG_RX   = re.compile(r"<\s*(/?)([a-zA-Z][a-zA-Z0-9]*)\s*([^>]*)>", re.DOTALL)
-_ID_RX    = re.compile(r"\bid\s*=\s*['\"]([^'\"]+)['\"]")
-_NOTE_RX  = re.compile(r"\bdata-note\s*=\s*['\"]([^'\"]+)['\"]")
-_CLASS_RX = re.compile(r"\bclass\s*=\s*['\"]([^'\"]+)['\"]")
+# Attribute patterns use a backreference for the closing quote so apostrophes
+# inside double-quoted values (and vice versa) don't truncate the capture.
+# Captured value is group 2.
+_ID_RX    = re.compile(r"\bid\s*=\s*(['\"])(.*?)\1")
+_NOTE_RX  = re.compile(r"\bdata-note\s*=\s*(['\"])(.*?)\1")
+_CLASS_RX = re.compile(r"\bclass\s*=\s*(['\"])(.*?)\1")
 _CLASS_N_RX = re.compile(r"\bclass-\d+\b")
 
 
@@ -303,8 +306,8 @@ def build_class_maps(html_text: str) -> tuple[dict[str, str], dict[str, set[str]
         cls_m = _CLASS_RX.search(attrs)
         if id_m is None or cls_m is None:
             continue
-        element_id = id_m.group(1)
-        cls_match = _CLASS_N_RX.search(cls_m.group(1))
+        element_id = id_m.group(2)
+        cls_match = _CLASS_N_RX.search(cls_m.group(2))
         if cls_match is None:
             continue
         cls = cls_match.group(0)
@@ -462,9 +465,9 @@ class _Renderer:
             id_match    = _ID_RX.search(attrs or "")
             note_match  = _NOTE_RX.search(attrs or "")
             class_match = _CLASS_RX.search(attrs or "")
-            element_id = id_match.group(1)    if id_match    else None
-            data_note  = note_match.group(1)  if note_match  else None
-            css_class  = class_match.group(1) if class_match else None
+            element_id = id_match.group(2)    if id_match    else None
+            data_note  = note_match.group(2)  if note_match  else None
+            css_class  = class_match.group(2) if class_match else None
             if slash == "/":
                 yield ("close", tag, element_id, data_note, css_class)
             elif (attrs or "").rstrip().endswith("/"):
