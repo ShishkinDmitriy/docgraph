@@ -2,12 +2,12 @@
 
 The mega-walker bundles everything into a SINGLE LLM call per document:
 
-  1. Subject classification (what is this document ABOUT)
-  2. Entity discovery + typing (Object/Aspect/Activity instances)
-  3. Property value extraction (for each entity)
-  4. Template invocations (N-ary patterns)
-  5. Role minting (Activity participants with role hints)
-  6. Extension class proposals (when no existing class fits an entity)
+  1. Entity discovery + typing (Object/Aspect/Activity instances)
+  2. Property value extraction (for each entity, including the binary
+     properties that constitute template patterns — the dedicated
+     SPARQL recognizer + LLM-confirm pass downstream finds the actual
+     template invocations from these triples)
+  3. Extension class proposals (when no existing class fits an entity)
 
 Why one call instead of ~25:
   - Part 14 is small: ~50 classes, ~70 properties, ~3 templates fit easily
@@ -45,16 +45,12 @@ from src.extract_part14.ext_ontology import (
 )
 from src.extract_part14.property_walker import (
     _curie_for_logging,
-    _materialize_invocations,
-    _resolve_slot_bindings,
     coerce_value,
     extractable_properties_for,
-    TemplateInvocation,
 )
 from src.extract_part14.rdl import RdlResolver
 from src.extract_part14.root_walker import (
     _curie,
-    _render_template_inline,
     _resolve_types,
     _subtree_text,
 )
@@ -71,7 +67,6 @@ from src.html_io import collapse_anchors
 from src.llm import LLMClient, TextBlock
 from src.log_panels import log_prompt, log_response
 from src.models import ModelConfig
-from src.templates.registry import default_registry
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +76,8 @@ logger = logging.getLogger(__name__)
 _MEGA_PROMPT = """\
 You are extracting a knowledge graph from a document, end-to-end in one
 call. The output is the document's complete Part 14 knowledge graph:
-entities (with types, properties, evidence, template invocations) and
-any new extension classes proposed under LIS-14 superclasses.
+entities (with types, properties, evidence) and any new extension
+classes proposed under LIS-14 superclasses.
 
 == DOCUMENT ==
 
@@ -175,23 +170,6 @@ extracted entity (cite that entity's `name` exactly).
   Quality / Function / Disposition / Role / PhysicalQuantity needs a
   minted Aspect entity.
 
-== TEMPLATES (N-ary patterns) ==
-
-Multi-slot patterns that bundle related facts. When ALL the required
-slots of a template can be filled from the document, prefer emitting
-the template invocation over a list of individual properties — it's
-more structured and easier to validate downstream.
-
-{templates_block}
-
-  Note: roles are NOT a special case. When the document articulates a
-  role (patient, practitioner, payer, …), mint a Role entity (typed
-  `lis:Role`) AND emit a `lis14tpl:RoleRealizedInActivity` invocation
-  binding the role's `activity` (the lis:Activity entity) and `player`
-  (the participant who holds the role). This is the only correct way
-  to wire a Role — a bare `lis:Role` entity with no template invocation
-  is an orphan.
-
 == RESPONSE FORMAT ==
 
 Reply with JSON only. Do NOT add prose before or after the JSON object;
@@ -217,11 +195,6 @@ put any explanations in the "notes" field.
         {{"property": "<curie>", "value": "..." or null,
           "value_entity": "<exact entity name>" or null,
           "evidence": "<short verbatim quote>"}}
-      ],
-      "invocations": [
-        {{"template": "<curie>",
-          "slots":    {{"<slot-name>": "<entity name or literal>"}},
-          "evidence": "<quote>"}}
       ]
     }}
   ],
@@ -309,21 +282,6 @@ def _format_property_catalog(ontology: Graph) -> str:
     return "\n".join(lines)
 
 
-def _format_templates(ontology: Graph) -> str:
-    """All registered templates, regardless of anchor. The LLM picks
-    which apply to which extracted entity."""
-    reg = default_registry()
-    templates = list(reg.all())
-    if not templates:
-        return "  (no templates registered)"
-    lines: list[str] = []
-    for t in templates:
-        for line in _render_template_inline(t):
-            lines.append(f"  {line}")
-        lines.append("")
-    return "\n".join(lines).rstrip()
-
-
 def _build_document_context(*, title: str, description: str) -> str:
     parts = [f"Title: {title!r}"]
     if description:
@@ -352,7 +310,6 @@ def _call_llm(
         ext_classes_block         = _format_ext_classes(existing_ext),
         blacklisted_anchors_block = _format_blacklisted_anchors(),
         property_catalog_block    = _format_property_catalog(ontology),
-        templates_block           = _format_templates(ontology),
     )
     meta = f"{model.model_id}  one-shot extraction"
     log_prompt("part14/mega", prompt, logger=logger, metadata=meta)
@@ -429,8 +386,7 @@ def walk_mega(
     class_to_ids = class_to_ids or {}
 
     if console:
-        console.print("  [bold]mega-extraction[/bold] (one call: entities + "
-                      "properties + invocations + roles)...")
+        console.print("  [bold]mega-extraction[/bold] (one call: entities + properties)...")
 
     # Existing ext classes — visible from the loader's union view of the
     # project so the LLM can reuse before proposing.
@@ -583,53 +539,9 @@ def walk_mega(
                         continue
             g.add((entity.uri, prop_uri, value))
 
-    # ── Template invocations ──
-    covered_lowered: set = set()
-    for inst in raw_entities:
-        if not isinstance(inst, dict):
-            continue
-        name = (inst.get("name") or "").strip()
-        entity = next((e for e in extracted if e.label == name), None)
-        if entity is None:
-            continue
-        raw_invs = inst.get("invocations", []) or []
-        if not raw_invs:
-            continue
-        reg = default_registry()
-        invs: list[TemplateInvocation] = []
-        for raw in raw_invs:
-            if not isinstance(raw, dict):
-                continue
-            curie = str(raw.get("template", "")).strip()
-            # Permissive lookup: bare CURIE, bracketed, or full URI
-            tmpl = None
-            for u, t in [(curie, None)] + [(f"<{c.uri}>", c) for c in reg.all()]:
-                pass
-            # Lookup via the registry's full-URI map
-            for t in reg.all():
-                if curie in (_curie_for_logging(t.uri), f"<{t.uri}>", str(t.uri)):
-                    tmpl = t
-                    break
-            if tmpl is None:
-                logger.warning("mega: unknown template %r", curie)
-                continue
-            slots_raw = raw.get("slots", {}) or {}
-            if not isinstance(slots_raw, dict):
-                continue
-            slots = {str(k): str(v).strip() for k, v in slots_raw.items()
-                     if v is not None and str(v).strip()}
-            if not slots:
-                continue
-            invs.append(TemplateInvocation(template_uri=tmpl.uri, slots=slots,
-                                            evidence=str(raw.get("evidence", "") or "")))
-        if invs:
-            inv_g, covered = _materialize_invocations(
-                invs, extracted=extracted, ontology=ontology,
-                base_ns=base_ns, console=console,
-            )
-            for triple in inv_g:
-                g.add(triple)
-            covered_lowered.update(covered)
+    # Template invocations are no longer asked-for in the mega prompt —
+    # the dedicated SPARQL recognizer + batched-loop confirm pass (run by
+    # the pipeline after this walker) finds them mechanically.
 
     notes = (payload.get("notes") or "").strip()
     if notes and console:

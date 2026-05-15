@@ -292,24 +292,27 @@ def test_evidence_keeps_id_when_class_only_partial(ontology, model):
 
 # ── Role pattern via template (replaces the old activities[].role_hint) ────
 
-def test_role_template_invocation_wires_player_and_activity(ontology, model):
-    """A lis:Role entity becomes fully connected only when the LLM emits a
-    `lis14tpl:RoleRealizedInActivity` invocation binding role/player/activity.
-    Replaces the old special-case ROLES section + activities[] shape."""
+def test_role_pattern_binary_properties_land_for_recognizer(ontology, model):
+    """The mega prompt no longer asks for template invocations; the LLM
+    emits the role-pattern's constituent triples (rdf:type Role +
+    lis:realizedIn + lis:hasRole) as ordinary binary properties. The
+    SPARQL template recognizer downstream lifts these into the role-
+    pattern invocation. Here we just verify the binary properties land."""
     payload = {
         "entities": [
             {"name": "Cleaning", "types": ["lis:Activity"],
              "evidence": [{"exact": "cleaning", "anchor": "id-1"}]},
             {"name": "Patient1", "types": ["lis:Person"],
-             "evidence": [{"exact": "Dmitrii", "anchor": "id-2"}]},
+             "evidence": [{"exact": "Dmitrii", "anchor": "id-2"}],
+             "properties": [
+                 {"property": "lis:hasRole", "value_entity": "patient",
+                  "evidence": "patient"}
+             ]},
             {"name": "patient", "types": ["lis:Role"],
              "evidence": [{"exact": "patient", "anchor": "id-3"}],
-             "invocations": [
-                 {"template": "lis14tpl:RoleRealizedInActivity",
-                  "slots": {"role": "patient",
-                            "activity": "Cleaning",
-                            "player": "Patient1"},
-                  "evidence": "patient role"}
+             "properties": [
+                 {"property": "lis:realizedIn", "value_entity": "Cleaning",
+                  "evidence": "cleaning"}
              ]},
         ],
     }
@@ -317,7 +320,6 @@ def test_role_template_invocation_wires_player_and_activity(ontology, model):
     role     = next(e for e in result.entities if e.label == "patient")
     cleaning = next(e for e in result.entities if e.label == "Cleaning")
     patient  = next(e for e in result.entities if e.label == "Patient1")
-    # Lowered role-pattern triples must all land in the graph
     assert (role.uri,    RDF.type,         LIS.Role)     in result.graph
     assert (role.uri,    LIS.realizedIn,   cleaning.uri) in result.graph
     assert (patient.uri, LIS.hasRole,      role.uri)     in result.graph
