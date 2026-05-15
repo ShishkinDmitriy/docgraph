@@ -22,11 +22,7 @@ from src.extract_part14.loader import build_dataset, union_view
 from src.extract_part14.structural import DG, LIS, build_chain
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
-from src.extract_part14.template_recognizer import (
-    confirm_loop,
-    materialize_recognized,
-    recognize_invocations,
-)
+from src.extract_part14.template_recognizer import walk_templates
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
 from src.ingest import (
     IngestError,
@@ -234,51 +230,39 @@ def extract_pdf_part14(
         for triple in inferred_graph:
             g.add(triple)
 
-    # ── Mechanical template recognition — pattern-match every registered
-    # template's lowered body against the extract graph via SPARQL, lift the
-    # matches into structured invocations. Catches the common case where the
-    # LLM extracted constituent triples (datumValue + datumUOM + type) but
-    # didn't emit the corresponding template invocation.
-    recognized = recognize_invocations(g, base_ns=base_ns)
-    if recognized:
-        before = len(g)
-        for triple in materialize_recognized(recognized, base_ns=base_ns):
-            g.add(triple)
-        added = len(g) - before
-        if added:
-            console.print(f"  recognized {len(recognized)} template invocation(s) "
-                          f"from existing triples ({added} new triple(s))")
-
-    # ── Partial-match detection + LLM-confirm (batched-loop) — for
-    # templates where N-1 required slots match but ONE is missing, ask
-    # the LLM in a SINGLE batched prompt to fill all gaps at once.
-    # Iterate: confirmed gaps may unlock new partial matches in other
-    # templates (rare for Part 14's small template set, but the loop
-    # handles it naturally). Terminates on fixpoint, asked-before
-    # exhaustion, or the iteration cap.
+    # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm.
+    # Returns a dedicated graph that's serialized separately (so reviewers
+    # can see what the template phase asserted vs the mega-walker's
+    # binary-property output). The LLM-confirm sub-phase also mutates *g*
+    # in place to add NEW lowered triples (so iteration N+1's SPARQL can
+    # see iteration N's confirmations); those triples appear in BOTH the
+    # extract graph (for the union view) AND the templates graph (for
+    # the dedicated debug file).
+    g_templates = Graph()
     if extracted:
-        before = len(g)
-        confirm_loop(
-            g, markdown=full_markdown, extracted=extracted, ontology=ontology,
-            client=client, model=model, base_ns=base_ns, console=console,
+        console.print("[bold]templates[/bold]")
+        g_templates = walk_templates(
+            g, extracted=extracted, ontology=ontology, base_ns=base_ns,
+            markdown=full_markdown, client=client, model=model, console=console,
         )
-        added = len(g) - before
-        if added:
-            console.print(f"    [dim]+{added} triple(s) from confirmed partial matches[/dim]")
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
 
     # ── Serialize each layer to its own named-graph file ──
-    convert_file = g_dir / f"{slug}.convert{GRAPH_SUFFIX}"
-    extract_file = g_dir / f"{slug}.extract{GRAPH_SUFFIX}"
+    convert_file   = g_dir / f"{slug}.convert{GRAPH_SUFFIX}"
+    extract_file   = g_dir / f"{slug}.extract{GRAPH_SUFFIX}"
+    templates_file = g_dir / f"{slug}.templates{GRAPH_SUFFIX}"
     g_convert.serialize(destination=str(convert_file), format="turtle")
     g.serialize(destination=str(extract_file), format="turtle")
-    console.print(
-        f"  wrote   [dim]{GRAPHS_SUBDIR}/{slug}.convert{GRAPH_SUFFIX}[/dim] "
-        f"({len(g_convert)} triples) + "
-        f"[dim]{slug}.extract{GRAPH_SUFFIX}[/dim] ({len(g)} triples)"
-    )
+    parts = [
+        f"[dim]{slug}.convert{GRAPH_SUFFIX}[/dim] ({len(g_convert)} triples)",
+        f"[dim]{slug}.extract{GRAPH_SUFFIX}[/dim] ({len(g)} triples)",
+    ]
+    if len(g_templates) > 0:
+        g_templates.serialize(destination=str(templates_file), format="turtle")
+        parts.append(f"[dim]{slug}.templates{GRAPH_SUFFIX}[/dim] ({len(g_templates)} triples)")
+    console.print(f"  wrote   {' + '.join(parts)}")
 
     # Register the source pointing at the convert file (the always-present
     # layer); the loader picks up all `<slug>.*.ttl` siblings via glob, so

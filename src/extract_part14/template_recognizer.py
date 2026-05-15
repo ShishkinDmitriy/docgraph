@@ -27,6 +27,7 @@ import logging
 from dataclasses import dataclass
 
 from rdflib import Graph, Literal, Namespace, URIRef
+from rdflib.namespace import RDFS, XSD
 
 from src.extract_part14.walker import ExtractedEntity
 from src.llm import LLMClient, TextBlock
@@ -44,6 +45,82 @@ from src.templates.recognize import (
 from src.templates.registry import default_registry
 
 logger = logging.getLogger(__name__)
+
+
+# Template namespaces — bound on the templates Graph so the serialized
+# TTL uses CURIEs (`lis14tpl:Foo` not `<http://example.org/.../Foo>`).
+_TPL      = Namespace("http://example.org/docgraph/template#")
+_LIS14TPL = Namespace("http://example.org/docgraph/lis14tpl#")
+_LIS      = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
+
+
+def walk_templates(
+    extract_graph:  Graph,
+    *,
+    extracted:      list[ExtractedEntity],
+    ontology:       Graph,
+    base_ns:        Namespace,
+    markdown:       str,
+    client:         LLMClient,
+    model:          ModelConfig,
+    console=None,
+) -> Graph:
+    """Template recognition phase — produces a dedicated Graph holding
+    the full template-phase contribution (lifted invocations + any
+    lowered triples newly added by the LLM-confirm loop).
+
+    The returned graph is meant to be serialized as `<slug>.templates.ttl`
+    alongside extract.ttl + convert.ttl, so reviewers can see what the
+    template phase asserted independently of the mega-walker's output.
+
+    Note: the LLM-confirm loop also mutates *extract_graph* in place to
+    add NEW lowered triples (so iteration N+1's SPARQL can see iteration
+    N's confirmations). The returned graph re-emits those triples too,
+    plus the lifted forms — the templates file is self-contained and
+    the union view across all per-doc graphs sees no duplication that
+    matters.
+
+    Two sub-phases:
+      1. SPARQL recognition — fully-bound patterns from the existing
+         binary properties; emits the lifted form only (the lowered
+         form is already in extract_graph).
+      2. Batched LLM-confirm — for partial matches (one missing required
+         slot), batched prompt per iteration; on confirmation, lifted
+         + new lowered land here AND in extract_graph (for next iter).
+    """
+    g = Graph()
+    g.bind("ext",      Namespace("http://example.org/docgraph/ext#"))
+    g.bind("tpl",      _TPL)
+    g.bind("lis14tpl", _LIS14TPL)
+    g.bind("lis",      _LIS)
+    g.bind("rdfs",     RDFS)
+    g.bind("xsd",      XSD)
+    g.bind("ex",       base_ns)
+
+    # ── Sub-phase 1: SPARQL recognition (mechanical, no LLM) ──
+    recognized = recognize_invocations(extract_graph, base_ns=base_ns)
+    if recognized:
+        for triple in materialize_recognized(recognized, base_ns=base_ns):
+            g.add(triple)
+        if console:
+            console.print(f"  recognized {len(recognized)} template invocation(s) "
+                          f"from existing triples ({len(g)} lifted triple(s))")
+
+    # ── Sub-phase 2: batched-loop LLM-confirm partial matches ──
+    if extracted:
+        confirmed = confirm_loop(
+            extract_graph, markdown=markdown, extracted=extracted,
+            ontology=ontology, client=client, model=model, base_ns=base_ns,
+            console=console,
+        )
+        if len(confirmed) > 0:
+            for triple in confirmed:
+                g.add(triple)
+            if console:
+                console.print(f"    [dim]+{len(confirmed)} triple(s) (lifted + new lowered) "
+                              f"from confirmed partial matches[/dim]")
+
+    return g
 
 
 @dataclass
