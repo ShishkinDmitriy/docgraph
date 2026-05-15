@@ -12,11 +12,23 @@ from __future__ import annotations
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, RDFS, XSD
 
+from dataclasses import dataclass
+import json
+
+import pytest
+
+from src.extract_part14.loader import build_dataset, union_view
 from src.extract_part14.template_recognizer import (
+    PartialMatch,
+    confirm_partial_matches,
     materialize_recognized,
+    partial_match_invocations,
     recognize_invocations,
 )
-from src.extract_part14.walker import LIS
+from src.extract_part14.walker import ExtractedEntity, LIS
+from src.llm import TextBlock
+from src.models import ModelConfig
+from src.project import init_project, PIPELINE_PART14
 
 
 EX  = Namespace("http://example.org/src/test/")
@@ -146,3 +158,176 @@ def test_recognize_is_idempotent_on_already_lifted_graph():
     # Second materialization should produce the same triples as the first
     # (same anchor URI from the same bindings hash).
     assert set(second) <= set(first)
+
+
+# ── Phase 2: partial-match detection ───────────────────────────────────────
+
+def test_partial_match_finds_role_with_missing_realizedIn():
+    """The classic LLM miss: hasRole + Role-typing present, but realizedIn
+    absent. Partial-match detection should surface this as a PartialMatch
+    keyed on the role pattern with `activity` flagged missing."""
+    g = Graph()
+    role   = EX["patient-role"]
+    player = EX["dmitrii"]
+    g.add((role,   RDF.type,    LIS.Role))
+    g.add((player, LIS.hasRole, role))
+
+    partials = partial_match_invocations(g)
+    role_partials = [p for p in partials
+                     if p.template.uri == LIS14TPL.RoleRealizedInActivity
+                     and p.missing_slot == "activity"]
+    assert len(role_partials) >= 1
+    p = role_partials[0]
+    assert p.known_bindings.get("role")   == role
+    assert p.known_bindings.get("player") == player
+
+
+def test_partial_match_skips_fully_recognized():
+    """If the graph already has a complete match for the pattern, partial
+    detection shouldn't ALSO surface it as partial. The fully-recognized
+    set is computed first and used to deduplicate."""
+    g = Graph()
+    role     = EX["patient-role"]
+    activity = EX["cleaning"]
+    player   = EX["dmitrii"]
+    g.add((role,     RDF.type,         LIS.Role))
+    g.add((role,     LIS.realizedIn,   activity))
+    g.add((player,   LIS.hasRole,      role))
+
+    partials = partial_match_invocations(g)
+    role_partials = [p for p in partials
+                     if p.template.uri == LIS14TPL.RoleRealizedInActivity]
+    # The fully-recognized invocation shouldn't reappear as a partial.
+    assert role_partials == [] or all(
+        p.known_bindings.get("activity") is None for p in role_partials
+    )
+
+
+# ── Phase 2: LLM-confirm pass ──────────────────────────────────────────────
+
+@dataclass
+class _Resp:
+    content: list
+
+
+class _ConfirmMockLLM:
+    """Returns a single canned answer to the confirm prompt."""
+    def __init__(self, answer: str, evidence: str = ""):
+        self.answer = answer
+        self.evidence = evidence
+        self.calls = 0
+
+    def create(self, *, model_id, messages, system="", tools=(), max_tokens=4096):
+        self.calls += 1
+        payload = {"answer": self.answer, "evidence": self.evidence}
+        return _Resp(content=[TextBlock(text=json.dumps(payload))])
+
+
+@pytest.fixture(scope="module")
+def ontology(tmp_path_factory):
+    project_dir = tmp_path_factory.mktemp("recognizer-ontology")
+    from rich.console import Console
+    init_project(project_dir, Console(quiet=True), pipeline=PIPELINE_PART14)
+    ds = build_dataset(project_dir)
+    return union_view(ds)
+
+
+@pytest.fixture
+def model():
+    return ModelConfig(
+        uri=URIRef("http://example.org/model/test"),
+        model_id="test-model",
+        label="test",
+        provider="test",
+    )
+
+
+def test_confirm_partial_match_resolves_to_extracted_entity(ontology, model):
+    """Given a partial role-pattern match (role + player bound, activity
+    missing) and an extracted Activity entity in the candidate list, the
+    LLM-confirm pass should bind activity to that entity's URI and emit
+    the previously-missing realizedIn triple."""
+    role     = EX["patient-role"]
+    activity = EX["cleaning"]
+    player   = EX["dmitrii"]
+
+    extracted = [
+        ExtractedEntity(uri=role,     type_uri=LIS.Role,     label="patient",
+                        types=[LIS.Role]),
+        ExtractedEntity(uri=activity, type_uri=LIS.Activity, label="cleaning",
+                        types=[LIS.Activity]),
+        ExtractedEntity(uri=player,   type_uri=LIS.Person,   label="dmitrii",
+                        types=[LIS.Person]),
+    ]
+    # Find the role template — Phase 2 doesn't rebuild templates, just uses
+    # the registered one.
+    from src.templates.registry import default_registry
+    role_template = next(t for t in default_registry().all()
+                         if t.uri == LIS14TPL.RoleRealizedInActivity)
+    partial = PartialMatch(
+        template=role_template,
+        known_bindings={"role": role, "player": player},
+        missing_slot="activity",
+    )
+    mock = _ConfirmMockLLM(answer="cleaning", evidence="cleaning service")
+    confirmed = confirm_partial_matches(
+        [partial], markdown="dental cleaning {#id-1}",
+        extracted=extracted, ontology=ontology,
+        client=mock, model=model,
+    )
+    # The previously-missing realizedIn triple must now be present.
+    assert (role, LIS.realizedIn, activity) in confirmed
+    # And the lifted form too.
+    type_triples = list(confirmed.triples((None, RDF.type,
+                                           LIS14TPL.RoleRealizedInActivity)))
+    assert len(type_triples) == 1
+    assert mock.calls == 1
+
+
+def test_confirm_returns_nothing_when_llm_says_none(ontology, model):
+    """If the LLM answers 'none', the partial match is dropped — no
+    triples are emitted (better to leave the pattern incomplete than to
+    fabricate a value)."""
+    extracted = [
+        ExtractedEntity(uri=EX["dmitrii"], type_uri=LIS.Person,
+                        label="dmitrii", types=[LIS.Person]),
+    ]
+    from src.templates.registry import default_registry
+    role_template = next(t for t in default_registry().all()
+                         if t.uri == LIS14TPL.RoleRealizedInActivity)
+    partial = PartialMatch(
+        template=role_template,
+        known_bindings={"role": EX["patient-role"], "player": EX["dmitrii"]},
+        missing_slot="activity",
+    )
+    mock = _ConfirmMockLLM(answer="none")
+    confirmed = confirm_partial_matches(
+        [partial], markdown="...",
+        extracted=extracted, ontology=ontology,
+        client=mock, model=model,
+    )
+    assert len(confirmed) == 0
+
+
+def test_confirm_drops_unresolvable_answer(ontology, model):
+    """If the LLM names an entity that doesn't exist in the extracted
+    list, the answer is dropped (we won't fabricate a target URI)."""
+    extracted = [
+        ExtractedEntity(uri=EX["dmitrii"], type_uri=LIS.Person,
+                        label="dmitrii", types=[LIS.Person]),
+    ]
+    from src.templates.registry import default_registry
+    role_template = next(t for t in default_registry().all()
+                         if t.uri == LIS14TPL.RoleRealizedInActivity)
+    partial = PartialMatch(
+        template=role_template,
+        known_bindings={"role": EX["patient-role"], "player": EX["dmitrii"]},
+        missing_slot="activity",
+    )
+    mock = _ConfirmMockLLM(answer="some-fictional-activity-not-in-list")
+    confirmed = confirm_partial_matches(
+        [partial], markdown="...",
+        extracted=extracted, ontology=ontology,
+        client=mock, model=model,
+    )
+    assert len(confirmed) == 0

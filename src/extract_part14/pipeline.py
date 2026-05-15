@@ -23,7 +23,9 @@ from src.extract_part14.structural import DG, LIS, build_chain
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
 from src.extract_part14.template_recognizer import (
+    confirm_partial_matches,
     materialize_recognized,
+    partial_match_invocations,
     recognize_invocations,
 )
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
@@ -247,6 +249,26 @@ def extract_pdf_part14(
         if added:
             console.print(f"  recognized {len(recognized)} template invocation(s) "
                           f"from existing triples ({added} new triple(s))")
+
+    # ── Partial-match detection + LLM-confirm — for templates where N-1
+    # required slots match but ONE is missing, ask the LLM (focused per-
+    # match prompt) to fill the gap. Confirmed matches materialize the
+    # full lifted+lowered form, including the previously-missing triples.
+    if extracted:
+        partials = partial_match_invocations(g)
+        if partials:
+            console.print(f"  {len(partials)} partial template match(es); confirming with LLM...")
+            confirm_g = confirm_partial_matches(
+                partials, markdown=full_markdown, extracted=extracted,
+                ontology=ontology, client=client, model=model,
+                base_ns=base_ns, console=console,
+            )
+            before = len(g)
+            for triple in confirm_g:
+                g.add(triple)
+            added = len(g) - before
+            if added:
+                console.print(f"    [dim]+{added} triple(s) from confirmed partial matches[/dim]")
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
