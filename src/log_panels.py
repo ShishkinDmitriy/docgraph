@@ -26,6 +26,7 @@ import sys
 from rich.console import Console
 from rich.panel import Panel
 from rich.syntax import Syntax
+from rich.text import Text
 
 
 def _is_plain_mode() -> bool:
@@ -60,7 +61,10 @@ def log_prompt(stage: str, prompt: str, *, logger: logging.Logger,
     title = f"[bold cyan]→ LLM[/bold cyan]  {stage}"
     if metadata:
         title += f"  [dim]{metadata}[/dim]"
-    _console.print(Panel(prompt, title=title, border_style="cyan", title_align="left"))
+    # Wrap the body as Text so rich doesn't interpret markup-looking
+    # substrings like `[quality]` (template slot placeholders) as malformed
+    # style tags and silently strip them.
+    _console.print(Panel(Text(prompt), title=title, border_style="cyan", title_align="left"))
 
 
 def log_response(stage: str, response: str, *, logger: logging.Logger,
@@ -77,7 +81,9 @@ def log_response(stage: str, response: str, *, logger: logging.Logger,
     if as_json:
         body = Syntax(_strip_code_fence(response), "json", theme="monokai", word_wrap=True)
     else:
-        body = response
+        # Same reason as log_prompt — `[slot]` placeholders that may appear
+        # in the response shouldn't be mis-parsed as rich markup.
+        body = Text(response)
     _console.print(Panel(body, title=title, border_style="green", title_align="left"))
 
 
