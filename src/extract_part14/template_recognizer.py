@@ -65,29 +65,51 @@ def walk_templates(
     model:          ModelConfig,
     console=None,
 ) -> Graph:
-    """Template recognition phase — produces a dedicated Graph holding
-    the full template-phase contribution (lifted invocations + any
-    lowered triples newly added by the LLM-confirm loop).
+    """Templated rewrite of *extract_graph* — every recognized template's
+    lowered pattern is folded into its lifted form.
 
-    The returned graph is meant to be serialized as `<slug>.templates.ttl`
-    alongside extract.ttl + convert.ttl, so reviewers can see what the
-    template phase asserted independently of the mega-walker's output.
+    Returns a self-contained Graph (NOT a delta) — the "after" state of
+    a hypothetical update that (a) fills missing required slots via the
+    LLM-confirm loop and (b) replaces lowered patterns with lifted
+    invocations. Pair with the pristine extract graph to compare
+    BEFORE → AFTER.
 
-    Note: the LLM-confirm loop also mutates *extract_graph* in place to
-    add NEW lowered triples (so iteration N+1's SPARQL can see iteration
-    N's confirmations). The returned graph re-emits those triples too,
-    plus the lifted forms — the templates file is self-contained and
-    the union view across all per-doc graphs sees no duplication that
-    matters.
+    Does NOT mutate *extract_graph*: confirm_loop runs on an internal
+    working copy so the caller can serialize the input as the pristine
+    "before" snapshot independently of this phase's output.
 
-    Two sub-phases:
-      1. SPARQL recognition — fully-bound patterns from the existing
-         binary properties; emits the lifted form only (the lowered
-         form is already in extract_graph).
-      2. Batched LLM-confirm — for partial matches (one missing required
-         slot), batched prompt per iteration; on confirmation, lifted
-         + new lowered land here AND in extract_graph (for next iter).
+    Sub-phases (all on the working copy):
+      1. confirm_loop — adds LLM-supplied lowered triples for partial
+         matches (one missing required slot each).
+      2. recognize_invocations — enumerates every fully-bound template
+         instance in the now-complete graph.
+      3. Fold: copy the working graph, remove each invocation's lowered
+         pattern triples, add each invocation's lifted form. Entity
+         declarations (rdfs:label, lis:representedBy, dg:typeHint, …)
+         and any non-pattern triples survive untouched.
     """
+    # Internal working copy — confirm_loop mutates this; the caller's
+    # extract_graph stays pristine for the BEFORE serialization.
+    working = Graph()
+    for prefix, ns in extract_graph.namespaces():
+        working.bind(prefix, ns, override=True)
+    for triple in extract_graph:
+        working.add(triple)
+
+    # ── Sub-phase 1: batched-loop LLM-confirm partial matches ──
+    if extracted:
+        confirm_loop(
+            working, markdown=markdown, extracted=extracted,
+            ontology=ontology, client=client, model=model, base_ns=base_ns,
+            console=console,
+        )
+
+    # ── Sub-phase 2: enumerate every recognized invocation ──
+    invocations = recognize_invocations(working, base_ns=base_ns)
+    if console:
+        console.print(f"  recognized {len(invocations)} template invocation(s) total")
+
+    # ── Sub-phase 3: fold lowered → lifted ──
     g = Graph()
     g.bind("ext",      Namespace("http://example.org/docgraph/ext#"))
     g.bind("tpl",      _TPL)
@@ -96,31 +118,45 @@ def walk_templates(
     g.bind("rdfs",     RDFS)
     g.bind("xsd",      XSD)
     g.bind("ex",       base_ns)
+    for prefix, ns in working.namespaces():
+        g.bind(prefix, ns, override=False)
 
-    # ── Sub-phase 1: SPARQL recognition (mechanical, no LLM) ──
-    recognized = recognize_invocations(extract_graph, base_ns=base_ns)
-    if recognized:
-        for triple in materialize_recognized(recognized, base_ns=base_ns):
+    for triple in working:
+        g.add(triple)
+
+    for inv in invocations:
+        # Remove the lowered pattern triples (they're encoded by the lifted
+        # form's slot triples now).
+        try:
+            lowered = expand(inv.template, inv.bindings, ext_ns=base_ns)
+        except Exception as exc:                # pragma: no cover
+            logger.warning("walk_templates: expand failed for %s: %s",
+                           inv.template.uri, exc)
+            lowered = Graph()
+        for triple in lowered:
+            if any(_is_omit_sentinel(t) for t in triple):
+                continue
+            g.remove(triple)
+        # Add the lifted form (the templated representation of those
+        # triples — typed instance with named slot triples).
+        try:
+            lifted = materialize_lifted(inv.template, inv.bindings, ext_ns=base_ns)
+        except Exception as exc:                # pragma: no cover
+            logger.warning("walk_templates: materialize_lifted failed for %s: %s",
+                           inv.template.uri, exc)
+            continue
+        for triple in lifted:
+            if any(_is_omit_sentinel(t) for t in triple):
+                continue
             g.add(triple)
-        if console:
-            console.print(f"  recognized {len(recognized)} template invocation(s) "
-                          f"from existing triples ({len(g)} lifted triple(s))")
-
-    # ── Sub-phase 2: batched-loop LLM-confirm partial matches ──
-    if extracted:
-        confirmed = confirm_loop(
-            extract_graph, markdown=markdown, extracted=extracted,
-            ontology=ontology, client=client, model=model, base_ns=base_ns,
-            console=console,
-        )
-        if len(confirmed) > 0:
-            for triple in confirmed:
-                g.add(triple)
-            if console:
-                console.print(f"    [dim]+{len(confirmed)} triple(s) (lifted + new lowered) "
-                              f"from confirmed partial matches[/dim]")
 
     return g
+
+
+def _is_omit_sentinel(term) -> bool:
+    """Mirrors property_walker._is_omit_sentinel — true for the sentinel
+    URIs that materialize_lifted/expand emit for omitted optional slots."""
+    return isinstance(term, URIRef) and str(term).startswith("urn:docgraph/omit#")
 
 
 @dataclass

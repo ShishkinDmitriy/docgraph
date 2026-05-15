@@ -334,3 +334,116 @@ def test_confirm_loop_stops_after_max_iterations(ontology, model):
                  ontology=ontology, client=mock, model=model, base_ns=EX,
                  max_iterations=2)
     assert mock.calls <= 2
+
+
+# ── walk_templates: full templated rewrite of the extract graph ───────────
+
+def test_walk_templates_folds_lowered_into_lifted(ontology, model):
+    """The templated graph contains the lifted form for each recognized
+    invocation AND has the lowered pattern triples removed (folded into
+    the lift). Non-pattern triples (entity labels, evidence anchors)
+    survive untouched."""
+    from src.extract_part14.template_recognizer import walk_templates
+    from src.extract_part14.walker import DG
+
+    # Seed an extract graph with the QuantityDatum pattern + entity facts
+    g = _seed_quantity_datum_triples()
+    datum = EX["amount-115-84"]
+    g.add((datum, RDFS.label, Literal("EUR 115.84")))   # entity decl, NOT pattern
+    g.add((datum, DG.typeHint, Literal("MonetaryAmount")))
+
+    extracted = [
+        ExtractedEntity(uri=datum, type_uri=LIS.ScalarQuantityDatum,
+                        label="EUR 115.84",
+                        types=[LIS.ScalarQuantityDatum]),
+        ExtractedEntity(uri=EX["eur"], type_uri=LIS.UnitOfMeasure,
+                        label="EUR", types=[LIS.UnitOfMeasure]),
+    ]
+    # confirm_loop returns nothing because nothing is partial; only
+    # mechanical recognition runs.
+    mock = _BatchedMockLLM({})
+    templated = walk_templates(
+        g, extracted=extracted, ontology=ontology, base_ns=EX,
+        markdown="EUR 115.84 {#id-1}", client=mock, model=model,
+    )
+
+    # Lifted form is in the templated graph
+    type_triples = list(templated.triples((None, RDF.type,
+                                           LIS14TPL.QuantityDatumWithUOMandValue)))
+    assert len(type_triples) == 1
+    inst = type_triples[0][0]
+
+    # Lowered pattern triples are GONE from the templated graph
+    assert (datum, LIS.datumValue, Literal("115.84", datatype=XSD.double)) not in templated
+    assert (datum, LIS.datumUOM,   EX["eur"])                                 not in templated
+    assert (datum, RDF.type,       LIS.ScalarQuantityDatum)                   not in templated
+
+    # Entity facts (label, typeHint) survived — not part of the lowered pattern
+    assert (datum, RDFS.label, Literal("EUR 115.84"))    in templated
+    assert (datum, DG.typeHint, Literal("MonetaryAmount")) in templated
+
+    # And the lifted form references the same datum URI through its slot
+    slot_objects = {str(o) for s, p, o in templated if s == inst}
+    assert str(datum) in slot_objects
+
+
+def test_walk_templates_returns_full_graph_not_a_delta(ontology, model):
+    """The returned graph is self-contained — every non-pattern triple
+    from the source extract graph is present, not just the template
+    contribution."""
+    from src.extract_part14.template_recognizer import walk_templates
+
+    g = Graph()
+    # An entity unrelated to any template — must survive untouched.
+    g.add((EX["mr-x"], RDF.type,    LIS.Person))
+    g.add((EX["mr-x"], RDFS.label,  Literal("Mr X")))
+
+    mock = _BatchedMockLLM({})
+    templated = walk_templates(
+        g, extracted=[], ontology=ontology, base_ns=EX,
+        markdown="...", client=mock, model=model,
+    )
+    assert (EX["mr-x"], RDF.type,    LIS.Person)        in templated
+    assert (EX["mr-x"], RDFS.label,  Literal("Mr X"))   in templated
+
+
+def test_walk_templates_does_not_mutate_input_graph(ontology, model):
+    """walk_templates returns the AFTER state without touching the BEFORE
+    — extract_graph stays pristine so the caller can serialize it as the
+    before-snapshot. confirm_loop runs on an internal working copy."""
+    from src.extract_part14.template_recognizer import walk_templates
+
+    g = Graph()
+    role   = EX["patient-role"]
+    player = EX["dmitrii"]
+    g.add((role,   RDF.type,    LIS.Role))
+    g.add((player, LIS.hasRole, role))
+    extracted = [
+        ExtractedEntity(uri=role,           type_uri=LIS.Role,    label="patient",
+                        types=[LIS.Role]),
+        ExtractedEntity(uri=EX["cleaning"], type_uri=LIS.Activity, label="cleaning",
+                        types=[LIS.Activity]),
+        ExtractedEntity(uri=player,         type_uri=LIS.Person,  label="dmitrii",
+                        types=[LIS.Person]),
+    ]
+    triples_before = set(g)
+    mock = _BatchedMockLLM({"Q1": "cleaning"})
+    walk_templates(
+        g, extracted=extracted, ontology=ontology, base_ns=EX,
+        markdown="...", client=mock, model=model,
+    )
+    # Input graph unchanged — no realizedIn triple was added to g
+    assert set(g) == triples_before
+    assert (role, LIS.realizedIn, EX["cleaning"]) not in g
+
+
+def test_walk_templates_skips_confirm_when_no_extracted_entities(ontology, model):
+    """confirm_loop needs extracted entities (to resolve answers); when
+    the list is empty, walk_templates skips the LLM call entirely."""
+    from src.extract_part14.template_recognizer import walk_templates
+
+    g = _seed_quantity_datum_triples()
+    mock = _BatchedMockLLM({"Q1": "should-not-be-asked"})
+    walk_templates(g, extracted=[], ontology=ontology, base_ns=EX,
+                   markdown="...", client=mock, model=model)
+    assert mock.calls == 0
