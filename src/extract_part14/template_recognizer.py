@@ -28,7 +28,6 @@ from dataclasses import dataclass
 
 from rdflib import Graph, Literal, Namespace, URIRef
 
-from src.extract_part14 import axioms
 from src.extract_part14.walker import ExtractedEntity
 from src.llm import LLMClient, TextBlock
 from src.log_panels import log_prompt, log_response
@@ -214,27 +213,22 @@ def _query_with_slot_dropped(template: Template, graph: Graph,
 # ── LLM-confirm pass for partial matches ────────────────────────────────
 
 
-_CONFIRM_PROMPT = """\
-You are confirming whether a knowledge-graph pattern applies in this document.
+_BATCHED_CONFIRM_PROMPT = """\
+You are confirming whether several knowledge-graph patterns apply in this
+document. Each numbered question is a partial pattern match: most slots are
+already filled, ONE slot is missing, and we need to know its value.
 
-Pattern: {template_label}
-Description: {template_definition}
+For each question, answer with:
+  - the EXACT name of an extracted entity from the candidate list (preferred
+    when the slot expects an entity), OR
+  - a literal value (when the slot expects one — number, date, string), OR
+  - "none" when the document doesn't support filling the slot.
 
-Already extracted (matching most of the pattern):
-{known_block}
-
-Missing slot: `{missing_name}`
-  Description: {missing_description}
-  Range:       {missing_range}
-
-The document below is the source. Your task: from the document, identify the
-value of the missing slot — must be either the EXACT name of an already-
-extracted entity (preferred) or a literal of the right type. If no value is
-present in the document, answer "none".
+Be conservative — answer "none" rather than guess.
 
 == Already-extracted entities (you may bind to one of these by name) ==
 
-{candidate_entities_block}
+{candidates_block}
 
 == Document (markdown view, anchors `{{#id-N}}`) ==
 
@@ -242,108 +236,172 @@ present in the document, answer "none".
 {markdown}
 \"\"\"
 
-Reply with JSON only, no prose:
+== Questions ==
 
-{{"answer":   "<entity name OR literal value OR 'none'>",
-  "evidence": "<verbatim quote from the document supporting the answer, or empty>"}}
+{questions_block}
+
+Reply with JSON only — one entry per question id:
+
+{{
+  "Q1": "<entity name OR literal OR 'none'>",
+  "Q2": "...",
+  ...
+}}
 """
 
 
-def confirm_partial_matches(
-    matches:    list[PartialMatch],
+def confirm_loop(
+    graph:           Graph,
     *,
-    markdown:   str,
-    extracted:  list[ExtractedEntity],
-    ontology:   Graph,
-    client:     LLMClient,
-    model:      ModelConfig,
-    base_ns:    Namespace | None = None,
+    markdown:        str,
+    extracted:       list[ExtractedEntity],
+    ontology:        Graph,
+    client:          LLMClient,
+    model:           ModelConfig,
+    base_ns:         Namespace | None = None,
+    max_iterations:  int = 5,
+    max_questions_per_iter: int = 20,
     console=None,
 ) -> Graph:
-    """Ask the LLM to fill the missing slot for each partial match.
+    """Iterative batched LLM-confirm of partial template matches.
 
-    Returns a Graph containing both the lifted form and the lowered triples
-    for each confirmed invocation (the lowered triples include the NEW
-    missing-slot triples we just learned about — that's the value-add).
-    Confirmation is per-match (one focused LLM call each); skipped if the
-    LLM answers "none" or returns an unresolvable value.
+    Each iteration:
+      1. Find partial matches via SPARQL (one missing required slot each).
+      2. Shortlist: drop questions we asked previously; sort by slot-
+         completeness (more bound = more likely real); cap to
+         max_questions_per_iter to bound prompt size.
+      3. Single LLM call covering all shortlist questions.
+      4. Parse `{Qid: answer}` JSON; for answers that resolve, materialize
+         the now-complete invocation (lifted + lowered triples).
+      5. If new triples landed, loop — they may unlock other patterns.
+
+    Terminates on: no partials, no new questions (everything asked already),
+    no new triples, or max_iterations reached.
     """
     out = Graph()
-    for match in matches:
-        binding = _confirm_one(match, markdown=markdown, extracted=extracted,
-                               ontology=ontology, client=client, model=model)
-        if binding is None:
-            continue
-        complete = dict(match.known_bindings)
-        complete[match.missing_slot] = binding
-        try:
-            lifted_g  = materialize_lifted(match.template, complete, ext_ns=base_ns)
-            lowered_g = expand(match.template, complete, ext_ns=base_ns)
-        except Exception as exc:                # pragma: no cover
-            logger.warning("partial_confirm: materialize failed for %s: %s",
-                           match.template.uri, exc)
-            continue
-        for triple in lifted_g:
-            out.add(triple)
-        for triple in lowered_g:
-            out.add(triple)
+    asked: set = set()
+
+    for iteration in range(max_iterations):
+        partials = partial_match_invocations(graph)
+        if not partials:
+            break
+
+        shortlist = []
+        for p in partials:
+            key = _question_key(p)
+            if key in asked:
+                continue
+            shortlist.append((key, p))
+        if not shortlist:
+            break
+        # Most-bound first — those are likeliest to be real.
+        shortlist.sort(key=lambda kp: -len(kp[1].known_bindings))
+        shortlist = shortlist[:max_questions_per_iter]
+
+        for key, _ in shortlist:
+            asked.add(key)
+
+        questions = [(f"Q{i+1}", p) for i, (_, p) in enumerate(shortlist)]
         if console:
-            tmpl_label = match.template.label or match.template.slug
-            console.print(f"  [dim]LLM-confirmed {tmpl_label}: "
-                          f"{match.missing_slot} = {binding!s}[/dim]")
+            console.print(f"  iter {iteration+1}: {len(questions)} partial match(es), one batched LLM call...")
+        answers = _batched_confirm_call(
+            questions, markdown=markdown, extracted=extracted, ontology=ontology,
+            client=client, model=model,
+        )
+
+        new_triples_count = 0
+        for qid, partial in questions:
+            answer_str = (answers.get(qid) or "").strip()
+            if not answer_str or answer_str.lower() == "none":
+                continue
+            slot = partial.template.slot(partial.missing_slot)
+            if slot is None:
+                continue
+            binding = _resolve_answer(answer_str, slot, extracted)
+            if binding is None:
+                continue
+            complete = dict(partial.known_bindings)
+            complete[partial.missing_slot] = binding
+            try:
+                lifted_g  = materialize_lifted(partial.template, complete, ext_ns=base_ns)
+                lowered_g = expand(partial.template, complete, ext_ns=base_ns)
+            except Exception as exc:                # pragma: no cover
+                logger.warning("confirm_loop: materialize failed for %s: %s",
+                               partial.template.uri, exc)
+                continue
+            for triple in lifted_g:
+                out.add(triple)
+                if triple not in graph:
+                    graph.add(triple)
+                    new_triples_count += 1
+            for triple in lowered_g:
+                out.add(triple)
+                if triple not in graph:
+                    graph.add(triple)
+                    new_triples_count += 1
+            if console:
+                tmpl_label = partial.template.label or partial.template.slug
+                console.print(f"    [dim]confirmed {tmpl_label}: "
+                              f"{partial.missing_slot} = {answer_str}[/dim]")
+
+        if new_triples_count == 0:
+            break
+
     return out
 
 
-def _confirm_one(
-    match:      PartialMatch,
+def _question_key(partial: PartialMatch) -> tuple:
+    """Stable key identifying a partial-match question — never re-ask the
+    same question across loop iterations even if it resurfaces."""
+    bindings_key = frozenset(
+        (k, str(v)) for k, v in partial.known_bindings.items()
+    )
+    return (str(partial.template.uri), bindings_key, partial.missing_slot)
+
+
+def _batched_confirm_call(
+    questions:  list[tuple[str, PartialMatch]],
     *,
     markdown:   str,
     extracted:  list[ExtractedEntity],
     ontology:   Graph,
     client:     LLMClient,
     model:      ModelConfig,
-) -> URIRef | Literal | None:
-    """One focused LLM call to confirm the missing slot's value. Returns
-    a URIRef (when matched to an extracted entity) or a typed Literal
-    (when the slot expects one), or None to skip."""
-    template = match.template
-    missing  = template.slot(match.missing_slot)
-    if missing is None:
-        return None
-    missing_desc  = template.var_descriptions.get(match.missing_slot, "(no description)")
-    missing_range = _label_for_range(missing.range, ontology)
-    known_block = _format_known_bindings(match.known_bindings, extracted, ontology)
-    candidates  = _format_candidate_entities(extracted, missing.range, ontology)
+) -> dict[str, str]:
+    """Build + send the single batched prompt; return {Qid: answer_str}."""
+    blocks = []
+    for qid, p in questions:
+        slot = p.template.slot(p.missing_slot)
+        slot_desc  = p.template.var_descriptions.get(p.missing_slot, "(no description)")
+        slot_range = _label_for_range(slot.range, ontology) if slot else "(any)"
+        known_block = _format_known_bindings(p.known_bindings, extracted, ontology)
+        blocks.append(
+            f"{qid}. Pattern: {p.template.label or p.template.slug}\n"
+            f"    Definition: {p.template.definition or '(no definition)'}\n"
+            f"    Already bound:\n{known_block}\n"
+            f"    Missing: `{p.missing_slot}` ({slot_range}) — {slot_desc}\n"
+        )
 
-    prompt = _CONFIRM_PROMPT.format(
-        template_label      = template.label or template.slug,
-        template_definition = template.definition or "(no definition)",
-        known_block         = known_block,
-        missing_name        = match.missing_slot,
-        missing_description = missing_desc,
-        missing_range       = missing_range,
-        candidate_entities_block = candidates,
-        markdown            = markdown,
+    candidates = _format_all_candidate_entities(extracted)
+    prompt = _BATCHED_CONFIRM_PROMPT.format(
+        candidates_block = candidates,
+        markdown         = markdown,
+        questions_block  = "\n".join(blocks),
     )
-    meta = f"{model.model_id}  template confirm: {template.slug}/{match.missing_slot}"
+    meta = f"{model.model_id}  template confirm: batched ({len(questions)} q's)"
     log_prompt("part14/template-confirm", prompt, logger=logger, metadata=meta)
     resp = client.create(
-        model_id=model.model_id,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=1024,
+        model_id = model.model_id,
+        messages = [{"role": "user", "content": prompt}],
+        max_tokens = 2048,
     )
     text = "".join(b.text for b in resp.content if isinstance(b, TextBlock)).strip()
     log_response("part14/template-confirm", text, logger=logger, metadata=meta, as_json=True)
-
-    answer = _parse_confirm_response(text)
-    if not answer or answer.lower() == "none":
-        return None
-    return _resolve_answer(answer, missing, extracted)
+    return _parse_batched_response(text, qids=[qid for qid, _ in questions])
 
 
-def _parse_confirm_response(text: str) -> str:
-    """Extract the `answer` string from the LLM's JSON response. Tolerant
-    of code fences and surrounding prose."""
+def _parse_batched_response(text: str, *, qids: list[str]) -> dict[str, str]:
+    """Parse {Qid: answer} JSON from the LLM, tolerant of code fences."""
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```", 2)[1] if cleaned.count("```") >= 2 else cleaned
@@ -352,12 +410,34 @@ def _parse_confirm_response(text: str) -> str:
     start = cleaned.find("{")
     end   = cleaned.rfind("}")
     if start == -1 or end == -1:
-        return ""
+        return {}
     try:
         payload = json.loads(cleaned[start:end + 1])
     except json.JSONDecodeError:
-        return ""
-    return str(payload.get("answer", "") or "").strip()
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    out: dict[str, str] = {}
+    for qid in qids:
+        v = payload.get(qid)
+        if v is None:
+            continue
+        out[qid] = str(v).strip()
+    return out
+
+
+def _format_all_candidate_entities(extracted: list[ExtractedEntity]) -> str:
+    """List every extracted entity with its types — the batched prompt is
+    too large to filter per-question, so we hand the LLM the full set and
+    let it pick the right one per question."""
+    if not extracted:
+        return "  (no extracted entities yet)"
+    lines = []
+    for e in sorted(extracted, key=lambda x: x.label.casefold()):
+        types = e.types or [e.type_uri]
+        type_str = ", ".join(_local(t) for t in types)
+        lines.append(f"  - {e.label}  ({type_str})")
+    return "\n".join(lines)
 
 
 def _resolve_answer(answer: str, slot, extracted: list[ExtractedEntity]) -> URIRef | Literal | None:
@@ -399,30 +479,6 @@ def _format_known_bindings(bindings: dict, extracted: list[ExtractedEntity],
         else:
             lines.append(f"  - {name}: {term!r}")
     return "\n".join(lines)
-
-
-def _format_candidate_entities(extracted: list[ExtractedEntity],
-                                range_uri: URIRef | None,
-                                ontology: Graph) -> str:
-    """List extracted entities whose type-set is compatible with `range_uri`.
-    The LLM's answer must come from this list (or be 'none')."""
-    if not extracted:
-        return "  (no extracted entities yet)"
-    lines = []
-    for e in extracted:
-        types = e.types or [e.type_uri]
-        if range_uri is not None:
-            if not any(_is_or_subclass(t, range_uri, ontology) for t in types):
-                continue
-        type_str = ", ".join(_local(t) for t in types)
-        lines.append(f"  - {e.label}  ({type_str})")
-    return "\n".join(lines) if lines else "  (no entities of compatible type)"
-
-
-def _is_or_subclass(cls: URIRef, ancestor: URIRef, ontology: Graph) -> bool:
-    if cls == ancestor:
-        return True
-    return ancestor in axioms.superclasses(ontology, cls, direct=False)
 
 
 def _local(uri) -> str:

@@ -20,7 +20,7 @@ import pytest
 from src.extract_part14.loader import build_dataset, union_view
 from src.extract_part14.template_recognizer import (
     PartialMatch,
-    confirm_partial_matches,
+    confirm_loop,
     materialize_recognized,
     partial_match_invocations,
     recognize_invocations,
@@ -203,24 +203,24 @@ def test_partial_match_skips_fully_recognized():
     )
 
 
-# ── Phase 2: LLM-confirm pass ──────────────────────────────────────────────
+# ── Phase 2: batched-loop confirm ──────────────────────────────────────────
 
 @dataclass
 class _Resp:
     content: list
 
 
-class _ConfirmMockLLM:
-    """Returns a single canned answer to the confirm prompt."""
-    def __init__(self, answer: str, evidence: str = ""):
-        self.answer = answer
-        self.evidence = evidence
+class _BatchedMockLLM:
+    """Returns the same canned `{Qid: answer}` dict on every call.
+    Tracks call count so tests can assert iteration behavior.
+    """
+    def __init__(self, answers_by_qid: dict[str, str]):
+        self.answers_by_qid = answers_by_qid
         self.calls = 0
 
     def create(self, *, model_id, messages, system="", tools=(), max_tokens=4096):
         self.calls += 1
-        payload = {"answer": self.answer, "evidence": self.evidence}
-        return _Resp(content=[TextBlock(text=json.dumps(payload))])
+        return _Resp(content=[TextBlock(text=json.dumps(self.answers_by_qid))])
 
 
 @pytest.fixture(scope="module")
@@ -242,92 +242,95 @@ def model():
     )
 
 
-def test_confirm_partial_match_resolves_to_extracted_entity(ontology, model):
-    """Given a partial role-pattern match (role + player bound, activity
-    missing) and an extracted Activity entity in the candidate list, the
-    LLM-confirm pass should bind activity to that entity's URI and emit
-    the previously-missing realizedIn triple."""
+def _seed_partial_role_pattern(role_label="patient") -> tuple[Graph, list[ExtractedEntity]]:
+    """A graph + entity list with a role and player but NO realizedIn —
+    the canonical partial-match fixture."""
     role     = EX["patient-role"]
     activity = EX["cleaning"]
     player   = EX["dmitrii"]
-
+    g = Graph()
+    g.add((role,   RDF.type,    LIS.Role))
+    g.add((player, LIS.hasRole, role))
     extracted = [
-        ExtractedEntity(uri=role,     type_uri=LIS.Role,     label="patient",
+        ExtractedEntity(uri=role,     type_uri=LIS.Role,     label=role_label,
                         types=[LIS.Role]),
         ExtractedEntity(uri=activity, type_uri=LIS.Activity, label="cleaning",
                         types=[LIS.Activity]),
         ExtractedEntity(uri=player,   type_uri=LIS.Person,   label="dmitrii",
                         types=[LIS.Person]),
     ]
-    # Find the role template — Phase 2 doesn't rebuild templates, just uses
-    # the registered one.
-    from src.templates.registry import default_registry
-    role_template = next(t for t in default_registry().all()
-                         if t.uri == LIS14TPL.RoleRealizedInActivity)
-    partial = PartialMatch(
-        template=role_template,
-        known_bindings={"role": role, "player": player},
-        missing_slot="activity",
-    )
-    mock = _ConfirmMockLLM(answer="cleaning", evidence="cleaning service")
-    confirmed = confirm_partial_matches(
-        [partial], markdown="dental cleaning {#id-1}",
-        extracted=extracted, ontology=ontology,
-        client=mock, model=model,
-    )
-    # The previously-missing realizedIn triple must now be present.
-    assert (role, LIS.realizedIn, activity) in confirmed
-    # And the lifted form too.
-    type_triples = list(confirmed.triples((None, RDF.type,
-                                           LIS14TPL.RoleRealizedInActivity)))
-    assert len(type_triples) == 1
+    return g, extracted
+
+
+def test_confirm_loop_makes_one_batched_call_for_multiple_partials(ontology, model):
+    """The loop bundles all partials into ONE LLM call per iteration,
+    not one per partial (the whole point of the batched redesign)."""
+    g, extracted = _seed_partial_role_pattern()
+    mock = _BatchedMockLLM({"Q1": "cleaning"})
+    confirm_loop(g, markdown="dental cleaning {#id-1}", extracted=extracted,
+                 ontology=ontology, client=mock, model=model, base_ns=EX)
+    # First iteration finds the partial, asks one batched call. Second
+    # iteration sees the now-completed pattern (no new partials), exits.
     assert mock.calls == 1
 
 
-def test_confirm_returns_nothing_when_llm_says_none(ontology, model):
-    """If the LLM answers 'none', the partial match is dropped — no
-    triples are emitted (better to leave the pattern incomplete than to
-    fabricate a value)."""
-    extracted = [
-        ExtractedEntity(uri=EX["dmitrii"], type_uri=LIS.Person,
-                        label="dmitrii", types=[LIS.Person]),
-    ]
-    from src.templates.registry import default_registry
-    role_template = next(t for t in default_registry().all()
-                         if t.uri == LIS14TPL.RoleRealizedInActivity)
-    partial = PartialMatch(
-        template=role_template,
-        known_bindings={"role": EX["patient-role"], "player": EX["dmitrii"]},
-        missing_slot="activity",
-    )
-    mock = _ConfirmMockLLM(answer="none")
-    confirmed = confirm_partial_matches(
-        [partial], markdown="...",
-        extracted=extracted, ontology=ontology,
-        client=mock, model=model,
-    )
-    assert len(confirmed) == 0
+def test_confirm_loop_resolves_answer_into_realizedIn_triple(ontology, model):
+    """When the LLM names a known activity, the previously-missing
+    realizedIn triple lands in the graph (the value-add of the loop)."""
+    g, extracted = _seed_partial_role_pattern()
+    role     = EX["patient-role"]
+    activity = EX["cleaning"]
+    mock = _BatchedMockLLM({"Q1": "cleaning"})
+    confirm_loop(g, markdown="dental cleaning {#id-1}", extracted=extracted,
+                 ontology=ontology, client=mock, model=model, base_ns=EX)
+    assert (role, LIS.realizedIn, activity) in g
 
 
-def test_confirm_drops_unresolvable_answer(ontology, model):
-    """If the LLM names an entity that doesn't exist in the extracted
-    list, the answer is dropped (we won't fabricate a target URI)."""
-    extracted = [
-        ExtractedEntity(uri=EX["dmitrii"], type_uri=LIS.Person,
-                        label="dmitrii", types=[LIS.Person]),
-    ]
-    from src.templates.registry import default_registry
-    role_template = next(t for t in default_registry().all()
-                         if t.uri == LIS14TPL.RoleRealizedInActivity)
-    partial = PartialMatch(
-        template=role_template,
-        known_bindings={"role": EX["patient-role"], "player": EX["dmitrii"]},
-        missing_slot="activity",
-    )
-    mock = _ConfirmMockLLM(answer="some-fictional-activity-not-in-list")
-    confirmed = confirm_partial_matches(
-        [partial], markdown="...",
-        extracted=extracted, ontology=ontology,
-        client=mock, model=model,
-    )
-    assert len(confirmed) == 0
+def test_confirm_loop_emits_no_triples_when_llm_says_none(ontology, model):
+    """If the LLM answers `none`, no triples land. Better to abstain than
+    fabricate."""
+    g, extracted = _seed_partial_role_pattern()
+    before = len(g)
+    mock = _BatchedMockLLM({"Q1": "none"})
+    confirm_loop(g, markdown="...", extracted=extracted,
+                 ontology=ontology, client=mock, model=model, base_ns=EX)
+    assert len(g) == before
+
+
+def test_confirm_loop_drops_unresolvable_answer(ontology, model):
+    """If the LLM names an entity not in the extracted list, the answer
+    is dropped (no fabricated target URI)."""
+    g, extracted = _seed_partial_role_pattern()
+    before = len(g)
+    mock = _BatchedMockLLM({"Q1": "some-fictional-activity"})
+    confirm_loop(g, markdown="...", extracted=extracted,
+                 ontology=ontology, client=mock, model=model, base_ns=EX)
+    assert len(g) == before
+
+
+def test_confirm_loop_does_not_reask_already_asked_questions(ontology, model):
+    """`asked_before` set prevents re-asking the same question across
+    iterations even when nothing has changed."""
+    g, extracted = _seed_partial_role_pattern()
+    # LLM says 'none' so no new triples → loop should NOT re-ask the same
+    # partial in a second iteration; it should exit.
+    mock = _BatchedMockLLM({"Q1": "none"})
+    confirm_loop(g, markdown="...", extracted=extracted,
+                 ontology=ontology, client=mock, model=model, base_ns=EX,
+                 max_iterations=5)
+    # Only one call despite max_iterations=5 — second iteration's
+    # shortlist is empty (the only partial was already asked).
+    assert mock.calls == 1
+
+
+def test_confirm_loop_stops_after_max_iterations(ontology, model):
+    """Hard cap: even if every iteration produces new triples, the loop
+    halts at max_iterations to prevent runaway."""
+    g, extracted = _seed_partial_role_pattern()
+    # LLM resolves the activity → loop runs once, completes the pattern,
+    # finds no further partials, exits before hitting the cap.
+    mock = _BatchedMockLLM({"Q1": "cleaning"})
+    confirm_loop(g, markdown="...", extracted=extracted,
+                 ontology=ontology, client=mock, model=model, base_ns=EX,
+                 max_iterations=2)
+    assert mock.calls <= 2

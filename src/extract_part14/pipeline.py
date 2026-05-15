@@ -23,9 +23,8 @@ from src.extract_part14.structural import DG, LIS, build_chain
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
 from src.extract_part14.template_recognizer import (
-    confirm_partial_matches,
+    confirm_loop,
     materialize_recognized,
-    partial_match_invocations,
     recognize_invocations,
 )
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
@@ -250,25 +249,22 @@ def extract_pdf_part14(
             console.print(f"  recognized {len(recognized)} template invocation(s) "
                           f"from existing triples ({added} new triple(s))")
 
-    # ── Partial-match detection + LLM-confirm — for templates where N-1
-    # required slots match but ONE is missing, ask the LLM (focused per-
-    # match prompt) to fill the gap. Confirmed matches materialize the
-    # full lifted+lowered form, including the previously-missing triples.
+    # ── Partial-match detection + LLM-confirm (batched-loop) — for
+    # templates where N-1 required slots match but ONE is missing, ask
+    # the LLM in a SINGLE batched prompt to fill all gaps at once.
+    # Iterate: confirmed gaps may unlock new partial matches in other
+    # templates (rare for Part 14's small template set, but the loop
+    # handles it naturally). Terminates on fixpoint, asked-before
+    # exhaustion, or the iteration cap.
     if extracted:
-        partials = partial_match_invocations(g)
-        if partials:
-            console.print(f"  {len(partials)} partial template match(es); confirming with LLM...")
-            confirm_g = confirm_partial_matches(
-                partials, markdown=full_markdown, extracted=extracted,
-                ontology=ontology, client=client, model=model,
-                base_ns=base_ns, console=console,
-            )
-            before = len(g)
-            for triple in confirm_g:
-                g.add(triple)
-            added = len(g) - before
-            if added:
-                console.print(f"    [dim]+{added} triple(s) from confirmed partial matches[/dim]")
+        before = len(g)
+        confirm_loop(
+            g, markdown=full_markdown, extracted=extracted, ontology=ontology,
+            client=client, model=model, base_ns=base_ns, console=console,
+        )
+        added = len(g) - before
+        if added:
+            console.print(f"    [dim]+{added} triple(s) from confirmed partial matches[/dim]")
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
