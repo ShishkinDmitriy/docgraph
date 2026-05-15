@@ -41,6 +41,7 @@ from src.extract_part14.ext_ontology import (
     is_allowed_anchor,
     merge_proposals,
     normalize_slug,
+    to_camel_case,
 )
 from src.extract_part14.property_walker import (
     _curie_for_logging,
@@ -122,11 +123,12 @@ expressive — you may propose a new ext: class. Constraints:
     Land at the most specific class that still genuinely fits — e.g.
     `lis:InformationObject` for an Invoice (not `lis:Object`),
     `lis:Activity` for a DentalService (not `lis:Aspect`).
-  - Provide `slug` (URI tail, kebab- or PascalCase), `anchor` (LIS-14
-    CURIE), `label` (canonical short name), `alt_labels` (synonyms /
-    aliases, can include surface forms used in the document), and
-    `comment` (1-3 sentence definition explaining what the class
-    represents).
+  - Provide `slug` (URI tail, PascalCase, e.g. "IBAN" or "BankAccount"),
+    `anchor` (LIS-14 CURIE), `label` and `alt_labels` (BOTH in the same
+    PascalCase style as the slug — "BankAccount" not "Bank Account",
+    "Rechnung" not "rechnung"; preserve all-caps acronyms like "IBAN"
+    or "BIC"), and `comment` (1-3 sentence natural-language definition,
+    free-form prose).
   - Use proposals sparingly — only when an existing class genuinely
     doesn't fit. Don't propose `ext:Person` (use `lis:Person`).
     Don't propose for one-off entities.
@@ -659,9 +661,18 @@ def _parse_proposals(raw_new: list, *, source_uri: URIRef | None,
             logger.warning("mega: ext class %s has unresolved/forbidden anchor %r; skipping",
                            slug, anchor_curie)
             continue
-        label = str(raw.get("label", slug)).strip() or slug
-        alt_labels = [str(a).strip() for a in (raw.get("alt_labels", []) or [])
-                      if isinstance(a, str) and a.strip()]
+        label = to_camel_case(str(raw.get("label", slug)).strip()) or slug
+        # Alt labels share the slug's CamelCase style and dedupe against the
+        # canonical label (so "Bank Account" + "BankAccount" → one entry).
+        seen = {label}
+        alt_labels: list[str] = []
+        for a in (raw.get("alt_labels", []) or []):
+            if not isinstance(a, str) or not a.strip():
+                continue
+            normalized = to_camel_case(a)
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                alt_labels.append(normalized)
         comment = str(raw.get("comment", "")).strip()
         out.append(ExtClass(
             slug=slug, anchor=anchor_uri, label=label,

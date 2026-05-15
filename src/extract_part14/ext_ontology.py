@@ -85,9 +85,10 @@ class ExtClass:
         return EXT[self.slug]
 
 
-# ── Slug normalization ───────────────────────────────────────────────────
+# ── Slug + label normalization ───────────────────────────────────────────
 
 _SLUG_NORMALIZE_RX = re.compile(r"[^a-zA-Z0-9]+")
+_CAMEL_SPLIT_RX   = re.compile(r"[\s_\-./]+")
 
 
 def normalize_slug(raw: str) -> str:
@@ -98,6 +99,32 @@ def normalize_slug(raw: str) -> str:
     """
     cleaned = _SLUG_NORMALIZE_RX.sub("", raw)
     return cleaned or "Unnamed"
+
+
+def to_camel_case(raw: str) -> str:
+    """Normalize a label to CamelCase (PascalCase).
+
+    "Bank Account"        → "BankAccount"
+    "international bank"  → "InternationalBank"
+    "IBAN"                → "IBAN"     (acronyms preserved)
+    "billing_document"    → "BillingDocument"
+
+    Used to keep ext: class rdfs:label + skos:altLabel uniform — labels
+    look like programming identifiers in the same style as the URI slug,
+    so the graph reads consistently across all ext classes.
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    parts = [p for p in _CAMEL_SPLIT_RX.split(raw) if p]
+    out = []
+    for p in parts:
+        # Preserve all-caps acronyms (IBAN, BIC, USD); otherwise capitalize first.
+        if p.isupper() and len(p) > 1:
+            out.append(p)
+        else:
+            out.append(p[:1].upper() + p[1:])
+    return "".join(out)
 
 
 # ── Triple emission (for inclusion in per-doc extract graph) ─────────────

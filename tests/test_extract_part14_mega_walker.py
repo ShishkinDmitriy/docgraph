@@ -22,7 +22,7 @@ from dataclasses import dataclass
 
 import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import OWL, RDF, RDFS
+from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from src.extract_part14.ext_ontology import EXT, ExtClass, class_definitions_graph
 from src.extract_part14.loader import build_dataset, union_view
@@ -143,6 +143,33 @@ def test_ext_class_proposal_lands_in_graph_and_is_usable_as_type(ontology, model
     assert inst is not None
     assert (inst.uri, RDF.type, EXT.Invoice) in g
     assert result.new_ext_classes and result.new_ext_classes[0].slug == "Invoice"
+
+
+def test_ext_class_label_and_alt_labels_normalized_to_camel_case(ontology, model):
+    """The LLM tends to emit human-readable labels ("Bank Account") and
+    free-form alt labels ("account information", "Bankverbindung"). The
+    parser normalizes both to CamelCase so the graph reads consistently."""
+    payload = {
+        "new_classes": [
+            {"slug": "BankAccount", "anchor": "lis:InformationObject",
+             "label": "Bank Account",
+             "alt_labels": ["account information", "Bankverbindung",
+                            "BankAccount",     # dup of the canonical label
+                            "BIC code"],       # acronym preserved
+             "comment": "..."}
+        ],
+        "entities": [],
+    }
+    result = _run(payload, ontology=ontology, model=model)
+    g = result.graph
+    label = next(g.objects(EXT.BankAccount, RDFS.label))
+    assert str(label) == "BankAccount"
+    alts = sorted(str(o) for o in g.objects(EXT.BankAccount, SKOS.altLabel))
+    # Canonical label is excluded from alts; acronym preserved; CamelCase
+    assert "Bankverbindung"     in alts
+    assert "AccountInformation" in alts
+    assert "BICCode"            in alts
+    assert "BankAccount" not in alts
 
 
 def test_ext_class_with_forbidden_anchor_is_dropped(ontology, model):

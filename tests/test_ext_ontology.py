@@ -24,6 +24,7 @@ from src.extract_part14.ext_ontology import (
     is_allowed_anchor,
     merge_proposals,
     normalize_slug,
+    to_camel_case,
 )
 
 
@@ -39,6 +40,30 @@ def test_slug_strips_non_alphanumeric():
 def test_slug_handles_empty_input():
     assert normalize_slug("???") == "Unnamed"
     assert normalize_slug("") == "Unnamed"
+
+
+# ── to_camel_case (used to normalize label + alt_labels) ──────────────────
+
+def test_camel_case_collapses_spaces():
+    assert to_camel_case("Bank Account") == "BankAccount"
+    assert to_camel_case("international bank account") == "InternationalBankAccount"
+
+
+def test_camel_case_preserves_all_caps_acronyms():
+    """IBAN, BIC, USD shouldn't get squashed into "Iban" / "Bic" / "Usd"."""
+    assert to_camel_case("IBAN") == "IBAN"
+    assert to_camel_case("BIC code") == "BICCode"
+
+
+def test_camel_case_handles_separators():
+    assert to_camel_case("billing_document") == "BillingDocument"
+    assert to_camel_case("dental-procedure") == "DentalProcedure"
+    assert to_camel_case("sub.location.of") == "SubLocationOf"
+
+
+def test_camel_case_handles_empty_or_garbage():
+    assert to_camel_case("") == ""
+    assert to_camel_case("   ") == ""
 
 
 # ── class_definitions_graph ────────────────────────────────────────────────
