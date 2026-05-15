@@ -22,6 +22,10 @@ from src.extract_part14.loader import build_dataset, union_view
 from src.extract_part14.structural import DG, LIS, build_chain
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
+from src.extract_part14.template_recognizer import (
+    materialize_recognized,
+    recognize_invocations,
+)
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
 from src.ingest import (
     IngestError,
@@ -228,6 +232,21 @@ def extract_pdf_part14(
         )
         for triple in inferred_graph:
             g.add(triple)
+
+    # ── Mechanical template recognition — pattern-match every registered
+    # template's lowered body against the extract graph via SPARQL, lift the
+    # matches into structured invocations. Catches the common case where the
+    # LLM extracted constituent triples (datumValue + datumUOM + type) but
+    # didn't emit the corresponding template invocation.
+    recognized = recognize_invocations(g, base_ns=base_ns)
+    if recognized:
+        before = len(g)
+        for triple in materialize_recognized(recognized, base_ns=base_ns):
+            g.add(triple)
+        added = len(g) - before
+        if added:
+            console.print(f"  recognized {len(recognized)} template invocation(s) "
+                          f"from existing triples ({added} new triple(s))")
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
