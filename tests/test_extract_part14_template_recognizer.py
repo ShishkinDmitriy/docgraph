@@ -212,9 +212,12 @@ class _Resp:
 
 class _BatchedMockLLM:
     """Returns the same canned `{Qid: answer}` dict on every call.
-    Tracks call count so tests can assert iteration behavior.
+
+    Tracks call count so tests can assert iteration behavior. Each value
+    can be either a flat string (legacy shape — wrapped automatically)
+    or a {answer, reason} dict.
     """
-    def __init__(self, answers_by_qid: dict[str, str]):
+    def __init__(self, answers_by_qid):
         self.answers_by_qid = answers_by_qid
         self.calls = 0
 
@@ -334,6 +337,53 @@ def test_confirm_loop_stops_after_max_iterations(ontology, model):
                  ontology=ontology, client=mock, model=model, base_ns=EX,
                  max_iterations=2)
     assert mock.calls <= 2
+
+
+def test_confirm_loop_handles_structured_response_with_reason(ontology, model):
+    """The new response shape is {Qid: {answer, reason}}. Confirms that
+    the structured form parses cleanly and the answer still resolves."""
+    g, extracted = _seed_partial_role_pattern()
+    role     = EX["patient-role"]
+    activity = EX["cleaning"]
+    mock = _BatchedMockLLM({
+        "Q1": {"answer": "cleaning",
+               "reason": "the role is articulated alongside the cleaning event"}
+    })
+    confirm_loop(g, markdown="dental cleaning {#id-1}", extracted=extracted,
+                 ontology=ontology, client=mock, model=model, base_ns=EX)
+    assert (role, LIS.realizedIn, activity) in g
+
+
+def test_parse_batched_response_structured_and_legacy_shapes():
+    """The parser tolerates both the structured {answer, reason} dict
+    and the legacy flat-string shape for backward compatibility."""
+    from src.extract_part14.template_recognizer import _parse_batched_response
+
+    raw = json.dumps({
+        "Q1": {"answer": "cleaning", "reason": "matches the activity entity"},
+        "Q2": "some-name",                    # legacy flat
+        "Q3": {"answer": "none", "reason": "no candidate found"},
+    })
+    parsed = _parse_batched_response(raw, qids=["Q1", "Q2", "Q3"])
+    assert parsed["Q1"] == {"answer": "cleaning",   "reason": "matches the activity entity"}
+    assert parsed["Q2"] == {"answer": "some-name",  "reason": ""}
+    assert parsed["Q3"] == {"answer": "none",       "reason": "no candidate found"}
+
+
+def test_parse_batched_response_tolerates_trailing_prose():
+    """LLMs often append explanatory prose after the closing `}`. The
+    parser should ignore it and pull the JSON object out cleanly."""
+    from src.extract_part14.template_recognizer import _parse_batched_response
+
+    raw = (
+        '```json\n'
+        '{"Q1": {"answer": "none", "reason": "no candidate"}}\n'
+        '```\n\n'
+        '**Reasoning:** Both Q1 and Q2 ask for the quality entity that ...'
+    )
+    parsed = _parse_batched_response(raw, qids=["Q1"])
+    assert parsed["Q1"]["answer"] == "none"
+    assert "no candidate" in parsed["Q1"]["reason"]
 
 
 # ── walk_templates: full templated rewrite of the extract graph ───────────

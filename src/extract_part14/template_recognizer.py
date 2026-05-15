@@ -353,11 +353,15 @@ Be conservative — answer "none" rather than guess.
 
 {questions_block}
 
-Reply with JSON only — one entry per question id:
+Reply with JSON only (no prose before or after — put any explanation in
+the per-question `reason` field). One entry per question id, each entry
+an object with `answer` and `reason`:
 
 {{
-  "Q1": "<entity name OR literal OR 'none'>",
-  "Q2": "...",
+  "Q1": {{"answer": "<entity name OR literal OR 'none'>",
+          "reason": "<one short sentence explaining the choice — "
+                    "why this is the right binding, or why none>"}},
+  "Q2": {{"answer": "...", "reason": "..."}},
   ...
 }}
 """
@@ -424,14 +428,24 @@ def confirm_loop(
 
         new_triples_count = 0
         for qid, partial in questions:
-            answer_str = (answers.get(qid) or "").strip()
+            entry      = answers.get(qid) or {}
+            answer_str = entry.get("answer", "").strip()
+            reason     = entry.get("reason", "").strip()
+            tmpl_label = partial.template.label or partial.template.slug
             if not answer_str or answer_str.lower() == "none":
+                if console and reason:
+                    console.print(f"    [dim]declined {tmpl_label}.{partial.missing_slot}: "
+                                  f"{reason}[/dim]")
                 continue
             slot = partial.template.slot(partial.missing_slot)
             if slot is None:
                 continue
             binding = _resolve_answer(answer_str, slot, extracted)
             if binding is None:
+                if console:
+                    console.print(f"    [dim]unresolvable answer for {tmpl_label}."
+                                  f"{partial.missing_slot} = {answer_str!r}"
+                                  f"{(' — ' + reason) if reason else ''}[/dim]")
                 continue
             complete = dict(partial.known_bindings)
             complete[partial.missing_slot] = binding
@@ -453,9 +467,12 @@ def confirm_loop(
                     graph.add(triple)
                     new_triples_count += 1
             if console:
-                tmpl_label = partial.template.label or partial.template.slug
-                console.print(f"    [dim]confirmed {tmpl_label}: "
-                              f"{partial.missing_slot} = {answer_str}[/dim]")
+                msg = (f"    [dim]confirmed {tmpl_label}: "
+                       f"{partial.missing_slot} = {answer_str}")
+                if reason:
+                    msg += f" — {reason}"
+                msg += "[/dim]"
+                console.print(msg)
 
         if new_triples_count == 0:
             break
@@ -513,8 +530,15 @@ def _batched_confirm_call(
     return _parse_batched_response(text, qids=[qid for qid, _ in questions])
 
 
-def _parse_batched_response(text: str, *, qids: list[str]) -> dict[str, str]:
-    """Parse {Qid: answer} JSON from the LLM, tolerant of code fences."""
+def _parse_batched_response(text: str, *, qids: list[str]) -> dict[str, dict]:
+    """Parse `{Qid: {"answer": ..., "reason": ...}}` from the LLM.
+
+    Tolerant of:
+      - code fences around the JSON
+      - trailing prose after the closing `}` (LLMs often append explanation)
+      - the legacy flat-string shape (`{"Q1": "answer"}`) — wraps it as
+        `{"answer": "answer", "reason": ""}` so callers don't break.
+    """
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```", 2)[1] if cleaned.count("```") >= 2 else cleaned
@@ -530,12 +554,18 @@ def _parse_batched_response(text: str, *, qids: list[str]) -> dict[str, str]:
         return {}
     if not isinstance(payload, dict):
         return {}
-    out: dict[str, str] = {}
+    out: dict[str, dict] = {}
     for qid in qids:
         v = payload.get(qid)
         if v is None:
             continue
-        out[qid] = str(v).strip()
+        if isinstance(v, dict):
+            answer = str(v.get("answer", "") or "").strip()
+            reason = str(v.get("reason", "") or "").strip()
+        else:
+            answer = str(v).strip()
+            reason = ""
+        out[qid] = {"answer": answer, "reason": reason}
     return out
 
 

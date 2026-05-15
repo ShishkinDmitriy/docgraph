@@ -124,10 +124,18 @@ expressive — you may propose a new ext: class. Constraints:
     "Rechnung" not "rechnung"; preserve all-caps acronyms like "IBAN"
     or "BIC"), and `comment` (1-3 sentence natural-language definition,
     free-form prose).
-  - Use proposals sparingly — only when an existing class genuinely
-    doesn't fit. Don't propose `ext:Person` (use `lis:Person`).
-    Don't propose for one-off entities.
-  - Same conceptual class across docs should have the same `slug`
+  - Don't propose what already exists. Don't propose `ext:Person`
+    (use `lis:Person`). Don't propose for purely-descriptive
+    qualifiers ("informal", "draft") — those aren't classes, they're
+    qualifiers and don't belong in the type system.
+  - DO propose whenever an entity belongs to a coherent kind that
+    LIS-14 doesn't have a class for — even "one-off" instances in
+    this document. E.g. a phone number is `ext:PhoneNumber`, an
+    email is `ext:EmailAddress`, an IBAN is `ext:IBAN`, a tax
+    identifier is `ext:TaxIdentifier`. The whole point of ext: is to
+    capture these recurring kinds; future docs that contain similar
+    entities will REUSE the slug rather than re-proposing it.
+  - Same conceptual class across docs MUST have the same `slug`
     (e.g. always "IBAN", never "IBAN_code" one time and "IBANcode"
     another). The "Existing extension classes" section above shows
     what's already proposed — reuse exactly when applicable.
@@ -135,6 +143,12 @@ expressive — you may propose a new ext: class. Constraints:
 If you propose a class with slug "IBAN" you must use it as a type:
 the entity carries `types: ["ext:IBAN"]`. The class anchor handles
 the placement in the hierarchy.
+
+There is NO informal `type_hint` escape hatch — every entity must
+carry one or more concrete CURIEs in `types`, either an existing
+class or one you've proposed in `new_classes`. If you find yourself
+wanting to "tag" an entity with a kind name, propose that kind as
+an `ext:` class instead.
 
 == PROPERTY CATALOG ==
 
@@ -190,7 +204,6 @@ put any explanations in the "notes" field.
       "name":        "<short canonical identifier>",
       "types":       ["<lis: or ext: curie>", ...],
       "evidence":    [{{"exact": "...", "anchor": "id-N"}}],
-      "type_hints":  ["..."],
       "properties":  [
         {{"property": "<curie>", "value": "..." or null,
           "value_entity": "<exact entity name>" or null,
@@ -377,9 +390,8 @@ def walk_mega(
     """Run the mega-call and materialize the result into a graph.
 
     The graph holds: all extracted entities (with type triples, label,
-    dg:typeHint, lis:representedBy fragment URIs), property triples,
-    template invocation lifted+lowered triples, role individuals, and
-    the proposed-extension-class definitions (so the per-doc graph is
+    lis:representedBy fragment URIs), property triples, and the
+    proposed-extension-class definitions (so the per-doc graph is
     self-contained).
     """
     id_to_class  = id_to_class  or {}
@@ -459,9 +471,6 @@ def walk_mega(
         for t in types:
             g.add((entity_uri, RDF.type, t))
         g.add((entity_uri, RDFS.label, Literal(name)))
-        for hint in inst.get("type_hints", []) or []:
-            if isinstance(hint, str) and hint.strip():
-                g.add((entity_uri, DG.typeHint, Literal(hint.strip())))
 
         # Evidence → fragment URIs (with class-N collapse).
         evidence_list, cited_ids = _process_evidence(
@@ -477,8 +486,6 @@ def walk_mega(
             label    = name,
             evidence = evidence_list,
             types    = list(types),
-            type_hints = [str(h).strip() for h in (inst.get("type_hints", []) or [])
-                          if isinstance(h, str) and h.strip()],
         )
         extracted.append(new_entity)
 

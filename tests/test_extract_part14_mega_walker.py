@@ -230,7 +230,6 @@ def test_entity_label_and_evidence_fragments_emitted(ontology, model):
         "entities": [
             {"name": "Acme Corp",
              "types": ["lis:Organization"],
-             "type_hints": ["Vendor"],
              "evidence": [{"exact": "Acme Corp", "anchor": "id-3"}]}
         ],
     }
@@ -239,11 +238,28 @@ def test_entity_label_and_evidence_fragments_emitted(ontology, model):
     inst = result.entities[0]
     assert (inst.uri, RDFS.label, Literal("Acme Corp")) in g
     assert (inst.uri, RDF.type, LIS.Organization) in g
-    assert (inst.uri, DG.typeHint, Literal("Vendor")) in g
     # Evidence becomes a lis:representedBy → md#id-3 fragment URI
     rep = list(g.objects(inst.uri, LIS.representedBy))
     assert len(rep) == 1
     assert str(rep[0]).endswith("#id-3")
+
+
+def test_type_hints_field_is_ignored_no_typeHint_triples(ontology, model):
+    """The mega-walker no longer accepts a `type_hints` field. If the LLM
+    emits one anyway (legacy), the materializer ignores it — no
+    dg:typeHint triples land. The LLM is supposed to either pick an
+    existing class or propose a new ext: class."""
+    payload = {
+        "entities": [
+            {"name": "030 676 61 84",
+             "types": ["lis:InformationObject"],
+             "type_hints": ["phone number"],   # legacy field — should be ignored
+             "evidence": [{"exact": "030", "anchor": "id-1"}]}
+        ],
+    }
+    result = _run(payload, ontology=ontology, model=model)
+    inst = result.entities[0]
+    assert list(result.graph.objects(inst.uri, DG.typeHint)) == []
 
 
 def test_evidence_collapses_to_class_when_all_members_cited(ontology, model):
