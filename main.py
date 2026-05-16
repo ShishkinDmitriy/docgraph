@@ -576,6 +576,130 @@ def view(target: str, no_open: bool):
         webbrowser.open(out_path.as_uri())
 
 
+# ── Delta-history CLI (versioned named graphs) ────────────────────────────
+
+
+@cli.command()
+@click.argument("target", required=True)
+def history(target: str):
+    """List the version history of a doc's graph deltas.
+
+    For every `<scope-prefix>.NNN.trig` delta file in the doc's scope,
+    prints: seq, step, +N/-M triple counts, agent (if recorded), timestamp.
+    Pass either a slug (registered in sources.ttl) or a path to the source.
+    """
+    from src.deltas import doc_scope, list_deltas_for_scope, read_delta
+
+    project_root = _find_project(Path.cwd())
+    slug = _resolve_slug(project_root, target)
+    g_dir = graphs_dir(project_root)
+
+    paths = list_deltas_for_scope(g_dir, doc_scope(slug))
+    if not paths:
+        console.print(f"[yellow]No delta files for[/yellow] [bold]{slug}[/bold].")
+        console.print(f"  (Looked under {g_dir.relative_to(project_root)}/doc-{slug}.NNN.trig)")
+        return
+
+    console.print(f"\n[bold]History[/bold]  {slug}\n")
+    for path in paths:
+        try:
+            delta = read_delta(path)
+        except ValueError as exc:
+            console.print(f"  [red]seq=? — {path.name}: {exc}[/red]")
+            continue
+        added_n   = len(delta.added)
+        removed_n = len(delta.removed)
+        added_str   = f"[green]+{added_n}[/green]"   if added_n   else "[dim]+0[/dim]"
+        removed_str = f"[red]-{removed_n}[/red]"     if removed_n else "[dim]-0[/dim]"
+        agent_str   = (f"  [dim]agent: {delta.agent}[/dim]" if delta.agent else "")
+        ts_str      = (f"  [dim]{delta.timestamp.isoformat()}[/dim]" if delta.timestamp else "")
+        console.print(f"  [bold]seq {delta.seq:>3}[/bold]  "
+                      f"{delta.step:<12} {added_str:>15} {removed_str:>15}"
+                      f"{ts_str}{agent_str}")
+    console.print()
+
+
+@cli.command()
+@click.argument("target", required=True)
+@click.argument("seq_a", type=int, required=True)
+@click.argument("seq_b", type=int, required=True)
+def diff(target: str, seq_a: int, seq_b: int):
+    """Show the composed (added, removed) diff between two seqs of a doc.
+
+    `materialize(at_seq=seq_b)` minus `materialize(at_seq=seq_a)` —
+    i.e. what triples got added/removed by the steps with seq in (seq_a, seq_b].
+    Useful to see "what did the dedup phase actually do" or "what did seqs
+    2..3 contribute" without grepping individual delta files.
+    """
+    from src.deltas import doc_scope, materialize
+
+    project_root = _find_project(Path.cwd())
+    slug = _resolve_slug(project_root, target)
+    g_dir = graphs_dir(project_root)
+    scope = doc_scope(slug)
+
+    state_a = materialize(g_dir, scope, at_seq=seq_a)
+    state_b = materialize(g_dir, scope, at_seq=seq_b)
+    a_set = set(state_a)
+    b_set = set(state_b)
+    added   = b_set - a_set
+    removed = a_set - b_set
+
+    console.print(f"\n[bold]Diff[/bold]  {slug}  "
+                  f"seq {seq_a} → {seq_b}\n")
+    console.print(f"  Added:   [green]+{len(added)}[/green] triples")
+    console.print(f"  Removed: [red]-{len(removed)}[/red] triples\n")
+
+    if added:
+        console.print("[bold green]+ Added[/bold green]")
+        for triple in sorted(added, key=str)[:50]:
+            console.print(f"  [green]+[/green]  {triple[0]}  {triple[1]}  {triple[2]}")
+        if len(added) > 50:
+            console.print(f"  [dim]…and {len(added) - 50} more[/dim]")
+        console.print()
+    if removed:
+        console.print("[bold red]- Removed[/bold red]")
+        for triple in sorted(removed, key=str)[:50]:
+            console.print(f"  [red]-[/red]  {triple[0]}  {triple[1]}  {triple[2]}")
+        if len(removed) > 50:
+            console.print(f"  [dim]…and {len(removed) - 50} more[/dim]")
+        console.print()
+
+
+@cli.command()
+@click.argument("target", required=True)
+@click.option("--at", "at_seq", type=int, default=None,
+              help="Materialize state at this seq (default: HEAD).")
+@click.option("--out", "out_path", type=click.Path(path_type=Path), default=None,
+              help="Output .ttl path (default: <slug>.snapshot.ttl in cwd).")
+def snapshot(target: str, at_seq: int | None, out_path: Path | None):
+    """Write a materialized snapshot (full Turtle) of a doc's scope.
+
+    Default writes HEAD (all deltas applied) to `<slug>.snapshot.ttl`
+    in the current directory. With `--at <seq>`, writes the historical
+    state after the step with that seq.
+    """
+    from src.deltas import copy_namespaces, doc_scope, materialize
+
+    project_root = _find_project(Path.cwd())
+    slug = _resolve_slug(project_root, target)
+    g_dir = graphs_dir(project_root)
+    scope = doc_scope(slug)
+
+    g = materialize(g_dir, scope, at_seq=at_seq)
+    if len(g) == 0:
+        console.print(f"[yellow]No triples to write[/yellow] for {slug}"
+                      f"{f' at seq={at_seq}' if at_seq is not None else ''}.")
+        return
+
+    suffix = f".snapshot.seq{at_seq:03d}.ttl" if at_seq is not None else ".snapshot.ttl"
+    if out_path is None:
+        out_path = Path.cwd() / f"{slug}{suffix}"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    g.serialize(destination=str(out_path), format="turtle")
+    console.print(f"  wrote   [dim]{out_path}[/dim] ({len(g)} triples)")
+
+
 @cli.command()
 @click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
 def status(directory: Path | None):
