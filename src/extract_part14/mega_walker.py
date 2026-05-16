@@ -440,7 +440,8 @@ def walk_mega(
 
     # ── New ext class proposals ──
     raw_new = payload.get("new_classes", []) or []
-    proposals = _parse_proposals(raw_new, source_uri=file_uri, ontology=ontology)
+    proposals = _parse_proposals(raw_new, source_uri=file_uri, ontology=ontology,
+                                 base_ns=base_ns)
     merged_existing, newly_added = merge_proposals(existing_ext, proposals)
     # Add the NEW class declarations to the per-doc graph (self-contained).
     for triple in class_definitions_graph(newly_added):
@@ -579,8 +580,15 @@ def walk_mega(
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 def _parse_proposals(raw_new: list, *, source_uri: URIRef | None,
-                     ontology: Graph) -> list[ExtClass]:
-    """Parse `new_classes` entries from the LLM response into ExtClass."""
+                     ontology: Graph, base_ns: Namespace) -> list[ExtClass]:
+    """Parse `new_classes` entries from the LLM response into ExtClass.
+
+    The new class lives in the doc's OWN namespace (`base_ns` —
+    `urn:docgraph:source:<slug>/`), not the project-wide ext: namespace.
+    So `Invoice` becomes `urn:docgraph:source:zahnrechnung2025/Invoice`,
+    next to the doc's entity URIs. Promotion (via `docgraph promote`)
+    later moves stable classes into the project ext: namespace.
+    """
     out: list[ExtClass] = []
     for raw in raw_new:
         if not isinstance(raw, dict):
@@ -612,6 +620,7 @@ def _parse_proposals(raw_new: list, *, source_uri: URIRef | None,
             alt_labels=alt_labels, comment=comment,
             provenance="proposed-by-llm",
             first_seen=source_uri,
+            namespace=base_ns,
         ))
     return out
 

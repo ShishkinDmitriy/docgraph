@@ -1,27 +1,25 @@
 """Cross-doc promotion of stable ext: classes.
 
-When the same ext: class is declared in multiple docs (e.g. doc 1
-proposed `ext:Invoice` and doc 2's dedup landed instances under that
-same URI), the class is "stable" — used widely enough to deserve a
-canonical home in the project-scope ontology rather than buried in
-whichever doc first proposed it.
+When the same class slug shows up in multiple docs (e.g. doc 1 proposed
+`Invoice` under its own namespace, and doc 2 did too), the class is
+"stable" — used widely enough to deserve a canonical home in the
+project-scope ext: ontology rather than buried in whichever docs
+first proposed it.
 
 `walk_promote()`:
-  1. Scans every per-doc graph for `ext:<slug> rdf:type owl:Class`
+  1. Scans every per-doc graph for ext-class declarations (matched by
+     `dg:provenance` marker, not URI prefix — so per-doc-namespaced
+     proposals are picked up).
+  2. Counts the distinct docs that DECLARE each slug.
+  3. For slugs meeting the threshold (default N≥2), builds a canonical
+     definition at the project EXT namespace by merging the duplicate
      declarations.
-  2. Counts the distinct docs that DECLARE each class.
-  3. For classes meeting the threshold (default N≥2), builds a
-     canonical definition by merging the duplicate declarations
-     (longest label/comment wins, altLabels union — same logic
-     `extract_classes_from_graph` already uses).
-  4. Emits a project-scope delta that ADDS the canonical definition.
-  5. Emits per-doc-scope deltas that REMOVE the class declarations
-     from each contributing doc (the URI is the same, so instances
-     in those docs continue to type correctly — they're now pointing
-     at a class defined in project scope).
-
-Instance triples (`<entity> rdf:type ext:Foo`) stay in their docs;
-only the class metadata moves.
+  4. Emits a project-scope delta that ADDS the canonical definition
+     (URI: `urn:docgraph:vocab:ext#<Slug>`, provenance "promoted").
+  5. Emits per-doc-scope deltas that REMOVE the per-doc class
+     declaration AND rewrite per-doc `<entity> rdf:type <doc-ns>/<Slug>`
+     into `<entity> rdf:type ext:<Slug>` so instances stay typed
+     against the now-canonical project URI.
 
 Existing project-scope classes (already promoted) aren't re-promoted.
 
@@ -37,7 +35,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rdflib import Graph, Literal, URIRef
+from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from src.deltas import (
@@ -58,6 +56,13 @@ from src.extract_part14.ext_ontology import (
     class_definitions_graph,
     extract_classes_from_graph,
 )
+
+SOURCE_NS = Namespace("urn:docgraph:source:")
+
+
+def _doc_local_uri(doc_slug: str, class_slug: str) -> URIRef:
+    """The URI a doc-local ext class lives at — ``urn:docgraph:source:<doc>/<Class>``."""
+    return URIRef(f"{SOURCE_NS}{doc_slug}/{class_slug}")
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +125,21 @@ def walk_promote(
         merged = extract_classes_from_graph(merge_graph).get(slug)
         if merged is None:
             continue
+        # Promotion moves the class into the project EXT namespace and
+        # stamps provenance = "promoted" (regardless of the per-doc
+        # source markers).
+        canonical = ExtClass(
+            slug       = merged.slug,
+            anchor     = merged.anchor,
+            label      = merged.label,
+            alt_labels = merged.alt_labels,
+            comment    = merged.comment,
+            provenance = "promoted",
+            first_seen = merged.first_seen,
+            namespace  = EXT,
+        )
         decisions.append(PromotionDecision(
-            slug=slug, canonical=merged, contributors=contribs,
+            slug=slug, canonical=canonical, contributors=contribs,
         ))
 
     if not decisions:
@@ -151,23 +169,35 @@ def walk_promote(
     )
     write_delta(project_delta, delta_path(project_root, project_scope(), project_seq))
 
-    # ── 4. Per-doc removals — drop the class definition triples
-    #    from each contributing doc's scope (instance triples remain).
-    per_doc_to_remove: dict[str, Graph] = defaultdict(_graph_with_ns_seed)
-    for d in decisions:
-        for triple in class_definitions_graph([d.canonical]):
-            for contrib in d.contributors:
-                per_doc_to_remove[contrib].add(triple)
+    # ── 4. Per-doc deltas — drop the per-doc class definition AND
+    #    rewrite instance type triples from the doc-local class URI
+    #    to the project-scope canonical URI (so instances stay typed).
+    per_doc_removed: dict[str, Graph] = defaultdict(_graph_with_ns_seed)
+    per_doc_added:   dict[str, Graph] = defaultdict(_graph_with_ns_seed)
 
-    for slug, removal_graph in per_doc_to_remove.items():
+    for d in decisions:
+        for contrib in d.contributors:
+            doc_local_uri = _doc_local_uri(contrib, d.slug)
+            # Remove the doc-local class definition (all triples about it).
+            doc_state = materialize(project_root, doc_scope(contrib))
+            for s, p, o in doc_state.triples((doc_local_uri, None, None)):
+                per_doc_removed[contrib].add((s, p, o))
+            # Rewrite instance type triples: rdf:type doc_local_uri →
+            # rdf:type canonical.uri.
+            for s in doc_state.subjects(RDF.type, doc_local_uri):
+                per_doc_removed[contrib].add((s, RDF.type, doc_local_uri))
+                per_doc_added[contrib].add((s, RDF.type, d.canonical.uri))
+
+    contributing_slugs = set(per_doc_removed) | set(per_doc_added)
+    for slug in contributing_slugs:
         scope = doc_scope(slug)
         seq   = next_seq(project_root, scope)
         delta = StepDelta(
             scope     = scope,
             step      = "promote",
             seq       = seq,
-            added     = Graph(),
-            removed   = removal_graph,
+            added     = per_doc_added.get(slug, Graph()),
+            removed   = per_doc_removed.get(slug, Graph()),
             parent_seq= seq - 1,
             agent     = agent,
             timestamp = timestamp,

@@ -10,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from rdflib import Graph, Literal, URIRef
+from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from src.deltas import (
@@ -33,11 +33,29 @@ from src.extract_part14.ext_ontology import (
 from src.extract_part14.promote import walk_promote
 
 
+def _doc_local_ns(doc_slug: str) -> Namespace:
+    """The per-doc namespace mega_walker mints into."""
+    return Namespace(f"urn:docgraph:source:{doc_slug}/")
+
+
 def _seed_doc_with_ext_class(tmp_path: Path, slug: str, cls: ExtClass,
                               seq: int = 1) -> None:
-    """Helper: write a doc-scope seq-N delta that declares one ext class."""
+    """Helper: write a doc-scope seq-N delta that declares one ext class
+    at the doc's OWN namespace — matching what `mega_walker` produces in
+    real runs. (The test author passes an ExtClass without setting
+    `namespace`; we re-key it to the doc's source namespace.)"""
+    local_cls = ExtClass(
+        slug       = cls.slug,
+        anchor     = cls.anchor,
+        label      = cls.label,
+        alt_labels = list(cls.alt_labels),
+        comment    = cls.comment,
+        provenance = cls.provenance,
+        first_seen = cls.first_seen,
+        namespace  = _doc_local_ns(slug),
+    )
     g = Graph()
-    for t in class_definitions_graph([cls]):
+    for t in class_definitions_graph([local_cls]):
         g.add(t)
     write_delta(
         StepDelta(scope=doc_scope(slug), step="extract", seq=seq, added=g,
@@ -85,44 +103,56 @@ def test_promote_emits_project_delta_when_threshold_met(tmp_path):
 
 def test_promote_removes_class_from_contributing_doc_scopes(tmp_path):
     """After promotion, each contributing doc's materialized scope no
-    longer has the class declaration — it's now in project scope only."""
+    longer has the doc-local class declaration — it's now in project
+    scope only, under the project ext: namespace."""
     cls = ExtClass(slug="Invoice", anchor=LIS.InformationObject, label="Invoice")
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
 
     walk_promote(tmp_path, threshold=2)
 
-    # Each doc's materialized state no longer declares the class
+    # Each doc's materialized state no longer declares the class — at
+    # either the doc-local URI (was there pre-promote) OR the project
+    # ext: URI (never lived in the doc scope).
     for slug in ("doc-a", "doc-b"):
         state = materialize(tmp_path, doc_scope(slug))
-        assert (EXT.Invoice, RDF.type, OWL.Class) not in state
-        assert (EXT.Invoice, RDFS.subClassOf, LIS.InformationObject) not in state
+        local_uri = _doc_local_ns(slug).Invoice
+        assert (local_uri,    RDF.type, OWL.Class) not in state
+        assert (local_uri,    RDFS.subClassOf, LIS.InformationObject) not in state
+        assert (EXT.Invoice,  RDF.type, OWL.Class) not in state
 
 
 def test_promote_preserves_instance_triples_in_contributors(tmp_path):
-    """The promote step removes only class metadata; instance triples
-    `<entity> rdf:type ext:Foo` stay in the contributing docs."""
-    cls = ExtClass(slug="Invoice", anchor=LIS.InformationObject, label="Invoice")
-    EX = URIRef("http://example.org/test/")
+    """The promote step removes only the class metadata; instance triples
+    survive — and get rewritten from the doc-local class URI to the
+    promoted project-scope URI so they stay typed."""
+    local_ns_a = _doc_local_ns("doc-a")
+    cls_local = ExtClass(slug="Invoice", anchor=LIS.InformationObject,
+                          label="Invoice", namespace=local_ns_a)
 
-    # Doc A has the class + an instance
+    # Doc A has the (doc-local) class + an instance typed at the doc-local URI.
     g_a = Graph()
-    for t in class_definitions_graph([cls]):
+    for t in class_definitions_graph([cls_local]):
         g_a.add(t)
-    g_a.add((URIRef("http://example.org/inv-a"), RDF.type, EXT.Invoice))
+    inv_a = URIRef("http://example.org/inv-a")
+    g_a.add((inv_a, RDF.type, local_ns_a.Invoice))
     write_delta(
         StepDelta(scope=doc_scope("doc-a"), step="extract", seq=1, added=g_a),
         delta_path(tmp_path, doc_scope("doc-a"), 1),
     )
-    _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
+    _seed_doc_with_ext_class(tmp_path, "doc-b",
+                              ExtClass(slug="Invoice",
+                                       anchor=LIS.InformationObject,
+                                       label="Invoice"))
 
     walk_promote(tmp_path, threshold=2)
 
     state = materialize(tmp_path, doc_scope("doc-a"))
-    # Class metadata gone
-    assert (EXT.Invoice, RDF.type, OWL.Class) not in state
-    # Instance triple still there (now pointing at the project-scope class)
-    assert (URIRef("http://example.org/inv-a"), RDF.type, EXT.Invoice) in state
+    # Doc-local class metadata gone
+    assert (local_ns_a.Invoice, RDF.type, OWL.Class) not in state
+    # Instance triple still there — now typed against the project ext: URI
+    assert (inv_a, RDF.type, local_ns_a.Invoice) not in state
+    assert (inv_a, RDF.type, EXT.Invoice) in state
 
 
 # ── merging across multiple docs ─────────────────────────────────────────

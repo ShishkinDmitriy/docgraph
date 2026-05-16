@@ -148,9 +148,11 @@ def test_round_trip_definitions_to_graph_and_back():
     assert iban.first_seen == URIRef("http://example.org/source/inv2025")
 
 
-def test_extract_skips_non_ext_classes():
-    """Classes outside the ext: namespace are ignored — this loader is
-    only for proposed/promoted classes, not the bundled ontology."""
+def test_extract_skips_classes_without_provenance_marker():
+    """Detection is by `dg:provenance` marker (proposed-by-llm / promoted),
+    not by URI namespace. A bare owl:Class without provenance is ignored —
+    the loader is only for proposed/promoted ext classes, regardless of
+    where their URI lives."""
     g = Graph()
     g.add((LIS.Outsider, RDF.type, OWL.Class))
     g.add((LIS.Outsider, RDFS.subClassOf, LIS.InformationObject))
@@ -170,6 +172,7 @@ def test_extract_merges_duplicate_definitions_across_docs():
     g.add((EXT.IBAN, RDFS.label, Literal("IBAN")))
     g.add((EXT.IBAN, RDFS.comment, Literal("Short.")))
     g.add((EXT.IBAN, SKOS.altLabel, Literal("BankAccountId")))
+    g.add((EXT.IBAN, DG.provenance, Literal("proposed-by-llm")))
     # Doc 2's definition (longer label, longer comment, different alts)
     g.add((EXT.IBAN, RDFS.label, Literal("IBAN code (ISO 13616)")))
     g.add((EXT.IBAN, RDFS.comment, Literal("A globally unique account identifier per ISO 13616.")))

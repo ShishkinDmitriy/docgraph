@@ -130,19 +130,25 @@ def test_ext_class_proposal_lands_in_graph_and_is_usable_as_type(ontology, model
     }
     result = _run(payload, ontology=ontology, model=model)
     g = result.graph
+    # Proposals live in the doc's OWN namespace (the test's base_ns) —
+    # they only escape to project ext: via `docgraph promote`.
+    local_ns = Namespace("http://example.org/src/test/")
+    invoice_uri = local_ns.Invoice
     # Class definition triples land in the per-doc graph
-    assert (EXT.Invoice, RDF.type, OWL.Class) in g
-    assert (EXT.Invoice, RDFS.subClassOf, LIS.InformationObject) in g
-    assert any("Bill"    in str(o) for o in g.objects(EXT.Invoice, RDFS.label)) or \
-           any(str(o) == "Invoice" for o in g.objects(EXT.Invoice, RDFS.label))
+    assert (invoice_uri, RDF.type, OWL.Class) in g
+    assert (invoice_uri, RDFS.subClassOf, LIS.InformationObject) in g
+    assert any("Bill"    in str(o) for o in g.objects(invoice_uri, RDFS.label)) or \
+           any(str(o) == "Invoice" for o in g.objects(invoice_uri, RDFS.label))
     # firstSeenIn carries the source file_uri so we know which doc proposed it
-    seen = list(g.objects(EXT.Invoice, DG.firstSeenIn))
+    seen = list(g.objects(invoice_uri, DG.firstSeenIn))
     assert URIRef("http://example.org/src/test/file") in seen
-    # And the entity carries ext:Invoice as one of its rdf:types
+    # And the entity carries the doc-local Invoice URI as one of its rdf:types
     inst = next((e for e in result.entities if e.label == "Invoice 1352"), None)
     assert inst is not None
-    assert (inst.uri, RDF.type, EXT.Invoice) in g
+    assert (inst.uri, RDF.type, invoice_uri) in g
     assert result.new_ext_classes and result.new_ext_classes[0].slug == "Invoice"
+    # Sanity: the project ext: namespace is NOT used for a fresh proposal.
+    assert (EXT.Invoice, RDF.type, OWL.Class) not in g
 
 
 def test_ext_class_label_and_alt_labels_normalized_to_camel_case(ontology, model):
@@ -162,9 +168,10 @@ def test_ext_class_label_and_alt_labels_normalized_to_camel_case(ontology, model
     }
     result = _run(payload, ontology=ontology, model=model)
     g = result.graph
-    label = next(g.objects(EXT.BankAccount, RDFS.label))
+    local_ns = Namespace("http://example.org/src/test/")
+    label = next(g.objects(local_ns.BankAccount, RDFS.label))
     assert str(label) == "BankAccount"
-    alts = sorted(str(o) for o in g.objects(EXT.BankAccount, SKOS.altLabel))
+    alts = sorted(str(o) for o in g.objects(local_ns.BankAccount, SKOS.altLabel))
     # Canonical label is excluded from alts; acronym preserved; CamelCase
     assert "Bankverbindung"     in alts
     assert "AccountInformation" in alts

@@ -71,7 +71,14 @@ def is_allowed_anchor(uri: URIRef) -> bool:
 
 @dataclass
 class ExtClass:
-    """One LLM-proposed extension class."""
+    """One LLM-proposed extension class.
+
+    The `namespace` decides WHERE the class URI lives:
+      - Doc-local proposal: `urn:docgraph:source:<slug>/` (the doc's
+        own base_ns) — the default for mega-walker-emitted proposals.
+      - Promoted/canonical: project-wide ext namespace
+        (`urn:docgraph:vocab:ext#`) — set by `docgraph promote`.
+    """
     slug:         str                                     # local-name (URI tail)
     anchor:       URIRef                                  # rdfs:subClassOf target
     label:        str                                     # rdfs:label canonical
@@ -79,10 +86,11 @@ class ExtClass:
     comment:      str            = ""                            # rdfs:comment
     provenance:   str            = "proposed-by-llm"             # dg:provenance status
     first_seen:   URIRef | None  = None                          # dg:firstSeenIn source
+    namespace:    Namespace      = field(default_factory=lambda: EXT)  # URI namespace
 
     @property
     def uri(self) -> URIRef:
-        return EXT[self.slug]
+        return self.namespace[self.slug]
 
 
 # ── Slug + label normalization ───────────────────────────────────────────
@@ -127,6 +135,27 @@ def to_camel_case(raw: str) -> str:
     return "".join(out)
 
 
+# ── URI helpers (split a class URI into namespace + slug) ────────────────
+
+
+def _slug_from_uri(uri: URIRef) -> str:
+    """Local-name part of a URI: everything after the last '/' or '#'."""
+    s = str(uri)
+    for sep in ("#", "/"):
+        if sep in s:
+            return s.rsplit(sep, 1)[1]
+    return s
+
+
+def _namespace_from_uri(uri: URIRef) -> Namespace:
+    """Everything in the URI up to and including the last '/' or '#'."""
+    s = str(uri)
+    for sep in ("#", "/"):
+        if sep in s:
+            return Namespace(s.rsplit(sep, 1)[0] + sep)
+    return Namespace(s)
+
+
 # ── Triple emission (for inclusion in per-doc extract graph) ─────────────
 
 def class_definitions_graph(classes: list[ExtClass] | dict[str, ExtClass]) -> Graph:
@@ -169,24 +198,37 @@ def class_definitions_graph(classes: list[ExtClass] | dict[str, ExtClass]) -> Gr
 # ── Triple consumption (for the "existing classes" prompt list) ──────────
 
 def extract_classes_from_graph(graph: Graph) -> dict[str, ExtClass]:
-    """Read ext: classes already declared anywhere in *graph*, keyed by slug.
+    """Read every LLM-proposed (or promoted) ext class in *graph*,
+    keyed by slug.
+
+    An ext class is detected by the presence of `dg:provenance` ∈
+    {"proposed-by-llm", "promoted"} — independent of URI namespace.
+    This lets us match BOTH doc-local proposals (URI under
+    `urn:docgraph:source:<slug>/`) and promoted classes (URI under the
+    project ext: namespace).
 
     Used to feed the mega-walker prompt with "here are the classes that
     already exist; prefer to reuse before proposing new ones." The graph
-    can be the union view of the project (per-doc graphs + ext.ttl); all
-    ext: declarations across docs accumulate here.
+    can be the union view of the project — all proposals across docs
+    accumulate here.
 
     For duplicate declarations of the same slug across docs, this loader
     is forgiving: it picks the longest non-empty label / comment as
-    canonical and unions altLabels.
+    canonical and unions altLabels. The `namespace` of the merged entry
+    keeps the first-seen URI's namespace (so the merged class still
+    has a stable URI).
     """
     classes: dict[str, ExtClass] = {}
+    proposed = {Literal("proposed-by-llm"), Literal("promoted")}
     for cls_uri in graph.subjects(RDF.type, OWL.Class):
         if not isinstance(cls_uri, URIRef):
             continue
-        if not str(cls_uri).startswith(str(EXT)):
+        # Match by provenance marker (works for both doc-local URIs
+        # under the source: namespace AND project-wide ext: URIs).
+        prov_objs = set(graph.objects(cls_uri, DG.provenance))
+        if not (prov_objs & proposed):
             continue
-        slug = str(cls_uri)[len(str(EXT)):]
+        slug = _slug_from_uri(cls_uri)
         anchor = next((o for o in graph.objects(cls_uri, RDFS.subClassOf)
                        if isinstance(o, URIRef)), None)
         if anchor is None:
@@ -212,6 +254,7 @@ def extract_classes_from_graph(graph: Graph) -> dict[str, ExtClass]:
                 comment    = comments[0] if comments else "",
                 provenance = provenance,
                 first_seen = first_seen,
+                namespace  = _namespace_from_uri(cls_uri),
             )
             continue
 
