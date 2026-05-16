@@ -171,3 +171,22 @@ dg:version          dg:extractable false .
 
 dg:text         a owl:DatatypeProperty ; rdfs:label "text"    ; rdfs:range xsd:string ; dg:extractable false .
 dg:locator      a owl:DatatypeProperty ; rdfs:label "locator" ; rdfs:range xsd:string ; dg:extractable false .
+
+# ── Versioned-graph deltas ────────────────────────────────────────────────────
+# Each pipeline step contributes a (added, removed) pair of named graphs to
+# one or more scopes (doc / project / RDL cache). Files live as `.trig`
+# under .docgraph/graphs/, with the per-graph metadata in the default graph.
+
+dg:Scope          a owl:Class ; rdfs:label "Scope" ; dg:extractable false ;
+    rdfs:comment "Identifier for a graph scope a step writes to: a doc, the project, or an RDL cache." .
+
+dg:GraphAddition  a owl:Class ; rdfs:label "GraphAddition" ; dg:extractable false ;
+    rdfs:comment "A named graph holding triples ADDED by one pipeline step." .
+
+dg:GraphRemoval   a owl:Class ; rdfs:label "GraphRemoval"  ; dg:extractable false ;
+    rdfs:comment "A named graph holding triples REMOVED by one pipeline step." .
+
+dg:scope        a owl:ObjectProperty   ; rdfs:label "scope"     ; rdfs:range dg:Scope    ; dg:extractable false .
+dg:step         a owl:DatatypeProperty ; rdfs:label "step"      ; rdfs:range xsd:string  ; dg:extractable false .
+dg:seq          a owl:DatatypeProperty ; rdfs:label "seq"       ; rdfs:range xsd:integer ; dg:extractable false .
+dg:parentSeq    a owl:DatatypeProperty ; rdfs:label "parentSeq" ; rdfs:range xsd:integer ; dg:extractable false .
