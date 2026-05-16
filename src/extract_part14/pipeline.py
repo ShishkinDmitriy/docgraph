@@ -25,6 +25,13 @@ from src.extract_part14.property_walker import infer_cross_entity_links
 from src.extract_part14.template_recognizer import walk_templates
 from src.extract_part14.ext_dedup import walk_dedup
 from src.embeddings import EmbeddingClient, EmbeddingError, EmbeddingStore
+from src.deltas import (
+    StepDelta,
+    delta_path,
+    doc_scope,
+    next_seq,
+    write_delta,
+)
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
 from src.ingest import (
     IngestError,
@@ -176,6 +183,23 @@ def extract_pdf_part14(
     g_convert.add((agent_uri, RDFS.label,  Literal(model.label)))
     g_convert.add((agent_uri, DG.provider, Literal(model.provider)))
     g_convert.add((agent_uri, DG.modelId,  Literal(model.model_id)))
+
+    # ── CONVERT DELTA — emit alongside the HEAD .convert.ttl snapshot.
+    # First convert of a new doc is seq=1; if the doc is being re-extracted
+    # (--force or --reconvert) we let next_seq pick the next number
+    # (older deltas remain as audit trail under their old seqs).
+    convert_scope = doc_scope(slug)
+    convert_seq   = next_seq(g_dir, convert_scope)
+    convert_delta = StepDelta(
+        scope     = convert_scope,
+        step      = "convert",
+        seq       = convert_seq,
+        added     = g_convert,
+        parent_seq= convert_seq - 1,
+        agent     = agent_uri,
+        timestamp = convert_ended,
+    )
+    write_delta(convert_delta, delta_path(g_dir, convert_scope, convert_seq))
 
     # ── EXTRACT LAYER — subject + entities + properties + quotes ──
     # Separate graph from convert; written to a separate file. They share
