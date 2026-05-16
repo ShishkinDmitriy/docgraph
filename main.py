@@ -690,10 +690,10 @@ def diff(target: str, seq_a: int, seq_b: int):
 def snapshot(target: str, at_seq: int | None, out_path: Path | None, no_diagram: bool):
     """Write a materialized snapshot (Turtle + diagram) of a doc's scope.
 
-    Default writes HEAD (all deltas applied) to `docs/<slug>/graph.ttl` and
-    refreshes `docs/<slug>/diagram.{puml,svg}`. With `--at <seq>`, writes
-    the historical state after the step with that seq to
-    `docs/<slug>/graph.NNN.ttl` and `docs/<slug>/diagram.NNN.{puml,svg}`.
+    HEAD `graph.ttl` is auto-maintained on every `write_delta`, so the
+    no-arg form is mostly there to refresh the diagram alongside it. With
+    `--at <seq>`, writes the historical state after the step with that
+    seq to `docs/<slug>/graph.NNN.ttl` and `docs/<slug>/diagram.NNN.*`.
     """
     from src.deltas import doc_scope, materialize
     from src.project import graph_ttl_path
