@@ -71,7 +71,7 @@ class PromotionDecision:
 
 
 def walk_promote(
-    graphs_dir: Path,
+    project_root: Path,
     *,
     threshold: int = 2,
     agent:     URIRef | None = None,
@@ -80,7 +80,7 @@ def walk_promote(
 ) -> list[PromotionDecision]:
     """Scan + promote ext: classes used in ≥threshold docs.
 
-    Returns the list of promotions made. Mutates the graphs_dir by
+    Returns the list of promotions made. Mutates files under project_root by
     writing one project-scope delta + one delta per contributing doc.
     """
     timestamp = timestamp or datetime.now(timezone.utc)
@@ -89,14 +89,14 @@ def walk_promote(
     declarations_by_slug: dict[str, list[ExtClass]] = defaultdict(list)
     doc_scopes_seen: list[str] = []
 
-    project_state = materialize(graphs_dir, project_scope())
+    project_state = materialize(project_root, project_scope())
     already_promoted = set(extract_classes_from_graph(project_state).keys())
 
-    for scope in list_scopes(graphs_dir):
+    for scope in list_scopes(project_root):
         if scope.kind != "doc" or not scope.name:
             continue
         doc_scopes_seen.append(scope.name)
-        doc_state = materialize(graphs_dir, scope)
+        doc_state = materialize(project_root, scope)
         per_doc_classes = extract_classes_from_graph(doc_state)
         for slug, cls in per_doc_classes.items():
             if slug in already_promoted:
@@ -139,7 +139,7 @@ def walk_promote(
             project_added.add((d.canonical.uri, DG.firstSeenIn,
                                URIRef(f"urn:docgraph:scope/doc/{contrib}")))
 
-    project_seq = next_seq(graphs_dir, project_scope())
+    project_seq = next_seq(project_root, project_scope())
     project_delta = StepDelta(
         scope     = project_scope(),
         step      = "promote",
@@ -149,7 +149,7 @@ def walk_promote(
         agent     = agent,
         timestamp = timestamp,
     )
-    write_delta(project_delta, delta_path(graphs_dir, project_scope(), project_seq))
+    write_delta(project_delta, delta_path(project_root, project_scope(), project_seq))
 
     # ── 4. Per-doc removals — drop the class definition triples
     #    from each contributing doc's scope (instance triples remain).
@@ -161,7 +161,7 @@ def walk_promote(
 
     for slug, removal_graph in per_doc_to_remove.items():
         scope = doc_scope(slug)
-        seq   = next_seq(graphs_dir, scope)
+        seq   = next_seq(project_root, scope)
         delta = StepDelta(
             scope     = scope,
             step      = "promote",
@@ -172,7 +172,7 @@ def walk_promote(
             agent     = agent,
             timestamp = timestamp,
         )
-        write_delta(delta, delta_path(graphs_dir, scope, seq))
+        write_delta(delta, delta_path(project_root, scope, seq))
 
     if console:
         for d in decisions:

@@ -28,13 +28,24 @@ ISO15926_ANNOTATIONS_FILENAME    = "iso-15926-2-annotations.rdf"
 PROV_O_FILENAME                  = "prov-o.ttl"
 DCTERMS_FILENAME                 = "dcterms.ttl"
 SOURCES_FILENAME                 = "sources.ttl"
-GRAPHS_SUBDIR                    = "graphs"
 CACHE_SUBDIR                     = "cache"
-HTML_SUBDIR                      = "html"
-MD_SUBDIR                        = "md"
-ANNOTATED_SUBDIR                 = "annotated"
 ONTOLOGIES_SUBDIR                = "ontologies"
 EXT_FILENAME                     = "ext.ttl"
+
+# Legacy (Part 2 + dormant Part 14 enrich) — flat `graphs/` directory
+# that holds per-source .ttl files. New Part 14 code uses the per-doc
+# layout below instead.
+GRAPHS_SUBDIR                    = "graphs"
+
+# Per-scope grouping (Part 14, current layout).
+DOCS_SUBDIR                      = "docs"        # docs/<slug>/...
+PROJECT_SCOPE_SUBDIR             = "project"     # project/...
+RDL_SCOPE_SUBDIR                 = "rdl"         # rdl/<id>/...
+
+# Filenames inside a scope's dir.
+CANONICAL_HTML_FILENAME          = "canonical.html"   # the LLM-rendered HTML
+PROMPT_MD_FILENAME               = "prompt.md"        # the markdown view fed to LLM
+ANNOTATED_HTML_FILENAME          = "annotated.html"   # derived viewer artifact
 
 # Pipelines (see ARCHITECTURE.md § Pipelines — Part 2 and Part 14 in parallel)
 PIPELINE_PART2  = "part2"
@@ -57,7 +68,6 @@ _BUNDLED_ONTOLOGIES = [
 ]
 
 # Files that may be left over from the pre-Part-2 layout. Removed during migration.
-_STALE_FILES = ("lis-14.ttl",)
 
 
 def find_project_root(start: Path | None = None) -> Path | None:
@@ -105,42 +115,59 @@ def sources_path(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / SOURCES_FILENAME
 
 
-def graphs_dir(project_root: Path) -> Path:
-    return project_root / DOCGRAPH_DIR / GRAPHS_SUBDIR
-
-
 def cache_dir(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / CACHE_SUBDIR
 
 
-def html_dir(project_root: Path) -> Path:
-    """Where canonical (immutable) HTML documents live.
-
-    One HTML file per *document* extracted from a PDF — a single PDF may
-    yield multiple HTML files when it carries several distinct documents
-    (invoice + receipt, article + appendix). The HTML is the source of
-    truth for structure + atomic-unit IDs; the markdown view is derived
-    on demand. See docs/architecture/html-pipeline.md."""
-    return project_root / DOCGRAPH_DIR / HTML_SUBDIR
+def graphs_dir(project_root: Path) -> Path:
+    """Legacy `.docgraph/graphs/` — used by the Part 2 pipeline and the
+    (dormant) Part 14 enrich step that still writes flat .ttl files.
+    New Part 14 code uses `doc_dir(slug)` per the per-scope layout."""
+    return project_root / DOCGRAPH_DIR / GRAPHS_SUBDIR
 
 
-def md_dir(project_root: Path) -> Path:
-    """Where the LLM-prompt-ready markdown view of each doc is cached.
-
-    The markdown is a deterministic projection of the canonical HTML
-    (via `render_markdown_view`) with `{#id-N}` anchor markers preserved
-    so evidence URIs (`<html#id-N>`) point back into the HTML. Cached
-    on disk so `docgraph extract` is reproducible (same prompt → same
-    LLM input) and for inspection of what the LLM actually saw."""
-    return project_root / DOCGRAPH_DIR / MD_SUBDIR
+# ── Per-scope dirs (one dir per scope kind + name) ─────────────────────────
 
 
-def annotated_dir(project_root: Path) -> Path:
-    """Where derived annotated-HTML viewer artifacts live.
+def doc_dir(project_root: Path, slug: str) -> Path:
+    """`.docgraph/docs/<slug>/` — every artifact for one doc lives here:
+    delta.NNN.trig files, canonical.html (LLM-rendered), prompt.md
+    (LLM-prompt view), annotated.html (derived viewer), snapshot.*.ttl
+    (on demand). Easy to `rm -rf` a single doc."""
+    return project_root / DOCGRAPH_DIR / DOCS_SUBDIR / slug
 
-    Generated on demand by `docgraph view <slug>` from canonical HTML +
-    extracted graph. Never the source of truth — regenerable any time."""
-    return project_root / DOCGRAPH_DIR / ANNOTATED_SUBDIR
+
+def project_scope_dir(project_root: Path) -> Path:
+    """`.docgraph/project/` — project-scope deltas (e.g. promoted ext
+    classes), parallel structure to doc dirs."""
+    return project_root / DOCGRAPH_DIR / PROJECT_SCOPE_SUBDIR
+
+
+def rdl_scope_dir(project_root: Path, rdl_id: str) -> Path:
+    """`.docgraph/rdl/<id>/` — cached remote RDL data as deltas."""
+    return project_root / DOCGRAPH_DIR / RDL_SCOPE_SUBDIR / rdl_id
+
+
+# ── Per-doc artifact paths (the typed files inside a doc_dir) ──────────────
+
+
+def canonical_html_path(project_root: Path, slug: str) -> Path:
+    """`.docgraph/docs/<slug>/canonical.html` — LLM-rendered HTML.
+    Source of truth for structure + atomic-unit IDs."""
+    return doc_dir(project_root, slug) / CANONICAL_HTML_FILENAME
+
+
+def prompt_md_path(project_root: Path, slug: str) -> Path:
+    """`.docgraph/docs/<slug>/prompt.md` — markdown projection of the
+    canonical HTML that's fed to the extract LLM as the prompt input.
+    Cached on disk so the LLM call is reproducible + inspectable."""
+    return doc_dir(project_root, slug) / PROMPT_MD_FILENAME
+
+
+def annotated_html_path(project_root: Path, slug: str) -> Path:
+    """`.docgraph/docs/<slug>/annotated.html` — derived viewer artifact
+    from `docgraph view <slug>`. Regenerable any time."""
+    return doc_dir(project_root, slug) / ANNOTATED_HTML_FILENAME
 
 
 def ontologies_dir(project_root: Path) -> Path:
@@ -307,59 +334,6 @@ def reset_sources(project_root: Path) -> None:
     sources_path(project_root).write_text(_SOURCES_TTL)
 
 
-def ensure_layout(project_root: Path, console: Console | None = None) -> None:
-    """Auto-migrate a stale .docgraph/ (pre-Part-2) to the current layout.
-
-    Idempotent. Safe to call before any operation that loads the combined
-    dataset. Does not touch graphs/, sources.ttl, or cache/.
-
-    - Copies any missing bundled ontology files (Part 2 RDF + annotations,
-      PROV-O, DCMI Terms).
-    - If meta.ttl still references Part 14, rewrites it for Part 2.
-    - Removes stale Part-14-era files.
-    """
-    dg_dir = project_root / DOCGRAPH_DIR
-    if not dg_dir.is_dir():
-        return  # not a project root; nothing to migrate
-
-    copied: list[str] = []
-    for source, fname, label in _BUNDLED_ONTOLOGIES:
-        dest = dg_dir / fname
-        if dest.exists():
-            continue
-        if not source.is_file():
-            raise FileNotFoundError(
-                f"Bundled ontology not found at {source} ({label}). "
-                "docgraph install is incomplete."
-            )
-        shutil.copy2(source, dest)
-        copied.append(fname)
-
-    rewrote_meta = False
-    meta = dg_dir / META_FILENAME
-    if meta.exists():
-        text = meta.read_text(encoding="utf-8")
-        if "part14" in text and "ISO-15926-2_2003" not in text:
-            meta.write_text(_META_TTL)
-            rewrote_meta = True
-
-    removed: list[str] = []
-    for stale in _STALE_FILES:
-        path = dg_dir / stale
-        if path.exists():
-            path.unlink()
-            removed.append(stale)
-
-    if console and (copied or rewrote_meta or removed):
-        console.print("[dim]migrated .docgraph layout to ISO 15926 Part 2:[/dim]")
-        for f in copied:
-            console.print(f"  [dim]+ {f}[/dim]")
-        if rewrote_meta:
-            console.print(f"  [dim]~ {META_FILENAME} (Part 2 prefix + imports)[/dim]")
-        for f in removed:
-            console.print(f"  [dim]- {f} (stale)[/dim]")
-
-
 def init_project(
     target: Path,
     console: Console,
@@ -381,7 +355,7 @@ def init_project(
         raise ValueError(f"unknown pipeline {pipeline!r}; expected one of {PIPELINES}")
 
     dg_dir   = target / DOCGRAPH_DIR
-    g_dir    = dg_dir / GRAPHS_SUBDIR
+    docs_dir = dg_dir / DOCS_SUBDIR
     c_dir    = dg_dir / CACHE_SUBDIR
 
     if dg_dir.exists() and not force:
@@ -390,7 +364,7 @@ def init_project(
         shutil.rmtree(dg_dir)
 
     dg_dir.mkdir(parents=True)
-    g_dir.mkdir()
+    docs_dir.mkdir()
     c_dir.mkdir()
     console.print(f"  created [dim]{dg_dir}[/dim] (pipeline: [bold]{pipeline}[/bold])")
 

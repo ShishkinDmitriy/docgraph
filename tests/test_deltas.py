@@ -66,8 +66,10 @@ def test_scope_is_hashable():
 
 def test_delta_path_format(tmp_path):
     p = delta_path(tmp_path, doc_scope("zahnrechnung2025"), 7)
-    assert p.name == "zahnrechnung2025.007.trig"
-    assert p.parent == tmp_path
+    assert p.name == "delta.007.trig"
+    # Doc-scope deltas now live under .docgraph/docs/<slug>/.
+    assert p.parent.name == "zahnrechnung2025"
+    assert p.parent.parent.name == "docs"
 
 
 def test_next_seq_starts_at_one(tmp_path):

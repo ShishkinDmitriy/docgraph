@@ -443,10 +443,25 @@ class _Renderer:
         for tok in tokens:
             self._emit(tok)
         text = "".join(self.out)
-        # Collapse 3+ blank lines down to 2 (paragraph break) so the MD
-        # doesn't accumulate runaway blank space across nested blocks.
-        text = re.sub(r"\n{3,}", "\n\n", text)
-        return text.strip() + "\n"
+        # Two-stage whitespace cleanup, robust against whitespace
+        # leaking out of inter-tag text runs:
+        #   1. Strip trailing whitespace from every line — those ` \n`
+        #      artifacts come from text tokens like `\n \n` that
+        #      `_normalize_inline` collapsed to a single space.
+        #   2. Collapse runs of blank lines to exactly one blank line —
+        #      keeps a paragraph break, drops noisy multi-blanks.
+        lines = [l.rstrip() for l in text.split("\n")]
+        out_lines: list[str] = []
+        prev_blank = False
+        for line in lines:
+            if line == "":
+                if not prev_blank:
+                    out_lines.append(line)
+                prev_blank = True
+            else:
+                out_lines.append(line)
+                prev_blank = False
+        return "\n".join(out_lines).strip() + "\n"
 
     # ── tokenization ──
 

@@ -20,11 +20,10 @@ from rdflib import Graph, Literal, URIRef
 from rdflib.namespace import RDF, RDFS
 from rich.console import Console
 
-from src.ingest import load_combined
+from src.deltas import doc_scope, materialize
 from src.project import DOCGRAPH_DIR
 
 DIAGRAMS_SUBDIR = "diagrams"
-EXT_NS          = "urn:docgraph:extraction:"
 PLANTUML_SERVER = "https://www.plantuml.com/plantuml"
 
 # rdf:type values we don't surface as stereotypes (noise / implicit).
@@ -59,13 +58,12 @@ def make_diagram(
     diagrams_dir = project_root / DOCGRAPH_DIR / DIAGRAMS_SUBDIR
     diagrams_dir.mkdir(exist_ok=True)
 
-    ext_uri = URIRef(f"{EXT_NS}{slug}")
-    combined = load_combined(project_root)
-    extraction_g = combined.graph(ext_uri)
+    # Materialize the doc-scope's HEAD state from its delta files.
+    extraction_g = materialize(project_root, doc_scope(slug))
     if len(extraction_g) == 0:
         raise DiagramError(
-            f"extraction graph {ext_uri} is empty or missing — "
-            f"is {slug!r} a PDF source that completed classification?"
+            f"doc-scope graph for {slug!r} is empty or missing — "
+            f"has the source been ingested via `docgraph add`?"
         )
     console.print(f"  extraction graph: [bold]{len(extraction_g)}[/bold] triple(s)")
 

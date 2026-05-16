@@ -145,20 +145,44 @@ class StepDelta:
 # ── File path helpers ───────────────────────────────────────────────────
 
 
-def delta_path(graphs_dir: Path, scope: Scope, seq: int) -> Path:
-    """Path for `<scope-prefix>.<seq:03d>.trig` under graphs_dir."""
-    return graphs_dir / f"{scope.filename_prefix}.{seq:03d}.trig"
+def scope_dir(project_root: Path, scope: Scope) -> Path:
+    """Per-scope directory under `.docgraph/`:
+      - doc:<slug> → `.docgraph/docs/<slug>/`
+      - project    → `.docgraph/project/`
+      - rdl:<id>   → `.docgraph/rdl/<id>/`
+
+    Every delta + snapshot + (for docs) the canonical html / prompt md
+    / annotated viewer file for one scope lives under this directory.
+    """
+    from src.project import (
+        DOCGRAPH_DIR, DOCS_SUBDIR, PROJECT_SCOPE_SUBDIR, RDL_SCOPE_SUBDIR,
+    )
+    dg = project_root / DOCGRAPH_DIR
+    if scope.kind == "doc":
+        return dg / DOCS_SUBDIR / scope.name
+    if scope.kind == "project":
+        return dg / PROJECT_SCOPE_SUBDIR
+    if scope.kind == "rdl":
+        return dg / RDL_SCOPE_SUBDIR / scope.name
+    raise ValueError(f"unknown scope kind: {scope.kind!r}")
 
 
-def list_deltas_for_scope(graphs_dir: Path, scope: Scope) -> list[Path]:
+def delta_path(project_root: Path, scope: Scope, seq: int) -> Path:
+    """`<scope_dir>/delta.<seq:03d>.trig` — the file for one step's delta."""
+    return scope_dir(project_root, scope) / f"delta.{seq:03d}.trig"
+
+
+def list_deltas_for_scope(project_root: Path, scope: Scope) -> list[Path]:
     """Every delta file for `scope`, ordered by seq (filename)."""
-    pattern = f"{scope.filename_prefix}.[0-9][0-9][0-9].trig"
-    return sorted(graphs_dir.glob(pattern))
+    sd = scope_dir(project_root, scope)
+    if not sd.is_dir():
+        return []
+    return sorted(sd.glob("delta.[0-9][0-9][0-9].trig"))
 
 
-def next_seq(graphs_dir: Path, scope: Scope) -> int:
+def next_seq(project_root: Path, scope: Scope) -> int:
     """Next available seq for `scope` (1 if no deltas yet)."""
-    paths = list_deltas_for_scope(graphs_dir, scope)
+    paths = list_deltas_for_scope(project_root, scope)
     if not paths:
         return 1
     last_seq_str = paths[-1].stem.rsplit(".", 1)[-1]
@@ -396,7 +420,7 @@ def delta_from_diff(
 # ── Materialize: compose deltas into the current state ─────────────────
 
 
-def materialize(graphs_dir: Path, scope: Scope, *, at_seq: int | None = None) -> Graph:
+def materialize(project_root: Path, scope: Scope, *, at_seq: int | None = None) -> Graph:
     """Compose the materialized state of `scope` at `at_seq` (or HEAD).
 
       state(scope, ≤ N) = ⋃ added.i  \\  ⋃ removed.i   for i ≤ N
@@ -406,7 +430,7 @@ def materialize(graphs_dir: Path, scope: Scope, *, at_seq: int | None = None) ->
     is silently no-op (rdflib Graph.remove behavior).
     """
     out = Graph()
-    for path in list_deltas_for_scope(graphs_dir, scope):
+    for path in list_deltas_for_scope(project_root, scope):
         delta = read_delta(path)
         if at_seq is not None and delta.seq > at_seq:
             break
@@ -419,16 +443,30 @@ def materialize(graphs_dir: Path, scope: Scope, *, at_seq: int | None = None) ->
     return out
 
 
-def list_scopes(graphs_dir: Path) -> list[Scope]:
-    """Discover every scope with at least one delta file under graphs_dir."""
-    seen: dict[str, Scope] = {}
-    for path in graphs_dir.glob("*.[0-9][0-9][0-9].trig"):
-        # Filename like `doc-zahnrechnung2025.001.trig` → prefix = `doc-zahnrechnung2025`
-        prefix = path.stem.rsplit(".", 1)[0]
-        if prefix in seen:
-            continue
-        seen[prefix] = _scope_from_filename_prefix(prefix)
-    return sorted(seen.values(), key=lambda s: s.filename_prefix)
+def list_scopes(project_root: Path) -> list[Scope]:
+    """Discover every scope with at least one delta file in the project."""
+    from src.project import (
+        DOCGRAPH_DIR, DOCS_SUBDIR, PROJECT_SCOPE_SUBDIR, RDL_SCOPE_SUBDIR,
+    )
+    dg = project_root / DOCGRAPH_DIR
+    out: list[Scope] = []
+
+    docs_root = dg / DOCS_SUBDIR
+    if docs_root.is_dir():
+        for child in sorted(docs_root.iterdir()):
+            if child.is_dir() and any(child.glob("delta.[0-9][0-9][0-9].trig")):
+                out.append(Scope(kind="doc", name=child.name))
+
+    proj = dg / PROJECT_SCOPE_SUBDIR
+    if proj.is_dir() and any(proj.glob("delta.[0-9][0-9][0-9].trig")):
+        out.append(Scope(kind="project"))
+
+    rdl_root = dg / RDL_SCOPE_SUBDIR
+    if rdl_root.is_dir():
+        for child in sorted(rdl_root.iterdir()):
+            if child.is_dir() and any(child.glob("delta.[0-9][0-9][0-9].trig")):
+                out.append(Scope(kind="rdl", name=child.name))
+    return out
 
 
 def _scope_from_filename_prefix(prefix: str) -> Scope:

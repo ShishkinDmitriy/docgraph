@@ -103,65 +103,30 @@ def build_dataset(project_root: Path) -> Dataset:
         g.parse(ext_path, format="turtle")
 
     # 5. Versioned-graph deltas — for every scope that has at least one
-    #    delta file (`<scope-prefix>.NNN.trig`), materialize the current
-    #    state and load it as a named graph at the scope's canonical URI.
-    #    Track which doc slugs are covered so we can skip their
-    #    redundant HEAD snapshots in step 6.
-    g_dir = graphs_dir(project_root)
-    doc_slugs_with_deltas: set[str] = set()
-    if g_dir.is_dir():
-        for scope in list_scopes(g_dir):
-            materialized = materialize(g_dir, scope)
-            if len(materialized) == 0:
-                continue
-            g = ds.graph(scope.uri)
-            for triple in materialized:
-                g.add(triple)
-            if scope.kind == "doc" and scope.name:
-                doc_slugs_with_deltas.add(scope.name)
+    #    delta file, materialize the current state and load it as a
+    #    named graph at the scope's canonical URI. Per-scope dirs:
+    #      doc:<slug>  → .docgraph/docs/<slug>/delta.NNN.trig
+    #      project     → .docgraph/project/delta.NNN.trig
+    #      rdl:<id>    → .docgraph/rdl/<id>/delta.NNN.trig
+    for scope in list_scopes(project_root):
+        materialized = materialize(project_root, scope)
+        if len(materialized) == 0:
+            continue
+        g = ds.graph(scope.uri)
+        for triple in materialized:
+            g.add(triple)
 
-    # 6. Per-source HEAD snapshot graphs — legacy support only. The
-    #    pipeline no longer writes .convert.ttl / .extract.ttl /
-    #    .templates.ttl automatically (use `docgraph snapshot` to
-    #    materialize on demand). For docs whose deltas are already
-    #    loaded we SKIP any such legacy snapshots to avoid double-
-    #    loading. Other .ttl files (foundationals dropped in graphs/,
-    #    user-curated data, on-demand snapshots) load as before.
-    if g_dir.is_dir():
-        for ttl in sorted(g_dir.glob("*.ttl")):
-            if _is_redundant_snapshot(ttl.name, doc_slugs_with_deltas):
-                continue
+    # 6. Legacy flat-`graphs/` directory — Part 2 / dormant Part 14
+    #    enrich still drop .ttl snapshots there. Load them so old
+    #    projects keep working.
+    legacy_g_dir = graphs_dir(project_root)
+    if legacy_g_dir.is_dir():
+        for ttl in sorted(legacy_g_dir.glob("*.ttl")):
             graph_uri = URIRef(f"urn:docgraph:source/{ttl.stem}")
             g = ds.graph(graph_uri)
             g.parse(ttl, format="turtle")
 
     return ds
-
-
-def _is_redundant_snapshot(filename: str, doc_slugs_with_deltas: set[str]) -> bool:
-    """True if `filename` is a legacy auto-snapshot (.convert.ttl,
-    .extract.ttl, .templates.ttl) OR an on-demand snapshot
-    (.<seq>.snapshot.ttl / .HEAD.snapshot.ttl) for a slug that already
-    has delta files loaded. Skipping avoids double-counting the same
-    triples (which RDF set semantics would dedupe but it's wasteful).
-    """
-    for suffix in (".convert.ttl", ".extract.ttl", ".templates.ttl",
-                   ".HEAD.snapshot.ttl"):
-        if filename.endswith(suffix):
-            slug = filename[: -len(suffix)]
-            if slug in doc_slugs_with_deltas:
-                return True
-    # `.<seq>.snapshot.ttl` — match the digit-only seq before .snapshot.ttl
-    if filename.endswith(".snapshot.ttl"):
-        stem = filename[: -len(".snapshot.ttl")]
-        # split off potential trailing `.<seq>` (3+ digits) — leaves the slug
-        for sep in ".":
-            parts = stem.rsplit(sep, 1)
-            if len(parts) == 2 and parts[1].isdigit():
-                slug = parts[0]
-                if slug in doc_slugs_with_deltas:
-                    return True
-    return False
 
 
 def foundational_graph_uri(slug: str) -> URIRef:

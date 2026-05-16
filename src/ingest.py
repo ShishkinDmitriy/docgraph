@@ -19,7 +19,6 @@ from rich.console import Console
 from src.project import (
     GRAPHS_SUBDIR,
     dcterms_path,
-    ensure_layout,
     graphs_dir,
     iso15926_annotations_path,
     iso15926_path,
@@ -53,11 +52,18 @@ def make_slug(name: str) -> str:
     return s or "source"
 
 
-def _unique_slug(base: str, graphs: Path) -> str:
-    """Return *base*, or base-2, base-3, ... if a graph file already uses it."""
+def _unique_slug(base: str, container: Path) -> str:
+    """Return *base*, or base-2, base-3, … if a graph artifact already uses it.
+
+    Looks for collision in either the legacy flat-`graphs/` layout
+    (`<slug>.ttl` / `<slug>.trig` siblings) OR the per-doc layout
+    (`<container>/<slug>/` subdirectory exists).
+    """
     candidate = base
     n = 2
-    while (graphs / f"{candidate}.ttl").exists() or (graphs / f"{candidate}.trig").exists():
+    while ((container / f"{candidate}.ttl").exists()
+            or (container / f"{candidate}.trig").exists()
+            or (container / candidate).is_dir()):
         candidate = f"{base}-{n}"
         n += 1
     return candidate
@@ -263,9 +269,6 @@ def load_combined(project_root: Path) -> Dataset:
     prov-o.ttl, and dcterms.ttl (the permanent backbone). Each ingested source
     lives in its own named graph.
     """
-    # Auto-heal stale projects (pre-Part-2 layout) before parsing.
-    ensure_layout(project_root)
-
     # default_union=True: SPARQL queries without explicit FROM clauses see the
     # union of every graph in the dataset — needed so subclasses defined in
     # named graphs (i.e. ingested sources) participate in classification.

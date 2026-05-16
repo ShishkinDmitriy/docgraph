@@ -23,11 +23,9 @@ from src.project import (
     DEFAULT_PIPELINE,
     PIPELINE_PART14,
     PIPELINES,
-    annotated_dir,
     cache_dir,
     find_project_root,
     graphs_dir,
-    html_dir,
     init_project,
     read_pipeline,
     reset_sources,
@@ -86,9 +84,16 @@ def clean(directory: Path | None, yes: bool):
         console.print("[red]Error:[/red] not a docgraph project (run `docgraph init`).")
         sys.exit(1)
 
-    g_dir = graphs_dir(project_root)
-    targets = sorted(p for p in g_dir.iterdir()
-                     if p.suffix in (".ttl", ".trig"))
+    # Per-doc dirs under docs/<slug>/ + legacy flat graphs/*.ttl files.
+    from src.project import DOCGRAPH_DIR, DOCS_SUBDIR
+    targets: list[Path] = []
+    docs_root = project_root / DOCGRAPH_DIR / DOCS_SUBDIR
+    if docs_root.is_dir():
+        targets.extend(sorted(p for p in docs_root.iterdir() if p.is_dir()))
+    legacy = graphs_dir(project_root)
+    if legacy.is_dir():
+        targets.extend(sorted(p for p in legacy.iterdir()
+                              if p.suffix in (".ttl", ".trig")))
 
     if not targets:
         console.print("[dim]Nothing to clean.[/dim]")
@@ -101,8 +106,12 @@ def clean(directory: Path | None, yes: bool):
     if not yes:
         click.confirm("Proceed?", abort=True)
 
+    import shutil
     for p in targets:
-        p.unlink()  # works for both files and symlinks
+        if p.is_dir():
+            shutil.rmtree(p)
+        else:
+            p.unlink()
 
     reset_sources(project_root)
 
@@ -182,11 +191,15 @@ def convert(input_path: Path, note: str | None, force: bool, debug: bool):
         sys.exit(2)
 
     client = _anthropic_client()
-    h_dir = html_dir(project_root)
-    h_dir.mkdir(parents=True, exist_ok=True)
+    # HTML lives inside the per-doc dir (`docs/<slug>/<pdf-stem>.html`).
+    from src.ingest import make_slug
+    from src.project import doc_dir as _doc_dir
+    slug = make_slug(source.stem)
+    sd = _doc_dir(project_root, slug)
+    sd.mkdir(parents=True, exist_ok=True)
     docs = load_or_extract_html(
         source, force=force, client=client, model=DEFAULT_VISION_MODEL,
-        con=console, note=note, html_dir=h_dir,
+        con=console, note=note, html_dir=sd,
     )
     console.print(f"  cached [bold]{len(docs)}[/bold] HTML document(s)")
 
@@ -454,24 +467,30 @@ def coverage(target: str):
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
 
-    # HTML file naming preserves the PDF stem's case; the slug is lowercased.
-    # Find a file whose name (case-insensitive) matches the slug.
-    h_dir = html_dir(project_root)
+    # HTML lives inside the per-doc dir (`docs/<slug>/<pdf-stem>.html`).
+    # PDF stem preserves case; slug is lowercased — match case-insensitive.
+    from src.project import doc_dir as _doc_dir
+    from src.deltas import doc_scope, materialize
+    sd = _doc_dir(project_root, slug)
     html_path: Path | None = None
-    if h_dir.exists():
-        for p in h_dir.glob("*.html"):
-            if p.stem.casefold() == slug.casefold():
+    if sd.exists():
+        for p in sd.glob("*.html"):
+            if p.name == "annotated.html":
+                continue
+            if p.stem.casefold() == slug.casefold() or p.name == "canonical.html":
                 html_path = p
                 break
-    graph_path = graphs_dir(project_root) / f"{slug}.extract.ttl"
 
-    if html_path is None:
-        console.print(f"[red]Error:[/red] no HTML file matching slug {slug!r} "
-                      f"in {h_dir.relative_to(project_root)}/")
+    # Materialize the extract graph from the doc-scope deltas to a temp
+    # file the coverage analyser can read.
+    import tempfile
+    g = materialize(project_root, doc_scope(slug))
+    if html_path is None or len(g) == 0:
+        console.print(f"[red]Error:[/red] {slug!r} not found (HTML or graph missing).")
         sys.exit(1)
-    if not graph_path.exists():
-        console.print(f"[red]Error:[/red] {graph_path} not found.")
-        sys.exit(1)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".ttl", delete=False) as tf:
+        graph_path = Path(tf.name)
+    g.serialize(destination=str(graph_path), format="turtle")
 
     report = coverage_for_files(html_path, graph_path)
 
@@ -546,26 +565,32 @@ def view(target: str, no_open: bool):
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
 
-    h_dir = html_dir(project_root)
+    from src.project import (
+        annotated_html_path as _ann_path,
+        doc_dir as _doc_dir,
+    )
+    from src.deltas import doc_scope, materialize
+    sd = _doc_dir(project_root, slug)
     html_path: Path | None = None
-    if h_dir.exists():
-        for p in h_dir.glob("*.html"):
-            if p.stem.casefold() == slug.casefold():
+    if sd.exists():
+        for p in sd.glob("*.html"):
+            if p.name == "annotated.html":
+                continue
+            if p.stem.casefold() == slug.casefold() or p.name == "canonical.html":
                 html_path = p
                 break
-    graph_path = graphs_dir(project_root) / f"{slug}.extract.ttl"
 
-    if html_path is None:
-        console.print(f"[red]Error:[/red] no HTML file matching slug {slug!r}.")
+    import tempfile
+    g = materialize(project_root, doc_scope(slug))
+    if html_path is None or len(g) == 0:
+        console.print(f"[red]Error:[/red] {slug!r} not found (HTML or graph missing).")
         sys.exit(1)
-    if not graph_path.exists():
-        console.print(f"[red]Error:[/red] {graph_path} not found.")
-        sys.exit(1)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".ttl", delete=False) as tf:
+        graph_path = Path(tf.name)
+    g.serialize(destination=str(graph_path), format="turtle")
 
-    out_dir = annotated_dir(project_root)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"{slug}.html"
-
+    out_path = _ann_path(project_root, slug)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     annotated = render_annotated_view(html_path, graph_path, title=slug)
     out_path.write_text(annotated, encoding="utf-8")
     console.print(f"  wrote   [dim]{out_path.relative_to(project_root)}[/dim]")
@@ -591,12 +616,13 @@ def history(target: str):
 
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
-    g_dir = graphs_dir(project_root)
 
-    paths = list_deltas_for_scope(g_dir, doc_scope(slug))
+    paths = list_deltas_for_scope(project_root, doc_scope(slug))
     if not paths:
+        from src.deltas import scope_dir
+        sd = scope_dir(project_root, doc_scope(slug))
         console.print(f"[yellow]No delta files for[/yellow] [bold]{slug}[/bold].")
-        console.print(f"  (Looked under {g_dir.relative_to(project_root)}/doc-{slug}.NNN.trig)")
+        console.print(f"  (Looked under {sd.relative_to(project_root)}/delta.NNN.trig)")
         return
 
     console.print(f"\n[bold]History[/bold]  {slug}\n")
@@ -634,11 +660,10 @@ def diff(target: str, seq_a: int, seq_b: int):
 
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
-    g_dir = graphs_dir(project_root)
     scope = doc_scope(slug)
 
-    state_a = materialize(g_dir, scope, at_seq=seq_a)
-    state_b = materialize(g_dir, scope, at_seq=seq_b)
+    state_a = materialize(project_root, scope, at_seq=seq_a)
+    state_b = materialize(project_root, scope, at_seq=seq_b)
     a_set = set(state_a)
     b_set = set(state_b)
     added   = b_set - a_set
@@ -684,21 +709,22 @@ def snapshot(target: str, at_seq: int | None, out_path: Path | None):
 
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
-    g_dir = graphs_dir(project_root)
     scope = doc_scope(slug)
 
-    g = materialize(g_dir, scope, at_seq=at_seq)
+    g = materialize(project_root, scope, at_seq=at_seq)
     if len(g) == 0:
         console.print(f"[yellow]No triples to write[/yellow] for {slug}"
                       f"{f' at seq={at_seq}' if at_seq is not None else ''}.")
         return
 
+    # Snapshot files live inside the scope's dir (docs/<slug>/snapshot.NNN.ttl).
+    from src.deltas import scope_dir
     if at_seq is not None:
-        default_name = f"{slug}.{at_seq:03d}.snapshot.ttl"
+        default_name = f"snapshot.{at_seq:03d}.ttl"
     else:
-        default_name = f"{slug}.HEAD.snapshot.ttl"
+        default_name = "snapshot.HEAD.ttl"
     if out_path is None:
-        out_path = g_dir / default_name
+        out_path = scope_dir(project_root, scope) / default_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
     g.serialize(destination=str(out_path), format="turtle")
     console.print(f"  wrote   [dim]{out_path}[/dim] ({len(g)} triples)")
@@ -726,7 +752,6 @@ def promote(threshold: int, dry_run: bool):
     from src.extract_part14.promote import walk_promote
 
     project_root = _find_project(Path.cwd())
-    g_dir = graphs_dir(project_root)
 
     if dry_run:
         # Build the decisions without writing — caller wants a preview
@@ -735,12 +760,12 @@ def promote(threshold: int, dry_run: bool):
         from src.extract_part14.ext_ontology import extract_classes_from_graph
         from collections import defaultdict
         contributors_by_slug: dict[str, list[str]] = defaultdict(list)
-        project_state = materialize(g_dir, project_scope())
+        project_state = materialize(project_root, project_scope())
         already_promoted = set(extract_classes_from_graph(project_state).keys())
-        for scope in list_scopes(g_dir):
+        for scope in list_scopes(project_root):
             if scope.kind != "doc" or not scope.name:
                 continue
-            per_doc_classes = extract_classes_from_graph(materialize(g_dir, scope))
+            per_doc_classes = extract_classes_from_graph(materialize(project_root, scope))
             for slug in per_doc_classes:
                 if slug in already_promoted:
                     continue
@@ -759,7 +784,7 @@ def promote(threshold: int, dry_run: bool):
         return
 
     console.print(f"[bold]promote[/bold]   (threshold ≥{threshold} docs)")
-    decisions = walk_promote(g_dir, threshold=threshold, console=console)
+    decisions = walk_promote(project_root, threshold=threshold, console=console)
     if not decisions:
         return
     console.print(f"  → promoted {len(decisions)} class(es) to project scope")

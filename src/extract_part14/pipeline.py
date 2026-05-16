@@ -54,12 +54,11 @@ from src.markdown_io import md_paths_for_pdf
 from src.models import ModelConfig
 from src.pdfinfo import pdfinfo
 from src.project import (
-    GRAPHS_SUBDIR,
-    HTML_SUBDIR,
+    canonical_html_path,
     cache_dir,
+    doc_dir,
     embeddings_path,
-    graphs_dir,
-    html_dir,
+    prompt_md_path,
     sources_path,
 )
 
@@ -103,13 +102,23 @@ def extract_pdf_part14(
     reg.parse(sources_path(project_root), format="turtle")
     _check_existing(reg, project_root, file_hash, force=force, console=console)
 
-    g_dir = graphs_dir(project_root)
-    slug  = _unique_slug(make_slug(source.stem), g_dir)
+    # Pick a unique slug — check both the new per-doc dir layout and
+    # the legacy flat-graphs layout for collisions.
+    from src.project import DOCGRAPH_DIR, DOCS_SUBDIR
+    docs_root = project_root / DOCGRAPH_DIR / DOCS_SUBDIR
+    docs_root.mkdir(parents=True, exist_ok=True)
+    slug = _unique_slug(make_slug(source.stem), docs_root)
+
     base_ns  = Namespace(f"{SOURCE_NS}{slug}/")
     file_uri = URIRef(SOURCE_NS[slug])
     doc_uri  = URIRef(base_ns["doc"])
     html_uri = URIRef(base_ns["html"])   # the canonical HTML view
     md_uri   = URIRef(base_ns["md"])     # the markdown projection LLM sees
+
+    # Doc dir for ALL artifacts (deltas + canonical.html + prompt.md +
+    # annotated.html + snapshots).
+    sd = doc_dir(project_root, slug)
+    sd.mkdir(parents=True, exist_ok=True)
 
     # ── pdfinfo metadata (local, no LLM) ──
     info = pdfinfo(source)
@@ -136,7 +145,7 @@ def extract_pdf_part14(
         mime_type    = "application/pdf",
         pdf_info     = info,
     )
-    recognize_seq   = next_seq(g_dir, convert_scope)
+    recognize_seq   = next_seq(project_root, convert_scope)
     recognize_delta = StepDelta(
         scope     = convert_scope,
         step      = "recognize",
@@ -145,7 +154,7 @@ def extract_pdf_part14(
         parent_seq= recognize_seq - 1,
         timestamp = _now(),
     )
-    write_delta(recognize_delta, delta_path(g_dir, convert_scope, recognize_seq))
+    write_delta(recognize_delta, delta_path(project_root, convert_scope, recognize_seq))
 
     # ── Convert PDF → HTML (cached, canonical, immutable) ──
     # The HTML is the source-of-truth artifact: structure + atomic-unit IDs
@@ -153,13 +162,12 @@ def extract_pdf_part14(
     # view rendered mechanically from the HTML — token-efficient for the
     # LLM, with `{#id-N}` markers per element so evidence cites by anchor.
     # See docs/architecture/html-pipeline.md.
-    h_dir = html_dir(project_root)
-    h_dir.mkdir(parents=True, exist_ok=True)
-
+    # HTML cache lives inside the per-doc dir: `docs/<slug>/<pdf-stem>.html`
+    # (and `…<pdf-stem>.<part>.html` for multi-doc PDFs).
     convert_started = _now()
     docs_raw = load_or_extract_html(
         source, force=reconvert, client=client, model=model,
-        con=console, note=note, html_dir=h_dir,
+        con=console, note=note, html_dir=sd,
     )
     convert_ended = _now()
 
@@ -190,17 +198,13 @@ def extract_pdf_part14(
             class_to_ids.setdefault(cls, set()).update(ids)
 
     # ── Resolve the canonical HTML path for fragment-URI anchoring ──
-    html_files = html_paths_for_pdf(source, h_dir)
+    html_files = html_paths_for_pdf(source, sd)
     html_file_path = html_files[0] if html_files else None
 
-    # ── Cache the markdown view to disk so the LLM prompt is reproducible
-    # and inspectable. The markdown is what the extract step actually
-    # feeds the LLM; registering it as a dg:MarkdownFile gives the prompt
-    # input a stable URI for provenance and a file to grep.
-    from src.project import md_dir as _md_dir
-    md_cache_dir = _md_dir(project_root)
-    md_cache_dir.mkdir(parents=True, exist_ok=True)
-    md_file_path = md_cache_dir / f"{slug}.md"
+    # ── Cache the markdown view to disk at `docs/<slug>/prompt.md` so
+    # the LLM prompt is reproducible and inspectable. Registered as a
+    # dg:MarkdownFile in the convert delta for provenance.
+    md_file_path = prompt_md_path(project_root, slug)
     md_file_path.write_text(full_markdown, encoding="utf-8")
 
     # ── CONVERT STEP (seq 2) — HtmlFile + MarkdownFile + conversion
@@ -227,7 +231,7 @@ def extract_pdf_part14(
     g_convert.add((agent_uri, DG.provider, Literal(model.provider)))
     g_convert.add((agent_uri, DG.modelId,  Literal(model.model_id)))
 
-    convert_seq   = next_seq(g_dir, convert_scope)
+    convert_seq   = next_seq(project_root, convert_scope)
     convert_delta = StepDelta(
         scope     = convert_scope,
         step      = "convert",
@@ -237,7 +241,7 @@ def extract_pdf_part14(
         agent     = agent_uri,
         timestamp = convert_ended,
     )
-    write_delta(convert_delta, delta_path(g_dir, convert_scope, convert_seq))
+    write_delta(convert_delta, delta_path(project_root, convert_scope, convert_seq))
 
     # ── EXTRACT LAYER — subject + entities + properties + quotes ──
     # Separate graph from convert; written to a separate file. They share
@@ -304,7 +308,7 @@ def extract_pdf_part14(
     # additions; nothing removed. Skipped when there's no extracted
     # content (markdown was empty).
     if len(g) > 0:
-        extract_seq = next_seq(g_dir, convert_scope)
+        extract_seq = next_seq(project_root, convert_scope)
         extract_delta = StepDelta(
             scope     = convert_scope,
             step      = "extract",
@@ -314,7 +318,7 @@ def extract_pdf_part14(
             agent     = agent_uri,
             timestamp = _now(),
         )
-        write_delta(extract_delta, delta_path(g_dir, convert_scope, extract_seq))
+        write_delta(extract_delta, delta_path(project_root, convert_scope, extract_seq))
 
     # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm,
     # folded IN PLACE on the doc-scope graph. The fold removes lowered
@@ -331,12 +335,12 @@ def extract_pdf_part14(
         templates_delta = delta_from_diff(
             g_before_templates, g,
             scope=convert_scope, step="templates",
-            seq=next_seq(g_dir, convert_scope),
-            parent_seq=next_seq(g_dir, convert_scope) - 1,
+            seq=next_seq(project_root, convert_scope),
+            parent_seq=next_seq(project_root, convert_scope) - 1,
             agent=agent_uri, timestamp=_now(),
         )
         if len(templates_delta.added) > 0 or len(templates_delta.removed) > 0:
-            write_delta(templates_delta, delta_path(g_dir, convert_scope, templates_delta.seq))
+            write_delta(templates_delta, delta_path(project_root, convert_scope, templates_delta.seq))
 
     # ── EXT-CLASS DEDUP PHASE — anchor-scoped embedding compare. New
     # ext: classes proposed by the LLM are folded into existing canonical
@@ -368,12 +372,12 @@ def extract_pdf_part14(
         dedup_delta = delta_from_diff(
             g_before_dedup, g,
             scope=convert_scope, step="dedup",
-            seq=next_seq(g_dir, convert_scope),
-            parent_seq=next_seq(g_dir, convert_scope) - 1,
+            seq=next_seq(project_root, convert_scope),
+            parent_seq=next_seq(project_root, convert_scope) - 1,
             agent=agent_uri, timestamp=_now(),
         )
         if len(dedup_delta.added) > 0 or len(dedup_delta.removed) > 0:
-            write_delta(dedup_delta, delta_path(g_dir, convert_scope, dedup_delta.seq))
+            write_delta(dedup_delta, delta_path(project_root, convert_scope, dedup_delta.seq))
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
@@ -385,12 +389,12 @@ def extract_pdf_part14(
     # graph_file pointer in sources.ttl points at the first delta
     # (the recognize delta — always present), giving the loader a
     # canonical anchor when discovering the source's graphs.
-    first_delta = delta_path(g_dir, convert_scope, recognize_seq)
+    first_delta = delta_path(project_root, convert_scope, recognize_seq)
     _register_source(
         project_root, slug, source, first_delta,
         file_hash=file_hash, file_size=file_size, mime_type="application/pdf",
     )
-    delta_files = sorted(g_dir.glob(f"{slug}.[0-9][0-9][0-9].trig"))
+    delta_files = sorted(sd.glob("delta.[0-9][0-9][0-9].trig"))
     console.print(f"  wrote   {len(delta_files)} delta file(s): "
                   f"[dim]{', '.join(p.name for p in delta_files)}[/dim]")
     console.print(f"  registered as [bold]{slug}[/bold]")

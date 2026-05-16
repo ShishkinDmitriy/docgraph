@@ -38,10 +38,14 @@ def _setup_project_with_doc(tmp_path: Path, slug: str = "demo") -> Path:
     # Register a fake source so the slug resolves through sources.ttl.
     fake_file = project / "fake.pdf"
     fake_file.write_bytes(b"")
-    convert_file = graphs_dir(project) / f"{slug}.convert.ttl"
-    convert_file.write_text("# placeholder", encoding="utf-8")
+    # graph_file is a registration anchor — points anywhere stable.
+    from src.deltas import scope_dir
+    sd = scope_dir(project, doc_scope(slug))
+    sd.mkdir(parents=True, exist_ok=True)
+    placeholder = sd / "anchor.txt"      # not matched by delta.NNN.trig glob
+    placeholder.write_text("", encoding="utf-8")
     _register_source(
-        project, slug, fake_file, convert_file,
+        project, slug, fake_file, placeholder,
         file_hash="sha256:abc", file_size=0, mime_type="application/pdf",
     )
 
@@ -52,7 +56,7 @@ def _setup_project_with_doc(tmp_path: Path, slug: str = "demo") -> Path:
     g1.add((EX["d1"], RDFS.label, Literal("Demo File")))
     write_delta(
         StepDelta(scope=doc_scope(slug), step="convert", seq=1, added=g1),
-        delta_path(graphs_dir(project), doc_scope(slug), 1),
+        delta_path(project, doc_scope(slug), 1),
     )
 
     # Seq 2: extract — adds 1 triple, removes 1 (re-label).
@@ -63,7 +67,7 @@ def _setup_project_with_doc(tmp_path: Path, slug: str = "demo") -> Path:
     write_delta(
         StepDelta(scope=doc_scope(slug), step="extract", seq=2,
                   added=g2_add, removed=g2_rm, parent_seq=1),
-        delta_path(graphs_dir(project), doc_scope(slug), 2),
+        delta_path(project, doc_scope(slug), 2),
     )
 
     return project
@@ -90,9 +94,12 @@ def test_history_when_no_deltas_yet(tmp_path, monkeypatch):
     init_project(project, Console(quiet=True), pipeline=PIPELINE_PART14)
     # Register a slug without any delta files
     fake_file = project / "x.pdf"; fake_file.write_bytes(b"")
-    convert_file = graphs_dir(project) / "empty.convert.ttl"
-    convert_file.write_text("", encoding="utf-8")
-    _register_source(project, "empty", fake_file, convert_file,
+    from src.deltas import scope_dir
+    sd = scope_dir(project, doc_scope("empty"))
+    sd.mkdir(parents=True, exist_ok=True)
+    placeholder = sd / "placeholder"
+    placeholder.write_text("", encoding="utf-8")
+    _register_source(project, "empty", fake_file, placeholder,
                      file_hash="sha256:0", file_size=0, mime_type="application/pdf")
 
     monkeypatch.chdir(project)
@@ -137,7 +144,8 @@ def test_snapshot_writes_head_state(tmp_path, monkeypatch):
     result = CliRunner().invoke(
         cli, ["snapshot", "demo"], catch_exceptions=False)
     assert result.exit_code == 0
-    out_file = graphs_dir(project) / "demo.HEAD.snapshot.ttl"
+    from src.deltas import scope_dir
+    out_file = scope_dir(project, doc_scope("demo")) / "snapshot.HEAD.ttl"
     assert out_file.is_file()
     g = Graph()
     g.parse(out_file, format="turtle")
@@ -152,7 +160,8 @@ def test_snapshot_at_historical_seq(tmp_path, monkeypatch):
     result = CliRunner().invoke(
         cli, ["snapshot", "demo", "--at", "1"], catch_exceptions=False)
     assert result.exit_code == 0
-    out_file = graphs_dir(project) / "demo.001.snapshot.ttl"
+    from src.deltas import scope_dir
+    out_file = scope_dir(project, doc_scope("demo")) / "snapshot.001.ttl"
     assert out_file.is_file()
     g = Graph()
     g.parse(out_file, format="turtle")
