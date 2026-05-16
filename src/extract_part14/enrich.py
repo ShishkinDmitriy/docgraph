@@ -448,7 +448,7 @@ def _curie(uri: URIRef) -> str:
     s = str(uri)
     for ns, prefix in (
         ("http://rds.posccaesar.org/ontology/lis14/rdl/", "lis"),
-        ("http://example.org/docgraph/meta#",          "dg"),
+        ("urn:docgraph:vocab:meta#",          "dg"),
         ("http://www.w3.org/ns/oa#",                   "oa"),
         ("http://www.w3.org/ns/prov#",                 "prov"),
         ("http://www.wikidata.org/entity/",            "wd"),

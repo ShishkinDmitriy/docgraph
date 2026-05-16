@@ -1,8 +1,8 @@
 # Instance-form template with a fully-reified Part 2 lowered body and a multi-
 # valued `references` slot. Mirrors the canonical example in ARCHITECTURE.md >
 # "Instance-form template — example".
-@prefix tpl:      <http://example.org/docgraph/template#> .
-@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix var:      <urn:tpl-var/> .
 @prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .

@@ -108,7 +108,7 @@ def test_effective_branches_skips_dg_plumbing(ontology):
     """dg:Document, dg:Quote, etc. (subClassOf lis:InformationObject via
     alignments) are marked dg:extractable false → never branches."""
     branches = axioms.effective_branches(ontology, namespace=str(LIS))
-    DG = "http://example.org/docgraph/meta#"
+    DG = "urn:docgraph:vocab:meta#"
     for plumbing in ("Document", "Chapter", "Quote", "File", "PdfFile", "MarkdownFile"):
         assert URIRef(DG + plumbing) not in branches
 

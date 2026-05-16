@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 
 from rdflib import Namespace, URIRef  # noqa: F401  (Namespace re-exported)
 
-DG  = Namespace("http://example.org/docgraph/meta#")
+DG  = Namespace("urn:docgraph:vocab:meta#")
 LIS = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
 OA  = Namespace("http://www.w3.org/ns/oa#")
 

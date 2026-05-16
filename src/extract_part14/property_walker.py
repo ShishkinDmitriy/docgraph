@@ -368,8 +368,8 @@ def _curie_for_logging(uri: URIRef) -> str:
     s = str(uri)
     for ns, prefix in (
         ("http://rds.posccaesar.org/ontology/lis14/rdl/", "lis"),
-        ("http://example.org/docgraph/lis14tpl#",      "lis14tpl"),
-        ("http://example.org/docgraph/meta#",          "dg"),
+        ("urn:docgraph:vocab:lis14tpl#",      "lis14tpl"),
+        ("urn:docgraph:vocab:meta#",          "dg"),
         ("http://www.w3.org/ns/oa#",                   "oa"),
         ("http://www.w3.org/ns/prov#",                 "prov"),
         ("http://www.w3.org/2002/07/owl#",             "owl"),
@@ -599,7 +599,7 @@ def walk_stage2(
     g = Graph()
     g.bind("dg",        DG)
     g.bind("lis",       LIS)
-    g.bind("lis14tpl",  Namespace("http://example.org/docgraph/lis14tpl#"))
+    g.bind("lis14tpl",  Namespace("urn:docgraph:vocab:lis14tpl#"))
     g.bind("oa",        OA)
     g.bind("rdfs",      RDFS)
     g.bind("xsd",       XSD)

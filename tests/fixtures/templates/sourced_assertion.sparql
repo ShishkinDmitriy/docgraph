@@ -1,4 +1,4 @@
-PREFIX dg: <http://example.org/docgraph/meta#>
+PREFIX dg: <urn:docgraph:vocab:meta#>
 PREFIX iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
@@ -9,7 +9,7 @@ SELECT * WHERE {
   ?anon_b1 iso15926:hasRepresented ?references .
   ?anon_b1 iso15926:hasSign ?quote .
   ?anon_b1 rdf:type iso15926:Description .
+  ?quote rdf:type dg:Quote .
   ?quote dg:locator ?locator .
   ?quote dg:text ?quoteText .
-  ?quote rdf:type dg:Quote .
 }

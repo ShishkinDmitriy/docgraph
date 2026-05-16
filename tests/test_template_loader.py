@@ -15,8 +15,8 @@ from src.templates.loader import (
 
 FIXTURES = Path(__file__).parent / "fixtures" / "templates"
 
-DOM = Namespace("http://example.org/docgraph/financial#")
-DG = Namespace("http://example.org/docgraph/meta#")
+DOM = Namespace("urn:docgraph:vocab:financial#")
+DG = Namespace("urn:docgraph:vocab:meta#")
 ISO = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
 PROV = Namespace("http://www.w3.org/ns/prov#")
 
@@ -170,7 +170,7 @@ def test_pattern_form_loads_explicit_lifted_and_no_slots():
 def test_missing_lowered_is_an_error(tmp_path):
     bad = tmp_path / "bad.ttl"
     bad.write_text(
-        "@prefix tpl: <http://example.org/docgraph/template#> .\n"
+        "@prefix tpl: <urn:docgraph:vocab:template#> .\n"
         "@prefix ex: <http://example.org/> .\n"
         "ex:T a tpl:Template .\n",
         encoding="utf-8",
@@ -194,7 +194,7 @@ def test_slot_outside_var_namespace_is_rejected(tmp_path):
     bad = tmp_path / "bad.ttl"
     bad.write_text(
         """\
-@prefix tpl: <http://example.org/docgraph/template#> .
+@prefix tpl: <urn:docgraph:vocab:template#> .
 @prefix ex:  <http://example.org/> .
 @prefix var: <urn:tpl-var/> .
 
@@ -214,7 +214,7 @@ def test_pattern_form_with_slots_is_rejected(tmp_path):
     bad = tmp_path / "bad.ttl"
     bad.write_text(
         """\
-@prefix tpl: <http://example.org/docgraph/template#> .
+@prefix tpl: <urn:docgraph:vocab:template#> .
 @prefix ex:  <http://example.org/> .
 @prefix var: <urn:tpl-var/> .
 

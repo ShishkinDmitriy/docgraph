@@ -1,10 +1,10 @@
-@prefix dg:   <http://example.org/docgraph/meta#> .
+@prefix dg:   <urn:docgraph:vocab:meta#> .
 @prefix lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/> .
 @prefix owl:  <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 
-<http://example.org/docgraph/dg-part14-alignments>  a owl:Ontology ;
+<urn:docgraph:vocab:dg-part14-alignments>  a owl:Ontology ;
     rdfs:label   "DocGraph Part 14 alignments" ;
     rdfs:comment "Subclass alignments wiring DocGraph's structural classes (dg:Document, dg:Chapter, dg:Quote, dg:File, …) into the ISO 15926-14 (LIS-14) upper ontology. Loaded only by the part14 pipeline. Also carries skos:scopeNote and skos:example overlays on selected LIS-14 terms — behavioral guidance the extraction prompts surface to the LLM where the upstream rdfs:comment isn't actionable enough." .
 

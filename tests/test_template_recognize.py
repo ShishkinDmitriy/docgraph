@@ -19,11 +19,11 @@ from src.templates.recognize import recognize, to_sparql
 FIXTURES = Path(__file__).parent / "fixtures" / "templates"
 
 EX = Namespace("http://example.org/x/")
-DOM = Namespace("http://example.org/docgraph/financial#")
+DOM = Namespace("urn:docgraph:vocab:financial#")
 
 PREFIXES = """\
-@prefix dom:      <http://example.org/docgraph/financial#> .
-@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix dom:      <urn:docgraph:vocab:financial#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix prov:     <http://www.w3.org/ns/prov#> .
 @prefix ex:       <http://example.org/x/> .

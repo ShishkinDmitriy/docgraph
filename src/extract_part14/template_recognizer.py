@@ -49,8 +49,8 @@ logger = logging.getLogger(__name__)
 
 # Template namespaces — bound on the templates Graph so the serialized
 # TTL uses CURIEs (`lis14tpl:Foo` not `<http://example.org/.../Foo>`).
-_TPL      = Namespace("http://example.org/docgraph/template#")
-_LIS14TPL = Namespace("http://example.org/docgraph/lis14tpl#")
+_TPL      = Namespace("urn:docgraph:vocab:template#")
+_LIS14TPL = Namespace("urn:docgraph:vocab:lis14tpl#")
 _LIS      = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
 
 
@@ -111,7 +111,7 @@ def walk_templates(
 
     # ── Sub-phase 3: fold lowered → lifted ──
     g = Graph()
-    g.bind("ext",      Namespace("http://example.org/docgraph/ext#"))
+    g.bind("ext",      Namespace("urn:docgraph:vocab:ext#"))
     g.bind("tpl",      _TPL)
     g.bind("lis14tpl", _LIS14TPL)
     g.bind("lis",      _LIS)
@@ -193,7 +193,7 @@ def fold_templates_in_place(
 
     # Bind common namespaces if missing (so post-fold serialization
     # uses curated prefixes).
-    doc_graph.bind("ext",      Namespace("http://example.org/docgraph/ext#"), override=False)
+    doc_graph.bind("ext",      Namespace("urn:docgraph:vocab:ext#"), override=False)
     doc_graph.bind("tpl",      _TPL,      override=False)
     doc_graph.bind("lis14tpl", _LIS14TPL, override=False)
     doc_graph.bind("lis",      _LIS,      override=False)

@@ -4,7 +4,7 @@ the deltas in seq order.
 
 File shape (`.docgraph/graphs/<scope>.<seq:03d>.trig`):
 
-    @prefix dg:   <http://example.org/docgraph/meta#> .
+    @prefix dg:   <urn:docgraph:vocab:meta#> .
     @prefix prov: <http://www.w3.org/ns/prov#> .
     @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 
@@ -53,7 +53,7 @@ from rdflib.namespace import PROV, RDF, XSD
 logger = logging.getLogger(__name__)
 
 
-DG = Namespace("http://example.org/docgraph/meta#")
+DG = Namespace("urn:docgraph:vocab:meta#")
 
 # URI namespaces for delta named graphs and scope identifiers.
 DELTA_NS = "urn:docgraph:delta/"
@@ -209,21 +209,27 @@ def write_delta(delta: StepDelta, path: Path) -> None:
     added_uri   = delta.added_uri
     removed_uri = delta.removed_uri
     scope_uri   = delta.scope.uri
+    has_removed = len(delta.removed) > 0
 
-    # Default graph: per-graph metadata (classification + provenance).
+    # Default graph: classification + provenance. The removed graph's
+    # metadata is omitted entirely when there are no removals — keeps the
+    # file shorter and signals "additions-only" at a glance.
     default_g = ds.default_graph
-    _write_graph_meta(default_g, added_uri,   DG.GraphAddition,
+    _write_graph_meta(default_g, added_uri, DG.GraphAddition,
                       delta, scope_uri)
-    _write_graph_meta(default_g, removed_uri, DG.GraphRemoval,
-                      delta, scope_uri)
+    if has_removed:
+        _write_graph_meta(default_g, removed_uri, DG.GraphRemoval,
+                          delta, scope_uri)
 
-    # Named graphs: the actual delta data.
+    # Named graphs: the actual delta data. Empty removed graph is also
+    # not emitted (so the file has just one named-graph block).
     g_added = ds.graph(added_uri)
     for triple in delta.added:
         g_added.add(triple)
-    g_removed = ds.graph(removed_uri)
-    for triple in delta.removed:
-        g_removed.add(triple)
+    if has_removed:
+        g_removed = ds.graph(removed_uri)
+        for triple in delta.removed:
+            g_removed.add(triple)
 
     path.parent.mkdir(parents=True, exist_ok=True)
     ds.serialize(destination=str(path), format="trig")

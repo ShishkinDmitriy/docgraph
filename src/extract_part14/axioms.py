@@ -514,7 +514,7 @@ def is_extractable(dataset: Graph, term: URIRef) -> bool:
     Used by the walker to skip classes/properties marked as opt-out in
     `dg-part14-alignments.ttl` or any user-loaded ontology.
     """
-    DG_EXTRACTABLE = URIRef("http://example.org/docgraph/meta#extractable")
+    DG_EXTRACTABLE = URIRef("urn:docgraph:vocab:meta#extractable")
     for row in dataset.query(
         "SELECT ?v WHERE { ?term ?ext ?v }",
         initBindings={"term": term, "ext": DG_EXTRACTABLE},

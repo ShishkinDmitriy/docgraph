@@ -11,8 +11,8 @@ from src.templates.loader import load_template
 
 FIXTURES = Path(__file__).parent / "fixtures" / "templates"
 
-DOM = Namespace("http://example.org/docgraph/financial#")
-DG = Namespace("http://example.org/docgraph/meta#")
+DOM = Namespace("urn:docgraph:vocab:financial#")
+DG = Namespace("urn:docgraph:vocab:meta#")
 ISO = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
 EX = Namespace("http://example.org/x/")
 PROV = Namespace("http://www.w3.org/ns/prov#")

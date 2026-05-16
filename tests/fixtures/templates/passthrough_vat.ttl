@@ -1,8 +1,8 @@
 # Pass-through, instance-form template — single-triple lowered body identical
 # to the auto-derived lifted form (the degenerate case described in
 # ARCHITECTURE.md > "The reification spectrum").
-@prefix tpl:  <http://example.org/docgraph/template#> .
-@prefix dom:  <http://example.org/docgraph/financial#> .
+@prefix tpl:  <urn:docgraph:vocab:template#> .
+@prefix dom:  <urn:docgraph:vocab:financial#> .
 @prefix var:  <urn:tpl-var/> .
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .

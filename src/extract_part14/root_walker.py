@@ -692,10 +692,10 @@ def _curie(uri: URIRef) -> str:
     s = str(uri)
     for ns, prefix in (
         ("http://rds.posccaesar.org/ontology/lis14/rdl/", "lis"),
-        ("http://example.org/docgraph/lis14tpl#",      "lis14tpl"),
-        ("http://example.org/docgraph/template#",      "tpl"),
-        ("http://example.org/docgraph/ext#",           "ext"),
-        ("http://example.org/docgraph/meta#",          "dg"),
+        ("urn:docgraph:vocab:lis14tpl#",      "lis14tpl"),
+        ("urn:docgraph:vocab:template#",      "tpl"),
+        ("urn:docgraph:vocab:ext#",           "ext"),
+        ("urn:docgraph:vocab:meta#",          "dg"),
         ("http://www.w3.org/ns/oa#",                   "oa"),
         ("http://www.w3.org/ns/prov#",                 "prov"),
         ("http://www.w3.org/2002/07/owl#",             "owl"),

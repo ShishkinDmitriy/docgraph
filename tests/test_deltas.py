@@ -163,28 +163,43 @@ def test_round_trip_with_empty_removed(tmp_path):
 
 def test_classification_triples_in_default_graph(tmp_path):
     """Reading the file as a flat Turtle (ignoring named graphs) should
-    still surface the dg:GraphAddition / dg:GraphRemoval typing — the
-    metadata is in the default graph by design."""
+    surface dg:GraphAddition for the added graph. dg:GraphRemoval is
+    only emitted when there ARE removals (so files for additions-only
+    steps stay compact)."""
     s = doc_scope("foo")
     g_added = Graph(); g_added.add((EX.x, RDF.type, EX.Y))
     delta = StepDelta(scope=s, step="extract", seq=1, added=g_added)
     path = delta_path(tmp_path, s, 1)
     write_delta(delta, path)
 
-    # Read as TriG into a Dataset and inspect default graph
     from rdflib import Dataset
     ds = Dataset()
     ds.parse(path, format="trig")
     default_g = ds.default_graph
-    # There should be exactly one dg:GraphAddition and one dg:GraphRemoval
     additions = list(default_g.subjects(RDF.type, DG.GraphAddition))
     removals  = list(default_g.subjects(RDF.type, DG.GraphRemoval))
     assert len(additions) == 1
-    assert len(removals)  == 1
-    # Both should reference the doc scope
+    assert len(removals)  == 0       # additions-only step → no removal block
     scope_uri = doc_scope("foo").uri
-    for s_uri in additions + removals:
-        assert (s_uri, DG.scope, scope_uri) in default_g
+    assert (additions[0], DG.scope, scope_uri) in default_g
+
+
+def test_removal_metadata_emitted_only_when_non_empty(tmp_path):
+    """Companion regression to the above: when the delta DOES have
+    removals, the dg:GraphRemoval metadata + named-graph block both land."""
+    s = doc_scope("bar")
+    g_added = Graph(); g_added.add((EX.x, RDF.type, EX.Y))
+    g_removed = Graph(); g_removed.add((EX.gone, RDF.type, EX.Y))
+    write_delta(
+        StepDelta(scope=s, step="dedup", seq=2, added=g_added,
+                  removed=g_removed, parent_seq=1),
+        delta_path(tmp_path, s, 2),
+    )
+    from rdflib import Dataset
+    ds = Dataset()
+    ds.parse(delta_path(tmp_path, s, 2), format="trig")
+    removals = list(ds.default_graph.subjects(RDF.type, DG.GraphRemoval))
+    assert len(removals) == 1
 
 
 # ── Materialize composition ──────────────────────────────────────────────

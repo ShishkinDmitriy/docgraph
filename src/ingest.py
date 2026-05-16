@@ -28,9 +28,9 @@ from src.project import (
     sources_path,
 )
 
-DG = Namespace("http://example.org/docgraph/meta#")
+DG = Namespace("urn:docgraph:vocab:meta#")
 ISO15926 = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
-SOURCE_NS = Namespace("http://example.org/docgraph/source/")
+SOURCE_NS = Namespace("urn:docgraph:source:")
 
 TTL_SUFFIXES = {".ttl", ".n3"}
 
@@ -240,7 +240,11 @@ def list_sources(project_root: Path) -> list[dict]:
     for record in reg.subjects(RDF.type, DG.IngestionRecord):
         out.append({
             "uri":         str(record),
-            "slug":        str(record).rsplit("/", 1)[-1],
+            # New URN scheme: `urn:docgraph:source:<slug>` — slug is after
+            # the last `:`. Legacy http scheme: `…/source/<slug>` —
+            # slug is after the last `/`. Try `:` first (newer); fall back
+            # to `/` for legacy URIs.
+            "slug":        str(record).rsplit(":", 1)[-1].rsplit("/", 1)[-1],
             "label":       str(reg.value(record, RDFS.label)    or ""),
             "sourcePath":  str(reg.value(record, DG.filePath)   or ""),
             "graphFile":   str(reg.value(record, DG.graphFile)  or ""),
@@ -272,7 +276,7 @@ def load_combined(project_root: Path) -> Dataset:
     ds.parse(prov_o_path(project_root),                format="turtle")
     ds.parse(dcterms_path(project_root), format="turtle")
     g_dir = graphs_dir(project_root)
-    ext_base = "http://example.org/docgraph/extraction/"
+    ext_base = "urn:docgraph:extraction:"
     for f in sorted(g_dir.iterdir()):
         if f.suffix == ".ttl":
             if f.is_symlink():

@@ -146,7 +146,7 @@ def test_range_satisfied_rejects_wrong_object_type(ontology):
     represented_by = URIRef(LIS + "representedBy")
     person = URIRef(LIS + "Person")
     information_object = URIRef(LIS + "InformationObject")
-    quote_class = URIRef("http://example.org/docgraph/meta#Quote")  # dg:Quote ⊆ lis:InformationObject
+    quote_class = URIRef("urn:docgraph:vocab:meta#Quote")  # dg:Quote ⊆ lis:InformationObject
 
     assert axioms.range_satisfied(ontology, [person], represented_by) is False
     assert axioms.range_satisfied(ontology, [information_object], represented_by) is True

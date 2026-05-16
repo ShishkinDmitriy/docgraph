@@ -1,6 +1,6 @@
 # Lifted-form instance: V-101 labour cost USD 1,875.
-@prefix iso: <http://example.org/docgraph/iso#> .
-@prefix ex:  <http://example.org/docgraph/example#> .
+@prefix iso: <urn:docgraph:vocab:iso#> .
+@prefix ex:  <urn:docgraph:example:> .
 @prefix rdl: <http://data.15926.org/rdl/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 

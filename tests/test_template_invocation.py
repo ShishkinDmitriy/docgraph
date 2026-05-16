@@ -24,9 +24,9 @@ from src.templates.recognize import recognize
 
 FIXTURES = Path(__file__).parent / "fixtures" / "templates"
 
-DOM = Namespace("http://example.org/docgraph/financial#")
+DOM = Namespace("urn:docgraph:vocab:financial#")
 ISO = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
-TPL = Namespace("http://example.org/docgraph/template#")
+TPL = Namespace("urn:docgraph:vocab:template#")
 EX = Namespace("http://example.org/x/")
 
 

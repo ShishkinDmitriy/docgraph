@@ -3,7 +3,7 @@
 @prefix owl:    <http://www.w3.org/2002/07/owl#> .
 @prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
 
-<http://example.org/docgraph/bridge/schemaorg-lis14> a owl:Ontology ;
+<urn:docgraph:vocab:schemaorg-lis14> a owl:Ontology ;
     rdfs:label "Schema.org → ISO 15926 Part 14 bridge" ;
     rdfs:comment "Subclass alignment from schema.org receipt/invoice vocabulary to ISO 15926 Part 14 upper classes." ;
     owl:imports <http://rds.posccaesar.org/ontology/lis14/ont/core> .

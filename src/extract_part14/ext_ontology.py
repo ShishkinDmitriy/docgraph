@@ -44,8 +44,8 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 
-EXT = Namespace("http://example.org/docgraph/ext#")
-DG  = Namespace("http://example.org/docgraph/meta#")
+EXT = Namespace("urn:docgraph:vocab:ext#")
+DG  = Namespace("urn:docgraph:vocab:meta#")
 LIS = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
 
 

@@ -296,6 +296,36 @@ The CLI's loader runs once per command, building an in-memory rdflib `Dataset` w
 
 The standard OWL `owl:imports` mechanism is **not** used to drive resolution — there's no reasoner walking import chains, no IRI-to-file catalog. The loader is a deterministic file-reader following the recipe above; "imports" are encoded as code, not as triples on disk.
 
+### URI naming convention — `urn:docgraph:*`
+
+All project-minted URIs share one root: **`urn:docgraph:`** (URN-based, no
+DNS / domain ownership needed). Hierarchical sub-spaces by colon:
+
+| Family       | Pattern                                  | Example                                       |
+|--------------|------------------------------------------|-----------------------------------------------|
+| Vocab        | `urn:docgraph:vocab:<name>#<term>`       | `urn:docgraph:vocab:meta#provenance`          |
+| Source file  | `urn:docgraph:source:<slug>`             | `urn:docgraph:source:zahnrechnung2025`        |
+| Document     | `urn:docgraph:source:<slug>/doc`         | `urn:docgraph:source:zahnrechnung2025/doc`    |
+| Markdown     | `urn:docgraph:source:<slug>/md`          | `urn:docgraph:source:zahnrechnung2025/md`     |
+| Entity       | `urn:docgraph:source:<slug>/<entity>`    | `urn:docgraph:source:zahnrechnung2025/invoice-1352` |
+| Agent        | `urn:docgraph:agent:<slug>`              | `urn:docgraph:agent:claude-opus-4-7`          |
+| Scope graph  | `urn:docgraph:scope/<kind>/<name>`       | `urn:docgraph:scope/doc/zahnrechnung2025`     |
+| Delta graph  | `urn:docgraph:delta/<scope-prefix>/<NNN>/<sign>` | `urn:docgraph:delta/doc-zahnrechnung2025/001/added` |
+| Example data | `urn:docgraph:example:<localname>`       | `urn:docgraph:example:hbig` (template demos)  |
+
+**Why URN-based and not `http://docgraph.dev/…`?**
+- No domain to register / let expire.
+- All URIs are stable IDs (not resolvable URLs) — pure identifiers.
+- Strictly speaking, `docgraph` isn't a registered URN NID per RFC 8141 (could
+  use `urn:x-docgraph:…` for experimental prefix), but no rdflib / SPARQL
+  tooling cares, and many production systems do the same (`urn:aws:…`,
+  `urn:vsphere:…`, etc.). Trade-off: pragmatism over strict spec compliance.
+
+**Don't use** `http://example.org/*` anywhere — replaced project-wide. A
+slug-extraction regex (e.g., the source-registry slug) MUST split on the last
+`:` first (for new URIs), falling back to `/` (for legacy URIs from old
+projects).
+
 ### Namespace propagation across serialization boundaries
 
 **RULE**: every time triples cross a Graph-to-Graph or Graph-to-File

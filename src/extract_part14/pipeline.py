@@ -64,7 +64,7 @@ from src.project import (
 )
 
 GRAPH_SUFFIX = ".ttl"
-AGENT_NS = Namespace("http://example.org/docgraph/agent/")
+AGENT_NS = Namespace("urn:docgraph:agent:")
 logger = logging.getLogger(__name__)
 
 

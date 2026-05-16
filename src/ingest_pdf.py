@@ -43,9 +43,9 @@ from src.project import (
 
 PROV    = Namespace("http://www.w3.org/ns/prov#")
 DCTERMS = Namespace("http://purl.org/dc/terms/")
-ACT_NS   = Namespace("http://example.org/docgraph/activity/")
-AGENT_NS = Namespace("http://example.org/docgraph/agent/")
-EXT_NS   = Namespace("http://example.org/docgraph/extraction/")
+ACT_NS   = Namespace("urn:docgraph:activity:")
+AGENT_NS = Namespace("urn:docgraph:agent:")
+EXT_NS   = Namespace("urn:docgraph:extraction:")
 
 GRAPH_SUFFIX = ".ttl"
 
@@ -213,7 +213,7 @@ def _bind_prefixes(g: Graph, slug: str | None = None) -> None:
     g.bind("agent",   AGENT_NS)
     g.bind("ext",     EXT_NS)
     if slug:
-        g.bind("e", Namespace(f"http://example.org/docgraph/extraction/{slug}/"))
+        g.bind("e", Namespace(f"urn:docgraph:extraction:{slug}/"))
 
 
 def _add_activity(

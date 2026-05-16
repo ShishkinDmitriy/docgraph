@@ -3,8 +3,8 @@
 # Lowered: types of both file nodes + activity, two CompositionOfIndividual
 # tuples (one for the input PDF, one for the produced Markdown), making the
 # pattern specific enough to recognise only conversions, not arbitrary compositions.
-@prefix tpl:      <http://example.org/docgraph/template#> .
-@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix prov:     <http://www.w3.org/ns/prov#> .
 @prefix var:      <urn:tpl-var/> .

@@ -9,11 +9,11 @@
 # Naming: tpl:lifted is the auto-derived invocation form; tpl:lowered is
 # the LIS-14 triple pattern itself.
 
-@prefix tpl:  <http://example.org/docgraph/template#> .
+@prefix tpl:  <urn:docgraph:vocab:template#> .
 @prefix lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/> .
-@prefix lis14tpl: <http://example.org/docgraph/lis14tpl#> .
+@prefix lis14tpl: <urn:docgraph:vocab:lis14tpl#> .
 @prefix var:  <urn:tpl-var/> .
-@prefix ex:   <http://example.org/docgraph/example#> .
+@prefix ex:   <urn:docgraph:example:> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 
 lis14tpl:RoleRealizedInActivity a tpl:Template ;

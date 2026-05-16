@@ -1,54 +1,54 @@
-@prefix ex: <http://example.org/docgraph/example#> .
-@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix ex: <urn:docgraph:example:> .
+@prefix ns1: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix rdl: <http://data.15926.org/rdl/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b0> a iso15926:TemporalWholePart ;
-    iso15926:hasPart <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> ;
-    iso15926:hasWhole ex:V-101 .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-anon-_b0> a ns1:TemporalWholePart ;
+    ns1:hasPart <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u1> ;
+    ns1:hasWhole ex:V-101 .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b1> a iso15926:Classification ;
-    iso15926:hasClassified <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> ;
-    iso15926:hasClassifier <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-anon-_b1> a ns1:Classification ;
+    ns1:hasClassified <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u1> ;
+    ns1:hasClassifier <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u2> .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b2> a iso15926:Classification ;
-    iso15926:hasClassified <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> ;
-    iso15926:hasClassifier rdl:RDS353339 .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-anon-_b2> a ns1:Classification ;
+    ns1:hasClassified <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u2> ;
+    ns1:hasClassifier rdl:RDS353339 .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b3> a iso15926:Classification ;
-    iso15926:hasClassified <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u3> ;
-    iso15926:hasClassifier rdl:RDS2229868 .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-anon-_b3> a ns1:Classification ;
+    ns1:hasClassified <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u3> ;
+    ns1:hasClassifier rdl:RDS2229868 .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b4> a iso15926:Identification ;
-    iso15926:hasRepresented <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u4> ;
-    iso15926:hasSign 30.57 .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-anon-_b4> a ns1:Identification ;
+    ns1:hasRepresented <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u4> ;
+    ns1:hasSign 30.57 .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b5> a iso15926:Beginning ;
-    iso15926:hasPart <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u5> ;
-    iso15926:hasWhole <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-anon-_b5> a ns1:Beginning ;
+    ns1:hasPart <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u5> ;
+    ns1:hasWhole <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u1> .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-anon-_b6> a iso15926:Identification ;
-    iso15926:hasRepresented <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u5> ;
-    iso15926:hasSign <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u6> .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-anon-_b6> a ns1:Identification ;
+    ns1:hasRepresented <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u5> ;
+    ns1:hasSign <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u6> .
 
-rdl:RDS2229868 a iso15926:Scale .
+rdl:RDS2229868 a ns1:Scale .
 
-rdl:RDS353339 a iso15926:ClassOfProperty .
+rdl:RDS353339 a ns1:ClassOfProperty .
 
-ex:V-101 a iso15926:PossibleIndividual .
+ex:V-101 a ns1:PossibleIndividual .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u3> a iso15926:PropertyQuantification ;
-    iso15926:hasInput <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> ;
-    iso15926:hasResult <urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u4> .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u3> a ns1:PropertyQuantification ;
+    ns1:hasInput <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u2> ;
+    ns1:hasResult <urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u4> .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u6> a iso15926:RepresentationOfGregorianDateAndUtcTime ;
-    iso15926:hasContent "2021-07-27T10:19:00+00:00"^^xsd:dateTime .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u6> a ns1:RepresentationOfGregorianDateAndUtcTime ;
+    ns1:hasContent "2021-07-27T10:19:00+00:00"^^xsd:dateTime .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u4> a iso15926:ArithmeticNumber .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u4> a ns1:ArithmeticNumber .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u5> a iso15926:PointInTime .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u5> a ns1:PointInTime .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u1> a iso15926:PossibleIndividual .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u1> a ns1:PossibleIndividual .
 
-<urn:tpl-instance/individual-has-property-with-value-c436b2bcab2140e6-u2> a iso15926:Property .
+<urn:tpl-instance/individual-has-property-with-value-db2141518eef6803-u2> a ns1:Property .
 

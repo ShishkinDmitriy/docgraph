@@ -1,11 +1,11 @@
 # 15926.blog template IN-PTYST-100 (IndividualHasPropertyWithValue).
 # Source: https://15926.blog/templates/IN-PTYST-100.xml
 # RDS ID: RD1BD01970ABB411384596BDF26BC2C32  (status UPDATED MAR2023)
-@prefix tpl:      <http://example.org/docgraph/template#> .
-@prefix iso:      <http://example.org/docgraph/iso#> .
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix iso:      <urn:docgraph:vocab:iso#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix var:      <urn:tpl-var/> .
-@prefix ex:       <http://example.org/docgraph/example#> .
+@prefix ex:       <urn:docgraph:example:> .
 @prefix rdl:      <http://data.15926.org/rdl/> .
 @prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
 @prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .

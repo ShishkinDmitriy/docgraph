@@ -1,6 +1,6 @@
 # Lifted-form instance: Pump 21-P-101 is classified as CENTRIFUGAL PUMP.
-@prefix iso: <http://example.org/docgraph/iso#> .
-@prefix ex:  <http://example.org/docgraph/example#> .
+@prefix iso: <urn:docgraph:vocab:iso#> .
+@prefix ex:  <urn:docgraph:example:> .
 @prefix rdl: <http://data.15926.org/rdl/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 

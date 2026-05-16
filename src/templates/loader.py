@@ -51,7 +51,7 @@ from rdflib import BNode, Dataset, Graph, Literal, Namespace, URIRef
 from rdflib.graph import DATASET_DEFAULT_GRAPH_ID
 from rdflib.namespace import RDF, RDFS, XSD
 
-TPL = Namespace("http://example.org/docgraph/template#")
+TPL = Namespace("urn:docgraph:vocab:template#")
 VAR_SOURCE_PREFIX = "urn:tpl-var/"
 
 

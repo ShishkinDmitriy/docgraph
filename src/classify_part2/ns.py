@@ -2,9 +2,9 @@
 
 from rdflib import Namespace
 
-DG       = Namespace("http://example.org/docgraph/meta#")
+DG       = Namespace("urn:docgraph:vocab:meta#")
 ISO15926 = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
-EXT_BASE = "http://example.org/docgraph/extraction"
+EXT_BASE = "urn:docgraph:extraction"
 
 
 def EXT_NS_FOR(slug: str) -> Namespace:

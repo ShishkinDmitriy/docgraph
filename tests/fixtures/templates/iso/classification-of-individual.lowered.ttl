@@ -1,32 +1,32 @@
-@prefix ex: <http://example.org/docgraph/example#> .
-@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix ex: <urn:docgraph:example:> .
+@prefix ns1: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix rdl: <http://data.15926.org/rdl/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
-<urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-anon-_b0> a iso15926:TemporalWholePart ;
-    iso15926:hasPart <urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u1> ;
-    iso15926:hasWhole ex:21-P-101 .
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b0> a ns1:TemporalWholePart ;
+    ns1:hasPart <urn:tpl-instance/classification-of-individual-7567370943b24358-u1> ;
+    ns1:hasWhole ex:21-P-101 .
 
-<urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-anon-_b1> a iso15926:Classification ;
-    iso15926:hasClassified <urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u1> ;
-    iso15926:hasClassifier rdl:RDS416834 .
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b1> a ns1:Classification ;
+    ns1:hasClassified <urn:tpl-instance/classification-of-individual-7567370943b24358-u1> ;
+    ns1:hasClassifier rdl:RDS416834 .
 
-<urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-anon-_b2> a iso15926:Beginning ;
-    iso15926:hasPart <urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u2> ;
-    iso15926:hasWhole <urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u1> .
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b2> a ns1:Beginning ;
+    ns1:hasPart <urn:tpl-instance/classification-of-individual-7567370943b24358-u2> ;
+    ns1:hasWhole <urn:tpl-instance/classification-of-individual-7567370943b24358-u1> .
 
-<urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-anon-_b3> a iso15926:Identification ;
-    iso15926:hasRepresented <urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u2> ;
-    iso15926:hasSign <urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u3> .
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b3> a ns1:Identification ;
+    ns1:hasRepresented <urn:tpl-instance/classification-of-individual-7567370943b24358-u2> ;
+    ns1:hasSign <urn:tpl-instance/classification-of-individual-7567370943b24358-u3> .
 
-rdl:RDS416834 a iso15926:ClassOfIndividual .
+rdl:RDS416834 a ns1:ClassOfIndividual .
 
-ex:21-P-101 a iso15926:PossibleIndividual .
+ex:21-P-101 a ns1:PossibleIndividual .
 
-<urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u3> a iso15926:RepresentationOfGregorianDateAndUtcTime ;
-    iso15926:hasContent "2021-07-18T13:59:00+00:00"^^xsd:dateTime .
+<urn:tpl-instance/classification-of-individual-7567370943b24358-u3> a ns1:RepresentationOfGregorianDateAndUtcTime ;
+    ns1:hasContent "2021-07-18T13:59:00+00:00"^^xsd:dateTime .
 
-<urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u2> a iso15926:PointInTime .
+<urn:tpl-instance/classification-of-individual-7567370943b24358-u2> a ns1:PointInTime .
 
-<urn:tpl-instance/classification-of-individual-8e775bb4f3d9da39-u1> a iso15926:PossibleIndividual .
+<urn:tpl-instance/classification-of-individual-7567370943b24358-u1> a ns1:PossibleIndividual .
 

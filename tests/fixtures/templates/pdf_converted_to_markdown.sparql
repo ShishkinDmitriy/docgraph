@@ -1,4 +1,4 @@
-PREFIX dg: <http://example.org/docgraph/meta#>
+PREFIX dg: <urn:docgraph:vocab:meta#>
 PREFIX iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 

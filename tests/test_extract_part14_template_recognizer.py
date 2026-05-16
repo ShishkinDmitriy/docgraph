@@ -32,8 +32,8 @@ from src.project import init_project, PIPELINE_PART14
 
 
 EX  = Namespace("http://example.org/src/test/")
-TPL = Namespace("http://example.org/docgraph/template#")
-LIS14TPL = Namespace("http://example.org/docgraph/lis14tpl#")
+TPL = Namespace("urn:docgraph:vocab:template#")
+LIS14TPL = Namespace("urn:docgraph:vocab:lis14tpl#")
 
 
 def _seed_quantity_datum_triples() -> Graph:

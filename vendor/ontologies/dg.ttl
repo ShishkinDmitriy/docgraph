@@ -1,11 +1,11 @@
-@prefix dg:      <http://example.org/docgraph/meta#> .
+@prefix dg:      <urn:docgraph:vocab:meta#> .
 @prefix prov:    <http://www.w3.org/ns/prov#> .
 @prefix owl:     <http://www.w3.org/2002/07/owl#> .
 @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
 
-<http://example.org/docgraph/meta>  a owl:Ontology ;
+<urn:docgraph:vocab:meta>  a owl:Ontology ;
     rdfs:label   "DocGraph meta-ontology" ;
     rdfs:comment "DocGraph extension vocabulary — independent of the active upper ontology (Part 2 or Part 14). Loaded by every pipeline." .
 

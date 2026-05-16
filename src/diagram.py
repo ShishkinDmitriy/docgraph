@@ -24,7 +24,7 @@ from src.ingest import load_combined
 from src.project import DOCGRAPH_DIR
 
 DIAGRAMS_SUBDIR = "diagrams"
-EXT_NS          = "http://example.org/docgraph/extraction/"
+EXT_NS          = "urn:docgraph:extraction:"
 PLANTUML_SERVER = "https://www.plantuml.com/plantuml"
 
 # rdf:type values we don't surface as stereotypes (noise / implicit).

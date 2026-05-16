@@ -436,7 +436,7 @@ def walk_mega(
     g.bind("rdfs", RDFS, override=True, replace=True)
     g.bind("xsd",  XSD,  override=True, replace=True)
     g.bind("ex",   base_ns, override=True, replace=True)
-    g.bind("lis14tpl", Namespace("http://example.org/docgraph/lis14tpl#"))
+    g.bind("lis14tpl", Namespace("urn:docgraph:vocab:lis14tpl#"))
 
     # ── New ext class proposals ──
     raw_new = payload.get("new_classes", []) or []

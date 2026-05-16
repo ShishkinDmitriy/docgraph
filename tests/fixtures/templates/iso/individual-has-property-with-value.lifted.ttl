@@ -1,6 +1,6 @@
 # Lifted-form instance: Vessel V-101 has a mass of 30.57 Metric Ton.
-@prefix iso: <http://example.org/docgraph/iso#> .
-@prefix ex:  <http://example.org/docgraph/example#> .
+@prefix iso: <urn:docgraph:vocab:iso#> .
+@prefix ex:  <urn:docgraph:example:> .
 @prefix rdl: <http://data.15926.org/rdl/> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 

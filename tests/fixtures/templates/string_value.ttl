@@ -1,7 +1,7 @@
 # Leaf value-wrapper template — wraps an xsd:string literal in a Part 2-shaped
 # representation cluster. Used via invocation by higher-level templates that
 # want a typed value rather than a bare literal.
-@prefix tpl:      <http://example.org/docgraph/template#> .
+@prefix tpl:      <urn:docgraph:vocab:template#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix var:      <urn:tpl-var/> .
 @prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .

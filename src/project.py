@@ -167,7 +167,7 @@ def embeddings_path(project_root: Path) -> Path:
 # parallel-pipelines plan) replaces .docgraph/meta.ttl with .docgraph/config.ttl
 # and reads dg.ttl from vendor/. Keep the two in sync until then.
 _META_TTL = """\
-@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix prov:     <http://www.w3.org/ns/prov#> .
 @prefix dcterms:  <http://purl.org/dc/terms/> .
@@ -176,7 +176,7 @@ _META_TTL = """\
 @prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
 
-<http://example.org/docgraph/meta>  a owl:Ontology ;
+<urn:docgraph:vocab:meta>  a owl:Ontology ;
     rdfs:label   "DocGraph meta-ontology" ;
     rdfs:comment "Extensions on top of ISO 15926 Part 2, PROV-O, and DCMI Terms." ;
     owl:imports  <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003> ,
@@ -262,7 +262,7 @@ dg:UncoveredDocument a owl:NamedIndividual ; rdfs:label "UncoveredDocument" .
 """
 
 _UNRESOLVED_TTL = """\
-@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 
 # Stubs for concepts referenced before their defining document was added.
@@ -272,7 +272,7 @@ _UNRESOLVED_TTL = """\
 """
 
 _SOURCES_TTL = """\
-@prefix dg:       <http://example.org/docgraph/meta#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
 @prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
 @prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
 
@@ -284,7 +284,7 @@ _SOURCES_TTL = """\
 # ontologies — the loader reads them from vendor/ontologies/ at startup based on
 # the dg:pipeline value below. See ARCHITECTURE.md § Storage layout.
 _CONFIG_TTL_PART14 = """\
-@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix dg:  <urn:docgraph:vocab:meta#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <> a dg:DocgraphProject ;
@@ -294,7 +294,7 @@ _CONFIG_TTL_PART14 = """\
 """
 
 _TEMPLATES_REGISTRY_TTL = """\
-@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix dg:  <urn:docgraph:vocab:meta#> .
 
 # Registry of user-authored templates loaded by this project.
 # Each entry: a dg:TemplateRegistration with dg:templatePath pointing at a TTL

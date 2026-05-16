@@ -25,7 +25,7 @@ from pathlib import Path
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import PROV, RDF, RDFS, XSD
 
-DG  = Namespace("http://example.org/docgraph/meta#")
+DG  = Namespace("urn:docgraph:vocab:meta#")
 LIS = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
 
 

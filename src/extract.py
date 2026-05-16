@@ -33,7 +33,7 @@ _MARKDOWN_BUDGET = 32_000
 # LLM should extract domain content, not provenance / structural /
 # meta-ontology slots.
 _FOUNDATION_PREFIXES = (
-    "http://example.org/docgraph/meta#",
+    "urn:docgraph:vocab:meta#",
     "http://www.w3.org/ns/prov#",
     "http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#",
     "http://purl.org/dc/terms/",
