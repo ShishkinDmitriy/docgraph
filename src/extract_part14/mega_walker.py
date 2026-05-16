@@ -184,6 +184,20 @@ extracted entity (cite that entity's `name` exactly).
   Quality / Function / Disposition / Role / PhysicalQuantity needs a
   minted Aspect entity.
 
+  Roles in particular: when an entity articulates a role in an activity
+  (patient in a treatment, payer in a transaction, practitioner in a
+  service), mint a SEPARATE entity typed `lis:Role` for the role
+  itself, then connect three things:
+
+    - `<role> rdf:type lis:Role` — the Role entity itself
+    - `<role> lis:realizedIn <activity>` — links role to the activity
+    - `<player> lis:hasRole <role>` — links the participant entity
+      (the person/org who carries the role) to it
+
+  All three triples together make the role fully connected. Without
+  any one of them the role is an orphan. (Use the role's name as
+  rdfs:label, e.g. "patient" / "practitioner" / "payer".)
+
 == RESPONSE FORMAT ==
 
 Reply with JSON only. Do NOT add prose before or after the JSON object;
