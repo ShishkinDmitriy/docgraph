@@ -31,6 +31,7 @@ SOURCES_FILENAME                 = "sources.ttl"
 GRAPHS_SUBDIR                    = "graphs"
 CACHE_SUBDIR                     = "cache"
 HTML_SUBDIR                      = "html"
+MD_SUBDIR                        = "md"
 ANNOTATED_SUBDIR                 = "annotated"
 ONTOLOGIES_SUBDIR                = "ontologies"
 EXT_FILENAME                     = "ext.ttl"
@@ -121,6 +122,17 @@ def html_dir(project_root: Path) -> Path:
     truth for structure + atomic-unit IDs; the markdown view is derived
     on demand. See docs/architecture/html-pipeline.md."""
     return project_root / DOCGRAPH_DIR / HTML_SUBDIR
+
+
+def md_dir(project_root: Path) -> Path:
+    """Where the LLM-prompt-ready markdown view of each doc is cached.
+
+    The markdown is a deterministic projection of the canonical HTML
+    (via `render_markdown_view`) with `{#id-N}` anchor markers preserved
+    so evidence URIs (`<html#id-N>`) point back into the HTML. Cached
+    on disk so `docgraph extract` is reproducible (same prompt → same
+    LLM input) and for inspection of what the LLM actually saw."""
+    return project_root / DOCGRAPH_DIR / MD_SUBDIR
 
 
 def annotated_dir(project_root: Path) -> Path:

@@ -175,54 +175,68 @@ def build_recognize_graph(
 
 
 def build_convert_graph(
-    file_uri: URIRef,
-    doc_uri: URIRef,
-    md_uri: URIRef,
-    md_file_path: Path,
+    file_uri:           URIRef,
+    doc_uri:            URIRef,
+    html_uri:           URIRef,
+    html_file_path:     Path,
     *,
-    project_root: Path,
-    document_title: str | None = None,
+    md_uri:             URIRef | None = None,
+    md_file_path:       Path | None  = None,
+    project_root:       Path,
+    document_title:     str | None = None,
     document_description: str = "",
-    convert_started: datetime | None = None,
-    convert_ended: datetime | None = None,
-    convert_agent_uri: URIRef | None = None,
+    convert_started:    datetime | None = None,
+    convert_ended:      datetime | None = None,
+    convert_agent_uri:  URIRef | None = None,
 ) -> Graph:
-    """Convert step (seq 2): HTML file + conversion activity.
+    """Convert step (seq 2): HTML file + markdown view + conversion activity.
 
-    Adds the HtmlFile (or MarkdownFile) object that's the canonical
-    converted view, links it back to the source PDF via PROV-O
-    `prov:wasDerivedFrom`, and records the conversion activity. Also
-    enriches the document with the LLM-derived title/description from
-    the HTML conversion when those are richer than pdfinfo's.
+    Adds:
+      - <html_uri>  a dg:HtmlFile, lis:PhysicalObject, prov:Entity —
+        the canonical converted view, lis:representedBy <doc>,
+        prov:wasDerivedFrom <file>.
+      - <md_uri>    a dg:MarkdownFile, lis:PhysicalObject, prov:Entity —
+        OPTIONAL. The markdown projection of the HTML that's fed to
+        the LLM as the extract prompt. prov:wasDerivedFrom <html>.
+        Registering this gives the LLM-prompt input a stable URI for
+        provenance + makes it discoverable as a regenerable artifact.
+      - <conv>      a prov:Activity — the conversion run; prov:used
+        <file>, prov:generated <html>, prov:wasAssociatedWith <agent>.
 
-    NOTE: this graph does NOT redeclare the file or document types —
-    those are in recognize's delta and the doc-scope materialization
-    composes them.
+    Document gets a (likely better) rdfs:label / rdfs:comment from the
+    LLM's HTML conversion title/description. Recognize's pdfinfo-based
+    label stays — consumers picking the "newest" label win.
     """
     g = Graph()
     _bind_prefixes(g, file_uri)
     g.bind("dcterms", DCTERMS, override=True, replace=True)
 
-    # HtmlFile (or MarkdownFile) — canonical converted view
-    suffix = md_file_path.suffix.lower()
-    is_html = suffix in (".html", ".htm")
-    g.add((md_uri, RDF.type, DG.HtmlFile if is_html else DG.MarkdownFile))
-    g.add((md_uri, RDF.type, LIS.PhysicalObject))
-    g.add((md_uri, RDF.type, PROV.Entity))
-    g.add((md_uri, DG.filePath, Literal(str(md_file_path.relative_to(project_root)))))
-    g.add((md_uri, DG.mimeType, Literal("text/html" if is_html else "text/markdown")))
-    g.add((md_uri, LIS.representedBy, doc_uri))
-    g.add((md_uri, PROV.wasDerivedFrom, file_uri))
+    # HtmlFile — canonical converted view
+    g.add((html_uri, RDF.type, DG.HtmlFile))
+    g.add((html_uri, RDF.type, LIS.PhysicalObject))
+    g.add((html_uri, RDF.type, PROV.Entity))
+    g.add((html_uri, DG.filePath, Literal(str(html_file_path.relative_to(project_root)))))
+    g.add((html_uri, DG.mimeType, Literal("text/html")))
+    g.add((html_uri, LIS.representedBy, doc_uri))
+    g.add((html_uri, PROV.wasDerivedFrom, file_uri))
 
-    # Enrich the document with the LLM-derived title/description. If
-    # recognize set a pdfinfo-derived label, this ADDS a (likely better)
-    # one; consumers picking the "newest" rdfs:label win.
+    # MarkdownFile — LLM-prompt view derived from HTML
+    if md_uri is not None and md_file_path is not None:
+        g.add((md_uri, RDF.type, DG.MarkdownFile))
+        g.add((md_uri, RDF.type, LIS.PhysicalObject))
+        g.add((md_uri, RDF.type, PROV.Entity))
+        g.add((md_uri, DG.filePath, Literal(str(md_file_path.relative_to(project_root)))))
+        g.add((md_uri, DG.mimeType, Literal("text/markdown")))
+        g.add((md_uri, LIS.representedBy, doc_uri))
+        g.add((md_uri, PROV.wasDerivedFrom, html_uri))
+
+    # Enrich the document with the LLM-derived title/description.
     if document_title:
         g.add((doc_uri, RDFS.label, Literal(document_title)))
     if document_description:
         g.add((doc_uri, RDFS.comment, Literal(document_description)))
 
-    # Conversion activity
+    # Conversion activity (PDF → HTML)
     if convert_started and convert_ended:
         from rdflib import Namespace as _NS
         base_ns = _NS(str(file_uri) + "/")
@@ -234,7 +248,7 @@ def build_convert_graph(
         g.add((conv_uri, PROV.endedAtTime,
                Literal(convert_ended.isoformat(), datatype=XSD.dateTime)))
         g.add((conv_uri, PROV.used, file_uri))
-        g.add((conv_uri, PROV.generated, md_uri))
+        g.add((conv_uri, PROV.generated, html_uri))
         if convert_agent_uri:
             g.add((conv_uri, PROV.wasAssociatedWith, convert_agent_uri))
 
@@ -270,9 +284,13 @@ def build_chain(
         pdf_info=pdf_info,
     )
     if md_uri is not None and md_file_path is not None:
+        # Legacy callers passed the HTML file via `md_uri` (back when
+        # this was misnamed); the back-compat shim treats it as the
+        # HTML URI/path. Markdown view is unset in this legacy shape.
         for triple in build_convert_graph(
-            file_uri=file_uri, doc_uri=doc_uri, md_uri=md_uri,
-            md_file_path=md_file_path, project_root=project_root,
+            file_uri=file_uri, doc_uri=doc_uri,
+            html_uri=md_uri, html_file_path=md_file_path,
+            project_root=project_root,
             document_title=document_title, document_description=document_description,
             convert_started=convert_started, convert_ended=convert_ended,
             convert_agent_uri=convert_agent_uri,

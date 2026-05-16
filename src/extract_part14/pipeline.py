@@ -108,7 +108,8 @@ def extract_pdf_part14(
     base_ns  = Namespace(f"{SOURCE_NS}{slug}/")
     file_uri = URIRef(SOURCE_NS[slug])
     doc_uri  = URIRef(base_ns["doc"])
-    md_uri   = URIRef(base_ns["md"])
+    html_uri = URIRef(base_ns["html"])   # the canonical HTML view
+    md_uri   = URIRef(base_ns["md"])     # the markdown projection LLM sees
 
     # ── pdfinfo metadata (local, no LLM) ──
     info = pdfinfo(source)
@@ -190,14 +191,28 @@ def extract_pdf_part14(
 
     # ── Resolve the canonical HTML path for fragment-URI anchoring ──
     html_files = html_paths_for_pdf(source, h_dir)
-    md_file_path = html_files[0] if html_files else None
+    html_file_path = html_files[0] if html_files else None
 
-    # ── CONVERT STEP (seq 2) — HtmlFile + conversion activity + better
-    # title/description from the LLM. Linked to the PdfFile via PROV-O.
+    # ── Cache the markdown view to disk so the LLM prompt is reproducible
+    # and inspectable. The markdown is what the extract step actually
+    # feeds the LLM; registering it as a dg:MarkdownFile gives the prompt
+    # input a stable URI for provenance and a file to grep.
+    from src.project import md_dir as _md_dir
+    md_cache_dir = _md_dir(project_root)
+    md_cache_dir.mkdir(parents=True, exist_ok=True)
+    md_file_path = md_cache_dir / f"{slug}.md"
+    md_file_path.write_text(full_markdown, encoding="utf-8")
+
+    # ── CONVERT STEP (seq 2) — HtmlFile + MarkdownFile + conversion
+    # activity. Document gets a (likely better) title/description from
+    # the LLM. The HtmlFile is the canonical converted view; the
+    # MarkdownFile is the LLM-prompt view derived from the HTML.
     console.print("[bold]convert[/bold]")
     g_convert = build_convert_graph(
         file_uri             = file_uri,
         doc_uri              = doc_uri,
+        html_uri             = html_uri,
+        html_file_path       = html_file_path,
         md_uri               = md_uri,
         md_file_path         = md_file_path,
         project_root         = project_root,
@@ -251,7 +266,11 @@ def extract_pdf_part14(
             document_title  = document_title,
             document_descr  = document_description,
             base_ns         = base_ns,
-            md_source_uri   = md_uri,
+            # Evidence fragments (`<…#id-N>`) anchor at the HTML — that's
+            # the canonical artifact where `id="id-N"` attributes literally
+            # exist. The markdown view's `{#id-N}` markers are projected
+            # from there.
+            md_source_uri   = html_uri,
             file_uri        = file_uri,
             ontology        = ontology,
             client          = client,
