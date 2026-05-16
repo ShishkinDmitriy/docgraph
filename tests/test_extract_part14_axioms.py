@@ -236,3 +236,30 @@ def test_domains_of_falls_back_to_inverse_range(ontology):
     # (which is itself absent in LIS-14, so this stays empty rather than wrong)
     # but its range MUST come back as Activity (from hasParticipant's domain)
     assert axioms.range_of(ontology, participant_in) == URIRef(LIS + "Activity")
+
+
+# ── Standards alignment for the graph-delta vocab ──────────────────────────
+
+
+def test_graph_addition_subclass_of_named_graph_and_prov_entity(ontology):
+    """dg:GraphAddition and dg:GraphRemoval align with W3C SPARQL Service
+    Description (sd:NamedGraph) for interop with SD-aware tools, and with
+    PROV-O (prov:Entity) so each graph's prov:wasGeneratedBy chain is
+    well-typed against the standard prov vocab."""
+    from rdflib.namespace import RDFS
+    dg   = "urn:docgraph:vocab:meta#"
+    sd   = "http://www.w3.org/ns/sparql-service-description#"
+    prov = "http://www.w3.org/ns/prov#"
+
+    addition_uri = URIRef(dg + "GraphAddition")
+    removal_uri  = URIRef(dg + "GraphRemoval")
+    named_graph  = URIRef(sd + "NamedGraph")
+    entity       = URIRef(prov + "Entity")
+
+    parents_of_addition = set(ontology.objects(addition_uri, RDFS.subClassOf))
+    parents_of_removal  = set(ontology.objects(removal_uri,  RDFS.subClassOf))
+
+    assert named_graph in parents_of_addition
+    assert entity      in parents_of_addition
+    assert named_graph in parents_of_removal
+    assert entity      in parents_of_removal

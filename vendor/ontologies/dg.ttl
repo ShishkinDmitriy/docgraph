@@ -1,5 +1,6 @@
 @prefix dg:      <urn:docgraph:vocab:meta#> .
 @prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix sd:      <http://www.w3.org/ns/sparql-service-description#> .
 @prefix owl:     <http://www.w3.org/2002/07/owl#> .
 @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
@@ -181,10 +182,12 @@ dg:Scope          a owl:Class ; rdfs:label "Scope" ; dg:extractable false ;
     rdfs:comment "Identifier for a graph scope a step writes to: a doc, the project, or an RDL cache." .
 
 dg:GraphAddition  a owl:Class ; rdfs:label "GraphAddition" ; dg:extractable false ;
-    rdfs:comment "A named graph holding triples ADDED by one pipeline step." .
+    rdfs:subClassOf sd:NamedGraph , prov:Entity ;
+    rdfs:comment "A named graph holding triples ADDED by one pipeline step. Subclass of sd:NamedGraph (W3C SPARQL Service Description) for standards interop and prov:Entity so the graph's prov:wasGeneratedBy chain is well-typed." .
 
 dg:GraphRemoval   a owl:Class ; rdfs:label "GraphRemoval"  ; dg:extractable false ;
-    rdfs:comment "A named graph holding triples REMOVED by one pipeline step." .
+    rdfs:subClassOf sd:NamedGraph , prov:Entity ;
+    rdfs:comment "A named graph holding triples REMOVED by one pipeline step. Same subclass alignment as dg:GraphAddition." .
 
 dg:scope        a owl:ObjectProperty   ; rdfs:label "scope"     ; rdfs:range dg:Scope    ; dg:extractable false .
 dg:step         a owl:DatatypeProperty ; rdfs:label "step"      ; rdfs:range xsd:string  ; dg:extractable false .
