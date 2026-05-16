@@ -22,7 +22,7 @@ from src.extract_part14.loader import build_dataset, union_view
 from src.extract_part14.structural import DG, LIS, build_chain
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
-from src.extract_part14.template_recognizer import walk_templates
+from src.extract_part14.template_recognizer import fold_templates_in_place
 from src.extract_part14.ext_dedup import walk_dedup
 from src.embeddings import EmbeddingClient, EmbeddingError, EmbeddingStore
 from src.deltas import (
@@ -276,27 +276,39 @@ def extract_pdf_part14(
         )
         write_delta(extract_delta, delta_path(g_dir, convert_scope, extract_seq))
 
-    # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm.
-    # Returns a dedicated graph that's serialized separately (so reviewers
-    # can see what the template phase asserted vs the mega-walker's
-    # binary-property output). The LLM-confirm sub-phase also mutates *g*
-    # in place to add NEW lowered triples (so iteration N+1's SPARQL can
-    # see iteration N's confirmations); those triples appear in BOTH the
-    # extract graph (for the union view) AND the templates graph (for
-    # the dedicated debug file).
-    g_templates = Graph()
+    # Snapshot for the upcoming "extract.ttl" HEAD snapshot — captured
+    # BEFORE templates fold so consumers can still see the raw binary-
+    # properties view in extract.ttl. (Also derivable post-hoc via
+    # `docgraph snapshot <slug> --at <extract-seq>`.)
+    g_pre_templates = snapshot(g)
+
+    # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm,
+    # folded IN PLACE on the doc-scope graph. The fold removes lowered
+    # pattern triples and adds lifted invocation triples. After this,
+    # the doc graph is the templated view (lifted forms instead of
+    # raw binary properties).
     if extracted:
         console.print("[bold]templates[/bold]")
-        g_templates = walk_templates(
+        g_before_templates = snapshot(g)
+        fold_templates_in_place(
             g, extracted=extracted, ontology=ontology, base_ns=base_ns,
             markdown=full_markdown, client=client, model=model, console=console,
         )
+        templates_delta = delta_from_diff(
+            g_before_templates, g,
+            scope=convert_scope, step="templates",
+            seq=next_seq(g_dir, convert_scope),
+            parent_seq=next_seq(g_dir, convert_scope) - 1,
+            agent=agent_uri, timestamp=_now(),
+        )
+        if len(templates_delta.added) > 0 or len(templates_delta.removed) > 0:
+            write_delta(templates_delta, delta_path(g_dir, convert_scope, templates_delta.seq))
 
     # ── EXT-CLASS DEDUP PHASE — anchor-scoped embedding compare. New
     # ext: classes proposed by the LLM are folded into existing canonical
     # URIs from prior docs when their label/comment embeddings are close.
-    # Mutates g + g_templates in place; updates the project embedding
-    # store. Skipped silently if OPENAI_API_KEY is absent.
+    # Mutates the (now-templated) doc graph in place; updates the project
+    # embedding store. Skipped silently if OPENAI_API_KEY is absent.
     try:
         embed_client = EmbeddingClient()
     except EmbeddingError as exc:
@@ -306,14 +318,9 @@ def extract_pdf_part14(
     if embed_client is not None and extracted:
         console.print("[bold]dedup[/bold]")
         embed_store = EmbeddingStore.load(embeddings_path(project_root))
-        # Snapshot the doc-scope graph BEFORE dedup so we can compute the
-        # delta after walk_dedup mutates g in place. (g_templates also
-        # gets mutated, but it's a derived view — its delta isn't tracked
-        # as a separate scope today; the templates.ttl snapshot is
-        # regenerated from the post-dedup g + recognized templates.)
         g_before_dedup = snapshot(g)
         decisions = walk_dedup(
-            g, g_templates,
+            g, None,                  # single-graph model — no separate templates graph
             ontology=ontology,
             embedding_store=embed_store,
             embedding_client=embed_client,
@@ -324,9 +331,6 @@ def extract_pdf_part14(
         embed_store.save()
         if not decisions:
             console.print("  [dim]no related candidates in any anchor scope[/dim]")
-        # DEDUP DELTA — record the (added, removed) diff against pre-dedup.
-        # Even with no LLM substitutions, dedup may add nothing; the
-        # delta is skipped when nothing actually changed in g.
         dedup_delta = delta_from_diff(
             g_before_dedup, g,
             scope=convert_scope, step="dedup",
@@ -340,19 +344,24 @@ def extract_pdf_part14(
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
 
-    # ── Serialize each layer to its own named-graph file ──
+    # ── Serialize HEAD snapshots — derived views at named seqs.
+    #   convert.ttl   = the file→doc chain (g_convert)
+    #   extract.ttl   = the raw binary-properties view (g BEFORE templates fold)
+    #   templates.ttl = the templated + deduped view (g at HEAD)
+    # All three are derivable from the deltas via `docgraph snapshot`,
+    # but kept as files for quick grep + tools that read .ttl directly.
     convert_file   = g_dir / f"{slug}.convert{GRAPH_SUFFIX}"
     extract_file   = g_dir / f"{slug}.extract{GRAPH_SUFFIX}"
     templates_file = g_dir / f"{slug}.templates{GRAPH_SUFFIX}"
     g_convert.serialize(destination=str(convert_file), format="turtle")
-    g.serialize(destination=str(extract_file), format="turtle")
+    g_pre_templates.serialize(destination=str(extract_file), format="turtle")
     parts = [
         f"[dim]{slug}.convert{GRAPH_SUFFIX}[/dim] ({len(g_convert)} triples)",
-        f"[dim]{slug}.extract{GRAPH_SUFFIX}[/dim] ({len(g)} triples)",
+        f"[dim]{slug}.extract{GRAPH_SUFFIX}[/dim] ({len(g_pre_templates)} triples)",
     ]
-    if len(g_templates) > 0:
-        g_templates.serialize(destination=str(templates_file), format="turtle")
-        parts.append(f"[dim]{slug}.templates{GRAPH_SUFFIX}[/dim] ({len(g_templates)} triples)")
+    if len(g) != len(g_pre_templates):
+        g.serialize(destination=str(templates_file), format="turtle")
+        parts.append(f"[dim]{slug}.templates{GRAPH_SUFFIX}[/dim] ({len(g)} triples)")
     console.print(f"  wrote   {' + '.join(parts)}")
 
     # Register the source pointing at the convert file (the always-present

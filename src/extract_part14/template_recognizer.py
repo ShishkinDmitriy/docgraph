@@ -158,6 +158,86 @@ def walk_templates(
     return g
 
 
+def fold_templates_in_place(
+    doc_graph:  Graph,
+    *,
+    extracted:  list[ExtractedEntity],
+    ontology:   Graph,
+    base_ns:    Namespace,
+    markdown:   str,
+    client:     LLMClient,
+    model:      ModelConfig,
+    console=None,
+) -> None:
+    """In-place version of walk_templates — mutates *doc_graph* directly.
+
+    Used by the delta-based pipeline where the doc-scope graph EVOLVES
+    through pipeline steps (extract → templates → dedup), each step's
+    contribution captured as a delta against the prior state. The
+    templates step's contribution is a fold: REMOVE lowered pattern
+    triples, ADD lifted invocation triples — in the SAME graph that
+    extract populated.
+
+    Sub-phases (mutating doc_graph in place):
+      1. confirm_loop fills missing required slots (LLM-confirmed
+         lowered triples land in doc_graph).
+      2. recognize_invocations enumerates every fully-bound template.
+      3. Fold: for each invocation, remove its lowered triples and
+         add its lifted form.
+
+    After this returns, materializing the doc scope at the templates
+    step's seq gives the templated view; consumers wanting the raw
+    binary-properties view can materialize at the extract step's seq.
+    """
+    from src.deltas import copy_namespaces
+
+    # Bind common namespaces if missing (so post-fold serialization
+    # uses curated prefixes).
+    doc_graph.bind("ext",      Namespace("http://example.org/docgraph/ext#"), override=False)
+    doc_graph.bind("tpl",      _TPL,      override=False)
+    doc_graph.bind("lis14tpl", _LIS14TPL, override=False)
+    doc_graph.bind("lis",      _LIS,      override=False)
+    doc_graph.bind("rdfs",     RDFS,      override=False)
+    doc_graph.bind("xsd",      XSD,       override=False)
+
+    # ── Sub-phase 1: confirm_loop fills missing required slots ──
+    if extracted:
+        confirm_loop(
+            doc_graph, markdown=markdown, extracted=extracted,
+            ontology=ontology, client=client, model=model, base_ns=base_ns,
+            console=console,
+        )
+
+    # ── Sub-phase 2: enumerate fully-bound invocations ──
+    invocations = recognize_invocations(doc_graph, base_ns=base_ns)
+    if console:
+        console.print(f"  recognized {len(invocations)} template invocation(s) total")
+
+    # ── Sub-phase 3: fold lowered → lifted, in place ──
+    for inv in invocations:
+        try:
+            lowered = expand(inv.template, inv.bindings, ext_ns=base_ns)
+        except Exception as exc:                # pragma: no cover
+            logger.warning("fold_templates: expand failed for %s: %s",
+                           inv.template.uri, exc)
+            lowered = Graph()
+        for triple in lowered:
+            if any(_is_omit_sentinel(t) for t in triple):
+                continue
+            doc_graph.remove(triple)
+        try:
+            lifted = materialize_lifted(inv.template, inv.bindings, ext_ns=base_ns)
+        except Exception as exc:                # pragma: no cover
+            logger.warning("fold_templates: materialize_lifted failed for %s: %s",
+                           inv.template.uri, exc)
+            continue
+        copy_namespaces(lifted, doc_graph)
+        for triple in lifted:
+            if any(_is_omit_sentinel(t) for t in triple):
+                continue
+            doc_graph.add(triple)
+
+
 def _is_omit_sentinel(term) -> bool:
     """Mirrors property_walker._is_omit_sentinel — true for the sentinel
     URIs that materialize_lifted/expand emit for omitted optional slots."""
