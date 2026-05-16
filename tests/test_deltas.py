@@ -39,7 +39,7 @@ LIS = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
 
 def test_doc_scope_filename_prefix_and_uri():
     s = doc_scope("zahnrechnung2025")
-    assert s.filename_prefix == "doc-zahnrechnung2025"
+    assert s.filename_prefix == "zahnrechnung2025"
     assert str(s.uri) == "urn:docgraph:scope/doc/zahnrechnung2025"
 
 
@@ -66,7 +66,7 @@ def test_scope_is_hashable():
 
 def test_delta_path_format(tmp_path):
     p = delta_path(tmp_path, doc_scope("zahnrechnung2025"), 7)
-    assert p.name == "doc-zahnrechnung2025.007.trig"
+    assert p.name == "zahnrechnung2025.007.trig"
     assert p.parent == tmp_path
 
 
@@ -279,7 +279,7 @@ def test_list_scopes_finds_distinct_scopes(tmp_path):
 
     scopes = list_scopes(tmp_path)
     prefixes = {s.filename_prefix for s in scopes}
-    assert {"doc-a", "doc-b", "project", "rdl-posc"} == prefixes
+    assert {"a", "b", "project", "rdl-posc"} == prefixes
 
 
 def test_list_deltas_for_scope_orders_by_seq(tmp_path):

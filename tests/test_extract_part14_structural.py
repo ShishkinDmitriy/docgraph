@@ -77,11 +77,18 @@ def test_quote_uris_are_content_hashes():
 # ── build_chain — M1's actual output ────────────────────────────────────────
 
 def test_build_chain_emits_file_doc_only(tmp_path: Path):
-    file_uri = URIRef("http://example.org/source/sample")
-    doc_uri  = URIRef("http://example.org/source/sample/doc")
+    """Legacy combined build_chain still produces file+doc+activity when
+    md_uri is supplied. After the recognize/convert split, the activity
+    now `prov:generated` the htmlfile (not the doc — the activity is the
+    CONVERSION, which generates the html)."""
+    file_uri = URIRef("urn:docgraph:source:sample")
+    doc_uri  = URIRef("urn:docgraph:source:sample/doc")
+    md_uri   = URIRef("urn:docgraph:source:sample/md")
 
-    pdf_path = tmp_path / "sample.pdf"
+    pdf_path  = tmp_path / "sample.pdf"
+    html_path = tmp_path / "sample.html"
     pdf_path.write_bytes(b"%PDF-1.4 fake")
+    html_path.write_text("<html></html>", encoding="utf-8")
 
     now = datetime.now(timezone.utc)
     g = build_chain(
@@ -94,6 +101,8 @@ def test_build_chain_emits_file_doc_only(tmp_path: Path):
         file_hash            = "sha256:fake",
         file_size            = 12,
         mime_type            = "application/pdf",
+        md_uri               = md_uri,
+        md_file_path         = html_path,
         pdf_info             = {"Pages": "1", "Title": "Sample"},
         convert_started      = now,
         convert_ended        = now,
@@ -118,8 +127,9 @@ def test_build_chain_emits_file_doc_only(tmp_path: Path):
     quotes = list(g.subjects(RDF.type, DG.Quote))
     assert quotes == []
 
-    # PROV-O activity for conversion
+    # PROV-O activity for conversion — now generates the htmlfile (not
+    # the doc; the conversion's output IS the html, not the abstract doc).
     activities = list(g.subjects(RDF.type, PROV.Activity))
     assert len(activities) == 1
-    assert (activities[0], PROV.used, file_uri) in g
-    assert (activities[0], PROV.generated, doc_uri) in g
+    assert (activities[0], PROV.used,      file_uri) in g
+    assert (activities[0], PROV.generated, md_uri)   in g

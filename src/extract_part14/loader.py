@@ -120,12 +120,13 @@ def build_dataset(project_root: Path) -> Dataset:
             if scope.kind == "doc" and scope.name:
                 doc_slugs_with_deltas.add(scope.name)
 
-    # 6. Per-source HEAD snapshot graphs (legacy + not-yet-deltized views).
-    #    Skip <slug>.convert.ttl and <slug>.extract.ttl when the doc
-    #    slug has deltas — those snapshots are now derivable from the
-    #    materialized scope. Keep <slug>.templates.ttl (the templates
-    #    phase hasn't been migrated to deltas yet), plus any other .ttl
-    #    file dropped into graphs/ (foundationals, user-added data).
+    # 6. Per-source HEAD snapshot graphs — legacy support only. The
+    #    pipeline no longer writes .convert.ttl / .extract.ttl /
+    #    .templates.ttl automatically (use `docgraph snapshot` to
+    #    materialize on demand). For docs whose deltas are already
+    #    loaded we SKIP any such legacy snapshots to avoid double-
+    #    loading. Other .ttl files (foundationals dropped in graphs/,
+    #    user-curated data, on-demand snapshots) load as before.
     if g_dir.is_dir():
         for ttl in sorted(g_dir.glob("*.ttl")):
             if _is_redundant_snapshot(ttl.name, doc_slugs_with_deltas):
@@ -138,16 +139,28 @@ def build_dataset(project_root: Path) -> Dataset:
 
 
 def _is_redundant_snapshot(filename: str, doc_slugs_with_deltas: set[str]) -> bool:
-    """True if `filename` is a `<slug>.convert.ttl` or `<slug>.extract.ttl`
-    snapshot for a slug that already has delta files (so its triples
-    are already loaded via materialize). Templates snapshots and other
-    .ttl files load as before.
+    """True if `filename` is a legacy auto-snapshot (.convert.ttl,
+    .extract.ttl, .templates.ttl) OR an on-demand snapshot
+    (.<seq>.snapshot.ttl / .HEAD.snapshot.ttl) for a slug that already
+    has delta files loaded. Skipping avoids double-counting the same
+    triples (which RDF set semantics would dedupe but it's wasteful).
     """
-    for suffix in (".convert.ttl", ".extract.ttl"):
+    for suffix in (".convert.ttl", ".extract.ttl", ".templates.ttl",
+                   ".HEAD.snapshot.ttl"):
         if filename.endswith(suffix):
             slug = filename[: -len(suffix)]
             if slug in doc_slugs_with_deltas:
                 return True
+    # `.<seq>.snapshot.ttl` — match the digit-only seq before .snapshot.ttl
+    if filename.endswith(".snapshot.ttl"):
+        stem = filename[: -len(".snapshot.ttl")]
+        # split off potential trailing `.<seq>` (3+ digits) — leaves the slug
+        for sep in ".":
+            parts = stem.rsplit(sep, 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                slug = parts[0]
+                if slug in doc_slugs_with_deltas:
+                    return True
     return False
 
 

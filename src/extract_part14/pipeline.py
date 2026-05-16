@@ -19,7 +19,7 @@ from rdflib.namespace import PROV, RDF, RDFS, XSD
 from rich.console import Console
 
 from src.extract_part14.loader import build_dataset, union_view
-from src.extract_part14.structural import DG, LIS, build_chain
+from src.extract_part14.structural import DG, LIS, build_convert_graph, build_recognize_graph
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
 from src.extract_part14.template_recognizer import fold_templates_in_place
@@ -116,6 +116,36 @@ def extract_pdf_part14(
         console.print(f"  pdfinfo: [dim]{info.get('Pages', '?')} page(s), "
                       f"{info.get('Title') or '(no title)'}[/dim]")
 
+    # ── RECOGNIZE STEP (seq 1) — file + document objects, pdfinfo metadata.
+    # Pure-local, no LLM. The graph carries just enough to identify the
+    # file (dg:PdfFile + hash/size/mimeType/pageCount/producer) and the
+    # abstract document (dg:Document + dcterms:title/creator/dates from
+    # pdfinfo when present). HTML conversion + extraction land in later
+    # deltas.
+    console.print("[bold]recognize[/bold]")
+    convert_scope = doc_scope(slug)
+    agent_uri     = URIRef(AGENT_NS[make_slug(model.model_id)])
+    g_recognize   = build_recognize_graph(
+        file_path    = source,
+        file_uri     = file_uri,
+        doc_uri      = doc_uri,
+        project_root = project_root,
+        file_hash    = file_hash,
+        file_size    = file_size,
+        mime_type    = "application/pdf",
+        pdf_info     = info,
+    )
+    recognize_seq   = next_seq(g_dir, convert_scope)
+    recognize_delta = StepDelta(
+        scope     = convert_scope,
+        step      = "recognize",
+        seq       = recognize_seq,
+        added     = g_recognize,
+        parent_seq= recognize_seq - 1,
+        timestamp = _now(),
+    )
+    write_delta(recognize_delta, delta_path(g_dir, convert_scope, recognize_seq))
+
     # ── Convert PDF → HTML (cached, canonical, immutable) ──
     # The HTML is the source-of-truth artifact: structure + atomic-unit IDs
     # seeded by the conversion LLM. Extraction passes consume a Markdown
@@ -162,35 +192,26 @@ def extract_pdf_part14(
     html_files = html_paths_for_pdf(source, h_dir)
     md_file_path = html_files[0] if html_files else None
 
-    # ── CONVERT LAYER — file metadata + structural chain + conversion activity ──
-    agent_uri = URIRef(AGENT_NS[make_slug(model.model_id)])
-    g_convert = build_chain(
-        file_path             = source,
-        file_uri              = file_uri,
-        doc_uri               = doc_uri,
-        document_title        = document_title,
-        document_description  = document_description,
-        project_root          = project_root,
-        file_hash             = file_hash,
-        file_size             = file_size,
-        mime_type             = "application/pdf",
-        md_uri                = md_uri,
-        md_file_path          = md_file_path,
-        pdf_info              = info,
-        convert_started       = convert_started,
-        convert_ended         = convert_ended,
-        convert_agent_uri     = agent_uri,
+    # ── CONVERT STEP (seq 2) — HtmlFile + conversion activity + better
+    # title/description from the LLM. Linked to the PdfFile via PROV-O.
+    console.print("[bold]convert[/bold]")
+    g_convert = build_convert_graph(
+        file_uri             = file_uri,
+        doc_uri              = doc_uri,
+        md_uri               = md_uri,
+        md_file_path         = md_file_path,
+        project_root         = project_root,
+        document_title       = document_title,
+        document_description = document_description,
+        convert_started      = convert_started,
+        convert_ended        = convert_ended,
+        convert_agent_uri    = agent_uri,
     )
     g_convert.add((agent_uri, RDF.type,    PROV.SoftwareAgent))
     g_convert.add((agent_uri, RDFS.label,  Literal(model.label)))
     g_convert.add((agent_uri, DG.provider, Literal(model.provider)))
     g_convert.add((agent_uri, DG.modelId,  Literal(model.model_id)))
 
-    # ── CONVERT DELTA — emit alongside the HEAD .convert.ttl snapshot.
-    # First convert of a new doc is seq=1; if the doc is being re-extracted
-    # (--force or --reconvert) we let next_seq pick the next number
-    # (older deltas remain as audit trail under their old seqs).
-    convert_scope = doc_scope(slug)
     convert_seq   = next_seq(g_dir, convert_scope)
     convert_delta = StepDelta(
         scope     = convert_scope,
@@ -276,12 +297,6 @@ def extract_pdf_part14(
         )
         write_delta(extract_delta, delta_path(g_dir, convert_scope, extract_seq))
 
-    # Snapshot for the upcoming "extract.ttl" HEAD snapshot — captured
-    # BEFORE templates fold so consumers can still see the raw binary-
-    # properties view in extract.ttl. (Also derivable post-hoc via
-    # `docgraph snapshot <slug> --at <extract-seq>`.)
-    g_pre_templates = snapshot(g)
-
     # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm,
     # folded IN PLACE on the doc-scope graph. The fold removes lowered
     # pattern triples and adds lifted invocation triples. After this,
@@ -344,35 +359,23 @@ def extract_pdf_part14(
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
 
-    # ── Serialize HEAD snapshots — derived views at named seqs.
-    #   convert.ttl   = the file→doc chain (g_convert)
-    #   extract.ttl   = the raw binary-properties view (g BEFORE templates fold)
-    #   templates.ttl = the templated + deduped view (g at HEAD)
-    # All three are derivable from the deltas via `docgraph snapshot`,
-    # but kept as files for quick grep + tools that read .ttl directly.
-    convert_file   = g_dir / f"{slug}.convert{GRAPH_SUFFIX}"
-    extract_file   = g_dir / f"{slug}.extract{GRAPH_SUFFIX}"
-    templates_file = g_dir / f"{slug}.templates{GRAPH_SUFFIX}"
-    g_convert.serialize(destination=str(convert_file), format="turtle")
-    g_pre_templates.serialize(destination=str(extract_file), format="turtle")
-    parts = [
-        f"[dim]{slug}.convert{GRAPH_SUFFIX}[/dim] ({len(g_convert)} triples)",
-        f"[dim]{slug}.extract{GRAPH_SUFFIX}[/dim] ({len(g_pre_templates)} triples)",
-    ]
-    if len(g) != len(g_pre_templates):
-        g.serialize(destination=str(templates_file), format="turtle")
-        parts.append(f"[dim]{slug}.templates{GRAPH_SUFFIX}[/dim] ({len(g)} triples)")
-    console.print(f"  wrote   {' + '.join(parts)}")
-
-    # Register the source pointing at the convert file (the always-present
-    # layer); the loader picks up all `<slug>.*.ttl` siblings via glob, so
-    # extract / enrich / future stage files compose automatically.
+    # ── Source registration ──
+    # Deltas are the source of truth. HEAD snapshots are no longer
+    # auto-written here — use `docgraph snapshot <slug>` to materialize
+    # any view (current HEAD or any historical seq) on demand. The
+    # graph_file pointer in sources.ttl points at the first delta
+    # (the recognize delta — always present), giving the loader a
+    # canonical anchor when discovering the source's graphs.
+    first_delta = delta_path(g_dir, convert_scope, recognize_seq)
     _register_source(
-        project_root, slug, source, convert_file,
+        project_root, slug, source, first_delta,
         file_hash=file_hash, file_size=file_size, mime_type="application/pdf",
     )
+    delta_files = sorted(g_dir.glob(f"{slug}.[0-9][0-9][0-9].trig"))
+    console.print(f"  wrote   {len(delta_files)} delta file(s): "
+                  f"[dim]{', '.join(p.name for p in delta_files)}[/dim]")
     console.print(f"  registered as [bold]{slug}[/bold]")
-    return convert_file
+    return first_delta
 
 
 def _now() -> datetime:

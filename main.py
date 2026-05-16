@@ -23,7 +23,6 @@ from src.project import (
     DEFAULT_PIPELINE,
     PIPELINE_PART14,
     PIPELINES,
-    UNRESOLVED_FILENAME,
     annotated_dir,
     cache_dir,
     find_project_root,
@@ -89,7 +88,7 @@ def clean(directory: Path | None, yes: bool):
 
     g_dir = graphs_dir(project_root)
     targets = sorted(p for p in g_dir.iterdir()
-                     if p.suffix in (".ttl", ".trig") and p.name != UNRESOLVED_FILENAME)
+                     if p.suffix in (".ttl", ".trig"))
 
     if not targets:
         console.print("[dim]Nothing to clean.[/dim]")
@@ -671,15 +670,17 @@ def diff(target: str, seq_a: int, seq_b: int):
 @click.option("--at", "at_seq", type=int, default=None,
               help="Materialize state at this seq (default: HEAD).")
 @click.option("--out", "out_path", type=click.Path(path_type=Path), default=None,
-              help="Output .ttl path (default: <slug>.snapshot.ttl in cwd).")
+              help="Output .ttl path (default: <slug>.<seq>.snapshot.ttl OR "
+                   "<slug>.HEAD.snapshot.ttl in graphs/).")
 def snapshot(target: str, at_seq: int | None, out_path: Path | None):
     """Write a materialized snapshot (full Turtle) of a doc's scope.
 
-    Default writes HEAD (all deltas applied) to `<slug>.snapshot.ttl`
-    in the current directory. With `--at <seq>`, writes the historical
-    state after the step with that seq.
+    Default writes HEAD (all deltas applied) to
+    `<graphs>/<slug>.HEAD.snapshot.ttl`. With `--at <seq>`, writes the
+    historical state after the step with that seq to
+    `<graphs>/<slug>.NNN.snapshot.ttl`.
     """
-    from src.deltas import copy_namespaces, doc_scope, materialize
+    from src.deltas import doc_scope, materialize
 
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
@@ -692,9 +693,12 @@ def snapshot(target: str, at_seq: int | None, out_path: Path | None):
                       f"{f' at seq={at_seq}' if at_seq is not None else ''}.")
         return
 
-    suffix = f".snapshot.seq{at_seq:03d}.ttl" if at_seq is not None else ".snapshot.ttl"
+    if at_seq is not None:
+        default_name = f"{slug}.{at_seq:03d}.snapshot.ttl"
+    else:
+        default_name = f"{slug}.HEAD.snapshot.ttl"
     if out_path is None:
-        out_path = Path.cwd() / f"{slug}{suffix}"
+        out_path = g_dir / default_name
     out_path.parent.mkdir(parents=True, exist_ok=True)
     g.serialize(destination=str(out_path), format="turtle")
     console.print(f"  wrote   [dim]{out_path}[/dim] ({len(g)} triples)")

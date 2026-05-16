@@ -80,9 +80,16 @@ class Scope:
 
     @property
     def filename_prefix(self) -> str:
-        """Filename component, e.g. `doc-zahnrechnung2025`, `project`,
-        `rdl-posc`. Kept identifier-safe; underscores and dots are kept,
-        anything else collapses to `-`."""
+        """Filename component used for delta files.
+
+        Doc scopes use the slug directly (`zahnrechnung2025.NNN.trig`).
+        Project scope is the singleton `project.NNN.trig`. RDL scopes
+        prefix with `rdl-` (`rdl-posc.NNN.trig`). The reserved-name
+        risk for doc slugs colliding with "project" or "rdl-*" is
+        unlikely in practice and not guarded — caller should sanitize.
+        """
+        if self.kind == "doc":
+            return _SAFE_RX.sub('-', self.name)
         if self.name:
             return f"{self.kind}-{_SAFE_RX.sub('-', self.name)}"
         return self.kind
@@ -425,12 +432,17 @@ def list_scopes(graphs_dir: Path) -> list[Scope]:
 
 
 def _scope_from_filename_prefix(prefix: str) -> Scope:
-    """Reverse of Scope.filename_prefix — parse `<kind>` or `<kind>-<name>`.
+    """Reverse of Scope.filename_prefix.
 
-    Note: kind is "doc" / "project" / "rdl" (no dashes), so the first `-`
-    cleanly separates kind from name.
+      - `project`        → Scope(kind="project")
+      - `rdl-<name>`     → Scope(kind="rdl", name=<name>)
+      - anything else    → Scope(kind="doc", name=<prefix>)
+                            (doc slugs use the bare prefix; the slug
+                            collision with "project" / "rdl-*" is the
+                            caller's responsibility to avoid)
     """
-    if "-" in prefix:
-        kind, name = prefix.split("-", 1)
-        return Scope(kind=kind, name=name)
-    return Scope(kind=prefix)
+    if prefix == "project":
+        return Scope(kind="project")
+    if prefix.startswith("rdl-"):
+        return Scope(kind="rdl", name=prefix[len("rdl-"):])
+    return Scope(kind="doc", name=prefix)

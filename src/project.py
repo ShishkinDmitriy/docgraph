@@ -10,8 +10,8 @@ Layout (per ARCHITECTURE.md):
       dcterms.ttl                      — DCMI Terms (bibliographic metadata)
       sources.ttl                      — registry of ingested sources
       graphs/
-        _unresolved.ttl                — stubs for not-yet-defined concepts
-        <slug>.ttl                     — one file per source (real file or symlink to TTL input)
+        <slug>.ttl                     — HEAD snapshots per source (real file)
+        doc-<slug>.NNN.trig            — versioned-graph deltas per source
       cache/                           — PDF→Markdown cache (unchanged)
 """
 
@@ -29,7 +29,6 @@ PROV_O_FILENAME                  = "prov-o.ttl"
 DCTERMS_FILENAME                 = "dcterms.ttl"
 SOURCES_FILENAME                 = "sources.ttl"
 GRAPHS_SUBDIR                    = "graphs"
-UNRESOLVED_FILENAME              = "_unresolved.ttl"
 CACHE_SUBDIR                     = "cache"
 HTML_SUBDIR                      = "html"
 ANNOTATED_SUBDIR                 = "annotated"
@@ -107,10 +106,6 @@ def sources_path(project_root: Path) -> Path:
 
 def graphs_dir(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / GRAPHS_SUBDIR
-
-
-def unresolved_path(project_root: Path) -> Path:
-    return project_root / DOCGRAPH_DIR / GRAPHS_SUBDIR / UNRESOLVED_FILENAME
 
 
 def cache_dir(project_root: Path) -> Path:
@@ -259,16 +254,6 @@ dg:typeNearestSimilarity a owl:DatatypeProperty ; rdfs:label "typeNearestSimilar
 
 # ── Document outside the ontology's coverage (form scope below threshold) ────
 dg:UncoveredDocument a owl:NamedIndividual ; rdfs:label "UncoveredDocument" .
-"""
-
-_UNRESOLVED_TTL = """\
-@prefix dg:       <urn:docgraph:vocab:meta#> .
-@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
-
-# Stubs for concepts referenced before their defining document was added.
-# Each stub: a class typed as iso15926:ClassOfInformationObject with
-# dg:status dg:Unresolved and dg:firstSeenIn pointing to the source that
-# first mentioned it.
 """
 
 _SOURCES_TTL = """\
@@ -423,9 +408,6 @@ def init_project(
 
     (dg_dir / SOURCES_FILENAME).write_text(_SOURCES_TTL)
     console.print(f"  wrote   [dim]{SOURCES_FILENAME}[/dim]")
-
-    (g_dir / UNRESOLVED_FILENAME).write_text(_UNRESOLVED_TTL)
-    console.print(f"  wrote   [dim]{GRAPHS_SUBDIR}/{UNRESOLVED_FILENAME}[/dim]")
 
     console.print(
         f"\n[green]Initialised docgraph project in[/green] [bold]{target}[/bold]\n"

@@ -103,6 +103,147 @@ def _is_structural_only(text: str) -> bool:
 
 # ── build_chain — M1's structural emission (file → doc only) ────────────────
 
+DCTERMS = Namespace("http://purl.org/dc/terms/")
+
+
+def build_recognize_graph(
+    file_path: Path,
+    file_uri: URIRef,
+    doc_uri: URIRef,
+    *,
+    project_root: Path,
+    file_hash: str,
+    file_size: int,
+    mime_type: str,
+    pdf_info: dict | None = None,
+) -> Graph:
+    """Recognize step (seq 1): typed file object + typed document object.
+
+    Builds two entities — no HTML, no conversion activity yet (that's the
+    convert step's delta):
+      - <file_uri> a dg:PdfFile, lis:PhysicalObject, prov:Entity ; …
+        carries pdfinfo-derived metadata (pageCount, pdfProducer)
+      - <doc_uri> a dg:Document, lis:InformationObject ; …
+        carries dcterms:title/creator/created/modified from pdfinfo when
+        present, plus rdfs:label fallback. Linked back to the file via
+        `<file> lis:representedBy <doc>`.
+
+    Title/creator from pdfinfo are often noisy; the convert step may
+    later REMOVE these and ADD better LLM-derived values via a follow-up
+    delta. That's the delta system working as designed.
+    """
+    g = Graph()
+    _bind_prefixes(g, file_uri)
+    g.bind("dcterms", DCTERMS, override=True, replace=True)
+
+    # File
+    g.add((file_uri, RDF.type, DG.PdfFile))
+    g.add((file_uri, RDF.type, LIS.PhysicalObject))
+    g.add((file_uri, RDF.type, PROV.Entity))
+    g.add((file_uri, DG.filePath, Literal(str(file_path.relative_to(project_root)))))
+    g.add((file_uri, DG.fileHash, Literal(file_hash)))
+    g.add((file_uri, DG.fileSize, Literal(file_size, datatype=XSD.integer)))
+    g.add((file_uri, DG.mimeType, Literal(mime_type)))
+
+    if pdf_info:
+        if pages := pdf_info.get("Pages"):
+            try:
+                g.add((file_uri, DG.pageCount, Literal(int(pages), datatype=XSD.integer)))
+            except (TypeError, ValueError):
+                pass
+        if producer := pdf_info.get("Producer"):
+            g.add((file_uri, DG.pdfProducer, Literal(producer)))
+
+    # Document
+    g.add((doc_uri, RDF.type, DG.Document))
+    g.add((doc_uri, RDF.type, LIS.InformationObject))
+    g.add((file_uri, LIS.representedBy, doc_uri))
+
+    if pdf_info:
+        # Doc-level metadata via dcterms — title/creator/dates from pdfinfo.
+        if title := pdf_info.get("Title"):
+            g.add((doc_uri, DCTERMS.title, Literal(title)))
+            g.add((doc_uri, RDFS.label,    Literal(title)))
+        if author := pdf_info.get("Author"):
+            g.add((doc_uri, DCTERMS.creator, Literal(author)))
+        if created := pdf_info.get("CreationDate"):
+            g.add((doc_uri, DCTERMS.created, Literal(created)))
+        if modified := pdf_info.get("ModDate"):
+            g.add((doc_uri, DCTERMS.modified, Literal(modified)))
+
+    return g
+
+
+def build_convert_graph(
+    file_uri: URIRef,
+    doc_uri: URIRef,
+    md_uri: URIRef,
+    md_file_path: Path,
+    *,
+    project_root: Path,
+    document_title: str | None = None,
+    document_description: str = "",
+    convert_started: datetime | None = None,
+    convert_ended: datetime | None = None,
+    convert_agent_uri: URIRef | None = None,
+) -> Graph:
+    """Convert step (seq 2): HTML file + conversion activity.
+
+    Adds the HtmlFile (or MarkdownFile) object that's the canonical
+    converted view, links it back to the source PDF via PROV-O
+    `prov:wasDerivedFrom`, and records the conversion activity. Also
+    enriches the document with the LLM-derived title/description from
+    the HTML conversion when those are richer than pdfinfo's.
+
+    NOTE: this graph does NOT redeclare the file or document types —
+    those are in recognize's delta and the doc-scope materialization
+    composes them.
+    """
+    g = Graph()
+    _bind_prefixes(g, file_uri)
+    g.bind("dcterms", DCTERMS, override=True, replace=True)
+
+    # HtmlFile (or MarkdownFile) — canonical converted view
+    suffix = md_file_path.suffix.lower()
+    is_html = suffix in (".html", ".htm")
+    g.add((md_uri, RDF.type, DG.HtmlFile if is_html else DG.MarkdownFile))
+    g.add((md_uri, RDF.type, LIS.PhysicalObject))
+    g.add((md_uri, RDF.type, PROV.Entity))
+    g.add((md_uri, DG.filePath, Literal(str(md_file_path.relative_to(project_root)))))
+    g.add((md_uri, DG.mimeType, Literal("text/html" if is_html else "text/markdown")))
+    g.add((md_uri, LIS.representedBy, doc_uri))
+    g.add((md_uri, PROV.wasDerivedFrom, file_uri))
+
+    # Enrich the document with the LLM-derived title/description. If
+    # recognize set a pdfinfo-derived label, this ADDS a (likely better)
+    # one; consumers picking the "newest" rdfs:label win.
+    if document_title:
+        g.add((doc_uri, RDFS.label, Literal(document_title)))
+    if document_description:
+        g.add((doc_uri, RDFS.comment, Literal(document_description)))
+
+    # Conversion activity
+    if convert_started and convert_ended:
+        from rdflib import Namespace as _NS
+        base_ns = _NS(str(file_uri) + "/")
+        conv_uri = URIRef(base_ns["convert"])
+        g.add((conv_uri, RDF.type, PROV.Activity))
+        g.add((conv_uri, RDFS.label, Literal("PDF → HTML conversion")))
+        g.add((conv_uri, PROV.startedAtTime,
+               Literal(convert_started.isoformat(), datatype=XSD.dateTime)))
+        g.add((conv_uri, PROV.endedAtTime,
+               Literal(convert_ended.isoformat(), datatype=XSD.dateTime)))
+        g.add((conv_uri, PROV.used, file_uri))
+        g.add((conv_uri, PROV.generated, md_uri))
+        if convert_agent_uri:
+            g.add((conv_uri, PROV.wasAssociatedWith, convert_agent_uri))
+
+    return g
+
+
+# Backward-compat: kept for any callers still using the legacy single-call
+# shape. New code should call build_recognize_graph + build_convert_graph
+# separately and emit each as its own delta.
 def build_chain(
     file_path: Path,
     file_uri: URIRef,
@@ -121,73 +262,22 @@ def build_chain(
     convert_ended: datetime | None = None,
     convert_agent_uri: URIRef | None = None,
 ) -> Graph:
-    """Build the file → document chain. No chapters, no quotes.
-
-    Returns an rdflib Graph with the structural triples plus PROV-O for the
-    convert step. Subject classification triples are added by the caller
-    after this function returns.
-    """
-    g = Graph()
-    _bind_prefixes(g, file_uri)
-
-    # File
-    g.add((file_uri, RDF.type, DG.PdfFile))
-    g.add((file_uri, RDF.type, LIS.PhysicalObject))
-    g.add((file_uri, RDF.type, PROV.Entity))
-    g.add((file_uri, DG.filePath, Literal(str(file_path.relative_to(project_root)))))
-    g.add((file_uri, DG.fileHash, Literal(file_hash)))
-    g.add((file_uri, DG.fileSize, Literal(file_size, datatype=XSD.integer)))
-    g.add((file_uri, DG.mimeType, Literal(mime_type)))
-    if pdf_info:
-        if pages := pdf_info.get("Pages"):
-            try:
-                g.add((file_uri, DG.pageCount, Literal(int(pages), datatype=XSD.integer)))
-            except (TypeError, ValueError):
-                pass
-        if producer := pdf_info.get("Producer"):
-            g.add((file_uri, DG.pdfProducer, Literal(producer)))
-        if title := pdf_info.get("Title"):
-            g.add((file_uri, RDFS.label, Literal(title)))
-
-    # Document
-    g.add((doc_uri, RDF.type, DG.Document))
-    g.add((doc_uri, RDF.type, LIS.InformationObject))
-    g.add((doc_uri, RDFS.label, Literal(document_title)))
-    if document_description:
-        g.add((doc_uri, RDFS.comment, Literal(document_description)))
-    g.add((file_uri, LIS.representedBy, doc_uri))
-
-    # Source-text file: a representation of the document derived from the
-    # original PDF. Either an HTML file (canonical, current pipeline) or a
-    # Markdown file (legacy). Fragment URIs in the extract graph anchor
-    # into this file via standard URL fragments (`<file#id-N>`).
+    """Legacy combined builder — recognize triples + convert triples in one Graph."""
+    g = build_recognize_graph(
+        file_path=file_path, file_uri=file_uri, doc_uri=doc_uri,
+        project_root=project_root,
+        file_hash=file_hash, file_size=file_size, mime_type=mime_type,
+        pdf_info=pdf_info,
+    )
     if md_uri is not None and md_file_path is not None:
-        suffix = md_file_path.suffix.lower()
-        is_html = suffix in (".html", ".htm")
-        g.add((md_uri, RDF.type, DG.HtmlFile if is_html else DG.MarkdownFile))
-        g.add((md_uri, RDF.type, LIS.PhysicalObject))
-        g.add((md_uri, RDF.type, PROV.Entity))
-        g.add((md_uri, DG.filePath, Literal(str(md_file_path.relative_to(project_root)))))
-        g.add((md_uri, DG.mimeType, Literal("text/html" if is_html else "text/markdown")))
-        g.add((md_uri, LIS.representedBy, doc_uri))
-        g.add((md_uri, PROV.wasDerivedFrom, file_uri))
-
-    # Conversion activity
-    if convert_started and convert_ended:
-        from rdflib import Namespace as _NS
-        base_ns = _NS(str(file_uri) + "/")
-        conv_uri = URIRef(base_ns["convert"])
-        g.add((conv_uri, RDF.type, PROV.Activity))
-        g.add((conv_uri, RDFS.label, Literal("PDF → Markdown conversion")))
-        g.add((conv_uri, PROV.startedAtTime,
-               Literal(convert_started.isoformat(), datatype=XSD.dateTime)))
-        g.add((conv_uri, PROV.endedAtTime,
-               Literal(convert_ended.isoformat(), datatype=XSD.dateTime)))
-        g.add((conv_uri, PROV.used, file_uri))
-        g.add((conv_uri, PROV.generated, doc_uri))
-        if convert_agent_uri:
-            g.add((conv_uri, PROV.wasAssociatedWith, convert_agent_uri))
-
+        for triple in build_convert_graph(
+            file_uri=file_uri, doc_uri=doc_uri, md_uri=md_uri,
+            md_file_path=md_file_path, project_root=project_root,
+            document_title=document_title, document_description=document_description,
+            convert_started=convert_started, convert_ended=convert_ended,
+            convert_agent_uri=convert_agent_uri,
+        ):
+            g.add(triple)
     return g
 
 

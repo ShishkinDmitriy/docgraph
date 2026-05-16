@@ -137,7 +137,7 @@ def test_snapshot_writes_head_state(tmp_path, monkeypatch):
     result = CliRunner().invoke(
         cli, ["snapshot", "demo"], catch_exceptions=False)
     assert result.exit_code == 0
-    out_file = project / "demo.snapshot.ttl"
+    out_file = graphs_dir(project) / "demo.HEAD.snapshot.ttl"
     assert out_file.is_file()
     g = Graph()
     g.parse(out_file, format="turtle")
@@ -152,7 +152,7 @@ def test_snapshot_at_historical_seq(tmp_path, monkeypatch):
     result = CliRunner().invoke(
         cli, ["snapshot", "demo", "--at", "1"], catch_exceptions=False)
     assert result.exit_code == 0
-    out_file = project / "demo.snapshot.seq001.ttl"
+    out_file = graphs_dir(project) / "demo.001.snapshot.ttl"
     assert out_file.is_file()
     g = Graph()
     g.parse(out_file, format="turtle")
