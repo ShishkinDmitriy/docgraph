@@ -16,6 +16,7 @@ from src.deltas import (
     DG,
     Scope,
     StepDelta,
+    delta_from_diff,
     delta_path,
     doc_scope,
     list_deltas_for_scope,
@@ -25,6 +26,7 @@ from src.deltas import (
     project_scope,
     rdl_scope,
     read_delta,
+    snapshot,
     write_delta,
 )
 
@@ -250,6 +252,48 @@ def test_list_deltas_for_scope_orders_by_seq(tmp_path):
 
 
 # ── Multi-scope independence ─────────────────────────────────────────────
+
+# ── snapshot + delta_from_diff (Phase 3 helpers) ─────────────────────────
+
+def test_snapshot_copies_triples_not_reference():
+    """snapshot() returns a new Graph; mutating the original doesn't
+    affect the snapshot."""
+    g = Graph()
+    g.add((EX.x, RDF.type, EX.Y))
+    snap = snapshot(g)
+    g.add((EX.z, RDF.type, EX.Y))
+    assert (EX.z, RDF.type, EX.Y) in g
+    assert (EX.z, RDF.type, EX.Y) not in snap
+
+
+def test_delta_from_diff_captures_added_and_removed():
+    """delta_from_diff computes added=after−before, removed=before−after."""
+    before = Graph()
+    before.add((EX.x, RDF.type, EX.Y))
+    before.add((EX.gone, RDF.type, EX.Y))    # will be removed
+    after = Graph()
+    after.add((EX.x, RDF.type, EX.Y))         # unchanged
+    after.add((EX.new, RDF.type, EX.Y))       # added
+
+    d = delta_from_diff(
+        before, after,
+        scope=doc_scope("foo"), step="dedup", seq=2, parent_seq=1,
+    )
+    assert set(d.added)   == {(EX.new,  RDF.type, EX.Y)}
+    assert set(d.removed) == {(EX.gone, RDF.type, EX.Y)}
+
+
+def test_delta_from_diff_empty_when_no_change():
+    """If before == after, the resulting delta has empty added/removed
+    sets (so the caller can choose to skip writing it)."""
+    g = Graph(); g.add((EX.x, RDF.type, EX.Y))
+    d = delta_from_diff(
+        snapshot(g), g,
+        scope=doc_scope("foo"), step="noop", seq=1,
+    )
+    assert len(d.added)   == 0
+    assert len(d.removed) == 0
+
 
 def test_seqs_are_per_scope(tmp_path):
     """Doc A's seqs don't affect doc B's."""

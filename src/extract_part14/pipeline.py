@@ -27,9 +27,11 @@ from src.extract_part14.ext_dedup import walk_dedup
 from src.embeddings import EmbeddingClient, EmbeddingError, EmbeddingStore
 from src.deltas import (
     StepDelta,
+    delta_from_diff,
     delta_path,
     doc_scope,
     next_seq,
+    snapshot,
     write_delta,
 )
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
@@ -257,6 +259,23 @@ def extract_pdf_part14(
         for triple in inferred_graph:
             g.add(triple)
 
+    # ── EXTRACT DELTA — snapshot the doc-scope contribution of the
+    # extract phase (entities + properties + inferred links). All
+    # additions; nothing removed. Skipped when there's no extracted
+    # content (markdown was empty).
+    if len(g) > 0:
+        extract_seq = next_seq(g_dir, convert_scope)
+        extract_delta = StepDelta(
+            scope     = convert_scope,
+            step      = "extract",
+            seq       = extract_seq,
+            added     = g,
+            parent_seq= extract_seq - 1,
+            agent     = agent_uri,
+            timestamp = _now(),
+        )
+        write_delta(extract_delta, delta_path(g_dir, convert_scope, extract_seq))
+
     # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm.
     # Returns a dedicated graph that's serialized separately (so reviewers
     # can see what the template phase asserted vs the mega-walker's
@@ -287,6 +306,12 @@ def extract_pdf_part14(
     if embed_client is not None and extracted:
         console.print("[bold]dedup[/bold]")
         embed_store = EmbeddingStore.load(embeddings_path(project_root))
+        # Snapshot the doc-scope graph BEFORE dedup so we can compute the
+        # delta after walk_dedup mutates g in place. (g_templates also
+        # gets mutated, but it's a derived view — its delta isn't tracked
+        # as a separate scope today; the templates.ttl snapshot is
+        # regenerated from the post-dedup g + recognized templates.)
+        g_before_dedup = snapshot(g)
         decisions = walk_dedup(
             g, g_templates,
             ontology=ontology,
@@ -299,6 +324,18 @@ def extract_pdf_part14(
         embed_store.save()
         if not decisions:
             console.print("  [dim]no related candidates in any anchor scope[/dim]")
+        # DEDUP DELTA — record the (added, removed) diff against pre-dedup.
+        # Even with no LLM substitutions, dedup may add nothing; the
+        # delta is skipped when nothing actually changed in g.
+        dedup_delta = delta_from_diff(
+            g_before_dedup, g,
+            scope=convert_scope, step="dedup",
+            seq=next_seq(g_dir, convert_scope),
+            parent_seq=next_seq(g_dir, convert_scope) - 1,
+            agent=agent_uri, timestamp=_now(),
+        )
+        if len(dedup_delta.added) > 0 or len(dedup_delta.removed) > 0:
+            write_delta(dedup_delta, delta_path(g_dir, convert_scope, dedup_delta.seq))
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.

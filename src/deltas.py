@@ -285,6 +285,53 @@ def _scope_from_uri(uri) -> Scope:
     return Scope(kind=kind, name=name)
 
 
+# ── Diff helpers ────────────────────────────────────────────────────────
+
+
+def snapshot(graph: Graph) -> Graph:
+    """Return a fresh copy of `graph` — for before/after delta computation.
+
+    rdflib Graphs are mutable and don't support a cheap "freeze". We make
+    a shallow copy of the triple set so the caller can keep a reference
+    to the pre-step state, mutate the original, then compute the diff.
+    Bindings are not preserved (we only need the triples for diff)."""
+    out = Graph()
+    for triple in graph:
+        out.add(triple)
+    return out
+
+
+def delta_from_diff(
+    before:     Graph,
+    after:      Graph,
+    *,
+    scope:      Scope,
+    step:       str,
+    seq:        int,
+    parent_seq: int = 0,
+    agent:      URIRef | None = None,
+    timestamp:  datetime | None = None,
+) -> StepDelta:
+    """Build a StepDelta from before/after triple sets via set difference.
+
+    `added`   = triples in *after*  but not in *before*
+    `removed` = triples in *before* but not in *after*
+    """
+    before_set = set(before)
+    after_set  = set(after)
+    added_g = Graph()
+    for t in after_set - before_set:
+        added_g.add(t)
+    removed_g = Graph()
+    for t in before_set - after_set:
+        removed_g.add(t)
+    return StepDelta(
+        scope=scope, step=step, seq=seq, parent_seq=parent_seq,
+        added=added_g, removed=removed_g,
+        agent=agent, timestamp=timestamp,
+    )
+
+
 # ── Materialize: compose deltas into the current state ─────────────────
 
 
