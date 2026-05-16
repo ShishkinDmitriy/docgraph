@@ -40,7 +40,7 @@ EXT_FILENAME                     = "ext.ttl"
 PIPELINE_PART2  = "part2"
 PIPELINE_PART14 = "part14"
 PIPELINES       = (PIPELINE_PART2, PIPELINE_PART14)
-DEFAULT_PIPELINE = PIPELINE_PART2   # flips to PART14 once classify_part14 reaches M3 parity
+DEFAULT_PIPELINE = PIPELINE_PART14  # Part 14 is the active pipeline; Part 2 kept for legacy
 
 # Bundled upper-ontology sources.
 _VENDOR_ONTOLOGIES_DIR          = Path(__file__).parent.parent / "vendor" / "ontologies"
