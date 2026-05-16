@@ -16,19 +16,22 @@ The .puml is shipped to the public PlantUML server for SVG/PNG rendering.
 Best-effort: if the network call fails, the .puml is still on disk.
 """
 
+import re
 import urllib.request
 import urllib.error
 import zlib
 from pathlib import Path
 
 from rdflib import Graph, Literal, URIRef
-from rdflib.namespace import RDF, RDFS
+from rdflib.namespace import PROV, RDF, RDFS
 from rich.console import Console
 
 from src.deltas import doc_scope, materialize
 from src.project import diagram_path, doc_dir
 
 PLANTUML_SERVER = "https://www.plantuml.com/plantuml"
+LIS_NS          = "http://rds.posccaesar.org/ontology/lis14/rdl/"
+LIS_REPRESENTED_BY = URIRef(LIS_NS + "representedBy")
 
 # rdf:type values we don't surface as stereotypes (noise / implicit).
 _HIDE_TYPES = {
@@ -36,6 +39,20 @@ _HIDE_TYPES = {
     "http://www.w3.org/2002/07/owl#Class",
     "http://www.w3.org/ns/prov#Entity",
 }
+
+# Predicate-namespace filter — anything under these is dropped before
+# rendering (too noisy for a logical object diagram). rdfs:label is
+# special-cased earlier (it becomes the object's display label).
+_HIDE_PREDICATE_NAMESPACES = (
+    str(RDFS),                                   # rdfs:comment, rdfs:subClassOf, …
+    str(PROV),                                   # prov:wasGeneratedBy, prov:used, …
+)
+
+# `lis:representedBy <doc#id-N>` / `<doc#class-N>` triples are pure
+# HTML-anchor citations — they say *where* the entity was seen, not
+# anything about the entity itself. We drop those but keep representedBy
+# edges that point at a real entity (no `#id-N` / `#class-N` fragment).
+_ANCHOR_FRAGMENT_RX = re.compile(r"#(?:id|class)-\d+$")
 
 _DIRECTION_DIRECTIVES = {
     "LR": "left to right direction",
@@ -122,9 +139,13 @@ def _render_object_diagram(g: Graph, *, slug: str, direction: str) -> str:
         if p == RDF.type:
             if isinstance(o, URIRef) and str(o) not in _HIDE_TYPES:
                 node.types.append(o)
-        elif p == RDFS.label and isinstance(o, Literal):
+            continue
+        if p == RDFS.label and isinstance(o, Literal):
             node.label = str(o)
-        elif isinstance(o, Literal):
+            continue
+        if _is_hidden_predicate(p, o):
+            continue
+        if isinstance(o, Literal):
             node.literals.append((p, o))
         elif isinstance(o, URIRef):
             nodes.setdefault(o, _Node(o))
@@ -157,6 +178,24 @@ def _render_object_diagram(g: Graph, *, slug: str, direction: str) -> str:
 
     lines.append("@enduml")
     return "\n".join(lines)
+
+
+def _is_hidden_predicate(p: URIRef, o) -> bool:
+    """True if a (p, o) triple is noise that should be dropped from the diagram.
+
+    - Anything under the rdfs:/prov:/ namespaces (except rdfs:label, which
+      the caller has already special-cased).
+    - `lis:representedBy` when the object is just an HTML-anchor citation
+      (`<doc#id-N>` / `<doc#class-N>`) — these clutter the diagram with one
+      edge per cited element. A representedBy pointing at a real entity URI
+      (no `#id-N` / `#class-N` fragment) survives.
+    """
+    s = str(p)
+    if s.startswith(_HIDE_PREDICATE_NAMESPACES):
+        return True
+    if p == LIS_REPRESENTED_BY and isinstance(o, URIRef):
+        return bool(_ANCHOR_FRAGMENT_RX.search(str(o)))
+    return False
 
 
 def _qname(uri: URIRef, nm) -> str:
