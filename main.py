@@ -701,6 +701,67 @@ def snapshot(target: str, at_seq: int | None, out_path: Path | None):
 
 
 @cli.command()
+@click.option("--threshold", "threshold", type=int, default=2,
+              help="Minimum number of docs that must declare a class for it to "
+                   "promote (default 2).")
+@click.option("--dry-run", is_flag=True,
+              help="Show what would be promoted without writing any deltas.")
+def promote(threshold: int, dry_run: bool):
+    """Promote stable ext: classes from per-doc graphs to project scope.
+
+    Scans every doc-scope graph for ext: class declarations. Classes
+    declared in ≥threshold docs are merged into a canonical definition
+    written to project scope. Each contributing doc's scope gets a
+    `promote` delta that REMOVES the class declaration (the canonical
+    URI continues to be valid; instances in those docs keep working).
+
+    Pure mechanical, no LLM. The dedup phase did the LLM-aided semantic
+    matching upstream; promote just consolidates the result into a
+    cross-doc ontology layer.
+    """
+    from src.extract_part14.promote import walk_promote
+
+    project_root = _find_project(Path.cwd())
+    g_dir = graphs_dir(project_root)
+
+    if dry_run:
+        # Build the decisions without writing — caller wants a preview
+        from src.extract_part14.promote import PromotionDecision
+        from src.deltas import list_scopes, materialize, project_scope
+        from src.extract_part14.ext_ontology import extract_classes_from_graph
+        from collections import defaultdict
+        contributors_by_slug: dict[str, list[str]] = defaultdict(list)
+        project_state = materialize(g_dir, project_scope())
+        already_promoted = set(extract_classes_from_graph(project_state).keys())
+        for scope in list_scopes(g_dir):
+            if scope.kind != "doc" or not scope.name:
+                continue
+            per_doc_classes = extract_classes_from_graph(materialize(g_dir, scope))
+            for slug in per_doc_classes:
+                if slug in already_promoted:
+                    continue
+                contributors_by_slug[slug].append(scope.name)
+        candidates = [(slug, contribs) for slug, contribs in contributors_by_slug.items()
+                       if len(contribs) >= threshold]
+        if not candidates:
+            console.print(f"[yellow]No ext class meets threshold ≥{threshold} docs.[/yellow]")
+            return
+        console.print(f"[bold]Would promote {len(candidates)} class(es)[/bold] "
+                      f"(threshold ≥{threshold} docs):\n")
+        for slug, contribs in sorted(candidates):
+            console.print(f"  ext:[bold]{slug}[/bold]   "
+                          f"{len(contribs)} contributors: {', '.join(contribs)}")
+        console.print()
+        return
+
+    console.print(f"[bold]promote[/bold]   (threshold ≥{threshold} docs)")
+    decisions = walk_promote(g_dir, threshold=threshold, console=console)
+    if not decisions:
+        return
+    console.print(f"  → promoted {len(decisions)} class(es) to project scope")
+
+
+@cli.command()
 @click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
 def status(directory: Path | None):
     """Show the project's ingested sources."""
