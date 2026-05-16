@@ -85,6 +85,31 @@ def test_table_label_cell_without_id_has_no_marker_only_value_does():
     assert "| Label | value {#id-X} |" in out
 
 
+def test_table_span_markers_render_inside_cells_not_after_header_row():
+    """Inline `<span id="...">` inside a `<td>` must contribute its anchor
+    marker to that cell — not leak past the row and dangle off whichever
+    row was last flushed to the output."""
+    out = render_markdown_view(
+        '<table>'
+        '<thead><tr><th>Datum</th><th>Region</th><th>EUR</th></tr></thead>'
+        '<tbody><tr>'
+        '<td><span id="id-18">17.01.25</span></td>'
+        '<td><span id="id-19">28,38,37</span></td>'
+        '<td><span id="id-20">115,84</span></td>'
+        '</tr></tbody>'
+        '</table>'
+    )
+    # Header row has no IDs — must not pick up trailing markers.
+    assert "| Datum | Region | EUR |" in out
+    assert "{#id-" not in out.split("\n", 2)[0]   # header line is marker-free
+    # Data row carries each cell's span marker INSIDE the cell.
+    assert "{#id-18}" in out and "{#id-19}" in out and "{#id-20}" in out
+    # Markers are attached to the data row, not the header row.
+    header_line, data_line, *_ = (l for l in out.splitlines() if l.startswith("|"))
+    assert "{#id-" not in header_line
+    assert "17.01.25 {#id-18}" in data_line
+
+
 # ── Lists ──────────────────────────────────────────────────────────────────
 
 def test_unordered_list_items_with_ids():

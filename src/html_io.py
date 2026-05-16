@@ -616,21 +616,35 @@ class _Renderer:
                     txt, _, _ = self._row_cells[-1]
                     self._row_cells[-1] = (txt, element_id, css_class)
         elif tag == "em":
-            self.out.append("*")
+            self._emit_chunk("*")
         elif tag == "strong":
-            self.out.append("**")
+            self._emit_chunk("**")
         elif tag == "code":
-            self.out.append("`")
+            self._emit_chunk("`")
         elif tag == "span":
-            self.out.append(marker)
+            self._emit_chunk(marker)
 
     def _emit_text(self, text: str) -> None:
         # Inside a table row: append text to the current cell's buffer.
-        if self._in_table and self._row_cells:
-            txt, cid, cclass = self._row_cells[-1]
-            self._row_cells[-1] = (txt + _normalize_inline(text), cid, cclass)
+        # Between cells (`<tr>` open but no `<td>` yet, or `<table>` open but
+        # no `<tr>`) the inter-tag whitespace would otherwise leak into
+        # self.out and trail off the previous row — drop it.
+        if self._in_table:
+            if self._row_cells:
+                txt, cid, cclass = self._row_cells[-1]
+                self._row_cells[-1] = (txt + _normalize_inline(text), cid, cclass)
             return
         self.out.append(_normalize_inline(text))
+
+    def _emit_chunk(self, chunk: str) -> None:
+        """Route an inline-tag close emission (markers, `*`, `**`, `` ` ``).
+        In table-row mode goes into the current cell's text buffer so it
+        renders inside the cell, not after the row. Otherwise self.out."""
+        if self._in_table and self._row_cells:
+            txt, cid, cclass = self._row_cells[-1]
+            self._row_cells[-1] = (txt + chunk, cid, cclass)
+        else:
+            self.out.append(chunk)
 
 
 def _normalize_inline(text: str) -> str:
