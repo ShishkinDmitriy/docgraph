@@ -117,6 +117,36 @@ def test_write_then_read_round_trip(tmp_path):
     assert set(loaded.removed) == set(g_removed)
 
 
+def test_round_trip_preserves_namespace_bindings(tmp_path):
+    """REGRESSION: source graphs' prefix bindings (lis, ext, ex, …)
+    must survive write→read round-trip. Without explicit propagation
+    in write_delta, the TriG serializer falls back to ns1:, ns2:, …
+    losing the curated readability of the project's vocab."""
+    g_added = Graph()
+    g_added.bind("lis", LIS, override=True)
+    g_added.bind("ex",  EX,  override=True)
+    g_added.add((EX.acme, RDF.type, LIS.Organization))
+    g_added.add((EX.acme, RDFS.label, Literal("Acme")))
+
+    s = doc_scope("acme")
+    delta = StepDelta(scope=s, step="extract", seq=1, added=g_added)
+    path = delta_path(tmp_path, s, 1)
+    write_delta(delta, path)
+
+    # File content should contain explicit @prefix declarations for
+    # both lis and ex, not fallback ns1:/ns2: aliases.
+    text = path.read_text()
+    assert "@prefix lis:" in text
+    assert "@prefix ex:"  in text
+    assert "@prefix ns"   not in text     # no fallback alias
+
+    # Reading back should also surface them on the parsed Graph.
+    loaded = read_delta(path)
+    loaded_prefixes = {pfx for pfx, _ in loaded.added.namespaces()}
+    assert "lis" in loaded_prefixes
+    assert "ex"  in loaded_prefixes
+
+
 def test_round_trip_with_empty_removed(tmp_path):
     """Most steps have no removals — empty removed graph is still valid."""
     g_added = Graph()

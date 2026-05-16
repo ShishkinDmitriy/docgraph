@@ -158,15 +158,53 @@ def next_seq(graphs_dir: Path, scope: Scope) -> int:
     return int(last_seq_str) + 1
 
 
+# ── Namespace propagation ───────────────────────────────────────────────
+#
+# RULE (apply EVERY time triples cross a serialization boundary): the
+# namespace bindings of the source must be copied into the target.
+# rdflib's serializers only emit `@prefix` declarations for namespaces
+# bound on the target Graph/Dataset — bindings on a "source" Graph that
+# the caller iterated triples from are not magically transferred. Files
+# missing prefix declarations show ugly fallback `ns1:`, `ns2:` and lose
+# the curated readability of the project's vocab.
+
+
+def copy_namespaces(source, target) -> None:
+    """Copy every (prefix, namespace) binding from *source* to *target*.
+
+    Both can be Graph or Dataset. Idempotent — existing bindings on
+    target are not overridden. Call this whenever you build a new graph
+    by iterating triples from another graph; otherwise the serialized
+    file loses every prefix declaration the source had.
+    """
+    for prefix, ns in source.namespaces():
+        try:
+            target.bind(prefix, ns, override=False, replace=False)
+        except TypeError:
+            # Some rdflib Graph.bind variants don't accept replace=False;
+            # fall back to the two-arg form.
+            target.bind(prefix, ns, override=False)
+
+
 # ── Write ───────────────────────────────────────────────────────────────
 
 
 def write_delta(delta: StepDelta, path: Path) -> None:
-    """Serialize `delta` to a TriG file at `path`."""
+    """Serialize `delta` to a TriG file at `path`.
+
+    Namespace bindings from the input graphs (delta.added, delta.removed)
+    are propagated to the output Dataset BEFORE serialization, so the
+    written file's `@prefix` declarations cover every URI the data uses.
+    Without this propagation, rdflib emits fallback `ns1:`, `ns2:` …
+    instead of the curated `lis:`, `ext:`, `ex:` etc.
+    """
     ds = Dataset()
     ds.bind("dg",   DG)
     ds.bind("prov", PROV)
     ds.bind("xsd",  XSD)
+    # Carry over the source graphs' bindings (lis, ext, ex, tpl, …)
+    copy_namespaces(delta.added,   ds)
+    copy_namespaces(delta.removed, ds)
 
     added_uri   = delta.added_uri
     removed_uri = delta.removed_uri
@@ -231,9 +269,11 @@ def read_delta(path: Path) -> StepDelta:
     parent_seq = _int_object(default_g, added_uri, DG.parentSeq, default=0)
 
     added_g = Graph()
+    copy_namespaces(ds, added_g)         # preserve `@prefix` decls from the file
     for t in ds.graph(added_uri):
         added_g.add(t)
     removed_g = Graph()
+    copy_namespaces(ds, removed_g)
     if removed_uri is not None:
         for t in ds.graph(removed_uri):
             removed_g.add(t)
@@ -294,8 +334,10 @@ def snapshot(graph: Graph) -> Graph:
     rdflib Graphs are mutable and don't support a cheap "freeze". We make
     a shallow copy of the triple set so the caller can keep a reference
     to the pre-step state, mutate the original, then compute the diff.
-    Bindings are not preserved (we only need the triples for diff)."""
+    Namespace bindings are also copied so the snapshot is self-sufficient
+    if the caller ever serializes it."""
     out = Graph()
+    copy_namespaces(graph, out)
     for triple in graph:
         out.add(triple)
     return out
@@ -320,9 +362,15 @@ def delta_from_diff(
     before_set = set(before)
     after_set  = set(after)
     added_g = Graph()
+    # Propagate bindings from both sides so whichever graph the triple
+    # originates from, its prefix is available in the delta files.
+    copy_namespaces(before, added_g)
+    copy_namespaces(after,  added_g)
     for t in after_set - before_set:
         added_g.add(t)
     removed_g = Graph()
+    copy_namespaces(before, removed_g)
+    copy_namespaces(after,  removed_g)
     for t in before_set - after_set:
         removed_g.add(t)
     return StepDelta(
@@ -349,6 +397,8 @@ def materialize(graphs_dir: Path, scope: Scope, *, at_seq: int | None = None) ->
         delta = read_delta(path)
         if at_seq is not None and delta.seq > at_seq:
             break
+        copy_namespaces(delta.added,   out)
+        copy_namespaces(delta.removed, out)
         for triple in delta.added:
             out.add(triple)
         for triple in delta.removed:

@@ -145,6 +145,11 @@ def walk_templates(
             logger.warning("walk_templates: materialize_lifted failed for %s: %s",
                            inv.template.uri, exc)
             continue
+        # Propagate the lifted graph's prefixes (slot-NS, lis14tpl, …)
+        # to the templated rewrite — the snapshot .ttl serialization
+        # would otherwise emit `ns1:`, `ns2:` for the slot namespaces.
+        from src.deltas import copy_namespaces
+        copy_namespaces(lifted, g)
         for triple in lifted:
             if any(_is_omit_sentinel(t) for t in triple):
                 continue
@@ -219,6 +224,11 @@ def materialize_recognized(
             logger.warning("template_recognizer: lifted materialization failed for %s: %s",
                            inv.template.uri, exc)
             continue
+        # Propagate the template's prefixes (lis14tpl, lis, tpl, …) so
+        # downstream serialization of `out` keeps the curated `@prefix`
+        # declarations instead of falling back to `ns1:` style.
+        from src.deltas import copy_namespaces
+        copy_namespaces(lifted, out)
         for s, p, o in lifted:
             out.add((s, p, o))
     return out

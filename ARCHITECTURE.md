@@ -296,6 +296,23 @@ The CLI's loader runs once per command, building an in-memory rdflib `Dataset` w
 
 The standard OWL `owl:imports` mechanism is **not** used to drive resolution — there's no reasoner walking import chains, no IRI-to-file catalog. The loader is a deterministic file-reader following the recipe above; "imports" are encoded as code, not as triples on disk.
 
+### Namespace propagation across serialization boundaries
+
+**RULE**: every time triples cross a Graph-to-Graph or Graph-to-File
+boundary, the source's namespace bindings must be copied to the target.
+rdflib's serializers emit `@prefix` declarations only for namespaces
+bound on the *target* Graph/Dataset — bindings on a "source" graph that
+the caller iterates triples from are not magically transferred. Files
+missing prefix declarations end up with fallback `ns1:`, `ns2:` aliases
+and lose the curated readability of the project's vocab.
+
+Helper: `src.deltas.copy_namespaces(source, target)` — call it
+whenever you build a new graph by iterating triples from another.
+Already wired into the deltas plumbing (`write_delta`, `read_delta`,
+`materialize`, `delta_from_diff`, `snapshot`) and into the template
+recognizer's lifted-form composition. When adding a new place that
+copies triples between graphs, propagate bindings the same way.
+
 ### Graph files are real files
 
 Regardless of input format, `graphs/<slug>.ttl` is a real file written by the
