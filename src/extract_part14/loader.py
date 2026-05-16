@@ -11,6 +11,11 @@ from pathlib import Path
 
 from rdflib import Dataset, Graph, Namespace, URIRef
 
+from src.deltas import (
+    Scope,
+    list_scopes,
+    materialize,
+)
 from src.project import (
     PIPELINE_PART14,
     config_path,
@@ -46,9 +51,18 @@ def build_dataset(project_root: Path) -> Dataset:
     """Assemble the project's full rdflib Dataset.
 
     Returns a Dataset containing:
-      - One named graph per bundled foundational ontology (URI: urn:docgraph:foundational/<slug>)
-      - One named graph per registered source (URI: from sources.ttl's dg:graphFile)
-      - sources.ttl as the default graph (so registry queries are convenient)
+      - One named graph per bundled foundational ontology
+        (URI: urn:docgraph:foundational/<slug>)
+      - One named graph per delta scope, materialized from the
+        scope's `.trig` deltas in seq order
+        (URI: urn:docgraph:scope/<kind>[/<name>])
+      - One named graph per non-redundant HEAD snapshot in
+        `.docgraph/graphs/*.ttl` (URI: urn:docgraph:source/<stem>).
+        `<slug>.convert.ttl` and `<slug>.extract.ttl` are skipped when
+        the doc slug already has deltas loaded (no double-loading).
+        `<slug>.templates.ttl` is always loaded — templates phase
+        isn't yet deltized.
+      - sources.ttl + config.ttl + ext.ttl as appropriate.
     """
     pipeline = read_pipeline(project_root)
     if pipeline != PIPELINE_PART14:
@@ -88,15 +102,53 @@ def build_dataset(project_root: Path) -> Dataset:
         g = ds.graph(graph_uri)
         g.parse(ext_path, format="turtle")
 
-    # 5. Each registered per-source graph.
+    # 5. Versioned-graph deltas — for every scope that has at least one
+    #    delta file (`<scope-prefix>.NNN.trig`), materialize the current
+    #    state and load it as a named graph at the scope's canonical URI.
+    #    Track which doc slugs are covered so we can skip their
+    #    redundant HEAD snapshots in step 6.
     g_dir = graphs_dir(project_root)
+    doc_slugs_with_deltas: set[str] = set()
+    if g_dir.is_dir():
+        for scope in list_scopes(g_dir):
+            materialized = materialize(g_dir, scope)
+            if len(materialized) == 0:
+                continue
+            g = ds.graph(scope.uri)
+            for triple in materialized:
+                g.add(triple)
+            if scope.kind == "doc" and scope.name:
+                doc_slugs_with_deltas.add(scope.name)
+
+    # 6. Per-source HEAD snapshot graphs (legacy + not-yet-deltized views).
+    #    Skip <slug>.convert.ttl and <slug>.extract.ttl when the doc
+    #    slug has deltas — those snapshots are now derivable from the
+    #    materialized scope. Keep <slug>.templates.ttl (the templates
+    #    phase hasn't been migrated to deltas yet), plus any other .ttl
+    #    file dropped into graphs/ (foundationals, user-added data).
     if g_dir.is_dir():
         for ttl in sorted(g_dir.glob("*.ttl")):
+            if _is_redundant_snapshot(ttl.name, doc_slugs_with_deltas):
+                continue
             graph_uri = URIRef(f"urn:docgraph:source/{ttl.stem}")
             g = ds.graph(graph_uri)
             g.parse(ttl, format="turtle")
 
     return ds
+
+
+def _is_redundant_snapshot(filename: str, doc_slugs_with_deltas: set[str]) -> bool:
+    """True if `filename` is a `<slug>.convert.ttl` or `<slug>.extract.ttl`
+    snapshot for a slug that already has delta files (so its triples
+    are already loaded via materialize). Templates snapshots and other
+    .ttl files load as before.
+    """
+    for suffix in (".convert.ttl", ".extract.ttl"):
+        if filename.endswith(suffix):
+            slug = filename[: -len(suffix)]
+            if slug in doc_slugs_with_deltas:
+                return True
+    return False
 
 
 def foundational_graph_uri(slug: str) -> URIRef:
