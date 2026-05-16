@@ -151,6 +151,16 @@ def ext_ontology_path(project_root: Path) -> Path:
     return ontologies_dir(project_root) / EXT_FILENAME
 
 
+def embeddings_path(project_root: Path) -> Path:
+    """Path to the project-wide embedding store (`.docgraph/embeddings.npz`).
+
+    Used by the ext-class dedup phase to detect near-duplicate proposed
+    classes across docs (e.g. ext:Bill collapsing into an existing
+    ext:Invoice when their label/comment embeddings are close).
+    """
+    return project_root / DOCGRAPH_DIR / "embeddings.npz"
+
+
 # NOTE: The dg: vocabulary below is duplicated in vendor/ontologies/dg.ttl, which
 # is the canonical source-of-truth going forward (per ARCHITECTURE.md storage
 # layout). This inline template is kept until the loader refactor (M0/M1 of the

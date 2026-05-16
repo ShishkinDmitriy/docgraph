@@ -23,6 +23,8 @@ from src.extract_part14.structural import DG, LIS, build_chain
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
 from src.extract_part14.template_recognizer import walk_templates
+from src.extract_part14.ext_dedup import walk_dedup
+from src.embeddings import EmbeddingClient, EmbeddingError, EmbeddingStore
 from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
 from src.ingest import (
     IngestError,
@@ -46,6 +48,7 @@ from src.project import (
     GRAPHS_SUBDIR,
     HTML_SUBDIR,
     cache_dir,
+    embeddings_path,
     graphs_dir,
     html_dir,
     sources_path,
@@ -245,6 +248,33 @@ def extract_pdf_part14(
             g, extracted=extracted, ontology=ontology, base_ns=base_ns,
             markdown=full_markdown, client=client, model=model, console=console,
         )
+
+    # ── EXT-CLASS DEDUP PHASE — anchor-scoped embedding compare. New
+    # ext: classes proposed by the LLM are folded into existing canonical
+    # URIs from prior docs when their label/comment embeddings are close.
+    # Mutates g + g_templates in place; updates the project embedding
+    # store. Skipped silently if OPENAI_API_KEY is absent.
+    try:
+        embed_client = EmbeddingClient()
+    except EmbeddingError as exc:
+        embed_client = None
+        if extracted:
+            console.print(f"  [dim]dedup skipped: {exc}[/dim]")
+    if embed_client is not None and extracted:
+        console.print("[bold]dedup[/bold]")
+        embed_store = EmbeddingStore.load(embeddings_path(project_root))
+        decisions = walk_dedup(
+            g, g_templates,
+            ontology=ontology,
+            embedding_store=embed_store,
+            embedding_client=embed_client,
+            llm_client=client,
+            llm_model=model,
+            console=console,
+        )
+        embed_store.save()
+        if not decisions:
+            console.print("  [dim]no related candidates in any anchor scope[/dim]")
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
