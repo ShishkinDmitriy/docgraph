@@ -7,9 +7,9 @@ by the extraction LLM as a token-efficient input. See
 `docs/architecture/html-pipeline.md` for the full design.
 
 This module provides:
-  - `html_paths_for_pdf(pdf, dir)` — list HTML files belonging to a PDF
-  - `save_html(pdf, docs, dir)` — write `<slug>.<part>.html` files
-  - `load_html(pdf, dir)` — read them back
+  - `html_paths(dir)` — list converted HTML files in a doc dir
+  - `save_html(docs, dir)` — write `converted[.<part>].html` files
+  - `load_html(dir)` — read them back
   - `load_or_extract_html(pdf, ...)` — convert PDF→HTML if not cached, else load
   - `render_markdown_view(html_text)` — derive the LLM-input Markdown view
     with `{#id-N}` anchor markers per element that has an `id` attribute
@@ -33,21 +33,22 @@ logger = logging.getLogger(__name__)
 # ── File-naming convention ────────────────────────────────────────────────
 
 # A single PDF may yield multiple HTML documents (invoice + receipt, etc.).
-# Naming: `<pdf-stem>.html` for single-document PDFs, `<pdf-stem>.<part>.html`
-# for multi-document. The `.html` suffix is always last so the loader can
-# discover all parts via glob.
-_SINGLE_TEMPLATE = "{stem}.html"
-_PART_TEMPLATE   = "{stem}.{part}.html"
+# Naming inside the doc dir: `converted.html` for single-document PDFs,
+# `converted.<part>.html` for multi-document. The PDF stem is NOT in the
+# filename — the dir is keyed by slug, so the doc dir already disambiguates.
+_SINGLE_NAME      = "converted.html"
+_PART_TEMPLATE    = "converted.{part}.html"
+_PART_GLOB        = "converted.*.html"
 
 
-def html_paths_for_pdf(pdf: Path, html_dir: Path) -> list[Path]:
-    """Return all HTML files belonging to *pdf* under *html_dir*, sorted.
+def html_paths(html_dir: Path) -> list[Path]:
+    """Return all converted HTML files under *html_dir*, sorted.
 
-    Discovers both the single-document (`<stem>.html`) and multi-document
-    (`<stem>.<part>.html`) layouts.
+    Discovers both the single-document (`converted.html`) and multi-document
+    (`converted.<part>.html`) layouts.
     """
-    single = html_dir / _SINGLE_TEMPLATE.format(stem=pdf.stem)
-    parts  = sorted(html_dir.glob(f"{pdf.stem}.*.html"))
+    single = html_dir / _SINGLE_NAME
+    parts  = sorted(html_dir.glob(_PART_GLOB))
     out: list[Path] = []
     if single.exists():
         out.append(single)
@@ -55,7 +56,7 @@ def html_paths_for_pdf(pdf: Path, html_dir: Path) -> list[Path]:
     return out
 
 
-def save_html(pdf: Path, docs: list[dict], html_dir: Path, console: Console) -> list[Path]:
+def save_html(docs: list[dict], html_dir: Path, console: Console) -> list[Path]:
     """Write each extracted HTML document to disk. Returns the list of files.
 
     The LLM emits only the body content (e.g., `<article>...</article>`);
@@ -65,24 +66,24 @@ def save_html(pdf: Path, docs: list[dict], html_dir: Path, console: Console) -> 
     atomic units outlined red, structural notes outlined green, overlay
     placeholders filled in.
 
-    Single document → `<stem>.html`.
-    Multiple documents → `<stem>.<slugified-title>.html` per document.
+    Single document → `converted.html`.
+    Multiple documents → `converted.<slugified-title>.html` per document.
     """
     html_dir.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
 
     if len(docs) == 1:
-        path = html_dir / _SINGLE_TEMPLATE.format(stem=pdf.stem)
+        path = html_dir / _SINGLE_NAME
         path.write_text(_wrap_document(docs[0]), encoding="utf-8")
-        console.print(f"  wrote   [dim]html/{path.name}[/dim]")
+        console.print(f"  wrote   [dim]{path.name}[/dim]")
         written.append(path)
         return written
 
     for doc in docs:
         part = _slugify(doc.get("title", "doc"))
-        path = html_dir / _PART_TEMPLATE.format(stem=pdf.stem, part=part)
+        path = html_dir / _PART_TEMPLATE.format(part=part)
         path.write_text(_wrap_document(doc), encoding="utf-8")
-        console.print(f"  wrote   [dim]html/{path.name}[/dim]")
+        console.print(f"  wrote   [dim]{path.name}[/dim]")
         written.append(path)
     return written
 
@@ -215,8 +216,8 @@ def _html_escape(s: str) -> str:
              .replace('"', "&quot;"))
 
 
-def load_html(pdf: Path, html_dir: Path) -> list[dict]:
-    """Load previously-saved HTML documents for *pdf*. The saved files
+def load_html(html_dir: Path) -> list[dict]:
+    """Load previously-saved HTML documents from *html_dir*. The saved files
     include the visualization wrapper (DOCTYPE, head, style); this loader
     returns just the body content so downstream consumers (the MD-view
     renderer, the extraction LLM) see the canonical content directly.
@@ -225,7 +226,7 @@ def load_html(pdf: Path, html_dir: Path) -> list[dict]:
     first heading if needed (not preserved on disk).
     """
     docs: list[dict] = []
-    for path in html_paths_for_pdf(pdf, html_dir):
+    for path in html_paths(html_dir):
         full_html = path.read_text(encoding="utf-8")
         body      = _strip_outer_html(full_html)
         docs.append({
@@ -253,21 +254,21 @@ def load_or_extract_html(
     *force*=True drops the cache first and re-converts.
     """
     if force:
-        for path in html_paths_for_pdf(pdf, html_dir):
+        for path in html_paths(html_dir):
             path.unlink()
             con.print(f"  [yellow]--reconvert[/yellow]: dropped html cache "
                       f"[dim]{path.name}[/dim]")
 
-    cached = load_html(pdf, html_dir)
+    cached = load_html(html_dir)
     if cached:
-        con.print(f"  loading {', '.join(p.name for p in html_paths_for_pdf(pdf, html_dir))}")
+        con.print(f"  loading {', '.join(p.name for p in html_paths(html_dir))}")
         return cached
 
     pdf_block = extract_pdf(pdf)
     docs = pdf_to_html(pdf_block, client, model, note=note)
     if not docs:
         return []
-    save_html(pdf, docs, html_dir, con)
+    save_html(docs, html_dir, con)
     return docs
 
 

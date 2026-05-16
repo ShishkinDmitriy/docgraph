@@ -1,6 +1,11 @@
 """Generate PlantUML object diagrams from a source's extraction named graph.
 
-Pipeline:  graphs/<slug>.trig  →  diagrams/<slug>.puml  →  diagrams/<slug>.svg
+Pipeline:
+  docs/<slug>/delta.*.trig  →  docs/<slug>/diagram.puml  →  diagram.svg
+
+`make_diagram(project_root, slug)` produces the HEAD diagram (`diagram.*`).
+With ``at_seq=N`` it produces a historical snapshot (`diagram.NNN.*`),
+parallel to `graph.ttl` / `graph.NNN.ttl` produced by `docgraph snapshot`.
 
 We render PlantUML ourselves from the extraction RDF graph:
     - one ``object "<label>" as <alias> <<Class>>`` per RDF subject
@@ -21,9 +26,8 @@ from rdflib.namespace import RDF, RDFS
 from rich.console import Console
 
 from src.deltas import doc_scope, materialize
-from src.project import DOCGRAPH_DIR
+from src.project import diagram_path, doc_dir
 
-DIAGRAMS_SUBDIR = "diagrams"
 PLANTUML_SERVER = "https://www.plantuml.com/plantuml"
 
 # rdf:type values we don't surface as stereotypes (noise / implicit).
@@ -50,26 +54,32 @@ def make_diagram(
     *,
     render_format: str = "svg",
     direction: str = "LR",
+    at_seq: int | None = None,
 ) -> Path:
-    """Generate diagrams/<slug>.puml (and .svg/.png if rendering succeeds).
+    """Generate `docs/<slug>/diagram.puml` (+ .svg/.png if rendering succeeds).
+
+    With ``at_seq=None`` writes the HEAD diagram (`diagram.*`). With a seq,
+    writes a historical snapshot (`diagram.NNN.*`), parallel to the numbered
+    `graph.NNN.ttl` from `docgraph snapshot --at N`.
 
     Returns the path of the .puml file.
     """
-    diagrams_dir = project_root / DOCGRAPH_DIR / DIAGRAMS_SUBDIR
-    diagrams_dir.mkdir(exist_ok=True)
+    sd = doc_dir(project_root, slug)
+    sd.mkdir(parents=True, exist_ok=True)
 
-    # Materialize the doc-scope's HEAD state from its delta files.
-    extraction_g = materialize(project_root, doc_scope(slug))
+    # Materialize the doc-scope's state from its delta files (HEAD or seq N).
+    extraction_g = materialize(project_root, doc_scope(slug), at_seq=at_seq)
     if len(extraction_g) == 0:
+        at_label = f" at seq={at_seq}" if at_seq is not None else ""
         raise DiagramError(
-            f"doc-scope graph for {slug!r} is empty or missing — "
+            f"doc-scope graph for {slug!r}{at_label} is empty or missing — "
             f"has the source been ingested via `docgraph add`?"
         )
     console.print(f"  extraction graph: [bold]{len(extraction_g)}[/bold] triple(s)")
 
     puml_text = _render_object_diagram(extraction_g, slug=slug, direction=direction)
 
-    puml_path = diagrams_dir / f"{slug}.puml"
+    puml_path = diagram_path(project_root, slug, fmt="puml", at_seq=at_seq)
     puml_path.write_text(puml_text, encoding="utf-8")
     console.print(f"  wrote   [dim]{puml_path.relative_to(project_root)}[/dim] "
                   f"({len(puml_text):,} chars)")
@@ -80,7 +90,7 @@ def make_diagram(
         console.print(f"  [yellow]rendering skipped[/yellow]: {exc}")
         return puml_path
 
-    out_path = diagrams_dir / f"{slug}.{render_format}"
+    out_path = diagram_path(project_root, slug, fmt=render_format, at_seq=at_seq)
     out_path.write_bytes(rendered)
     console.print(f"  rendered [dim]{out_path.relative_to(project_root)}[/dim] "
                   f"({len(rendered):,} bytes)")

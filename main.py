@@ -14,10 +14,7 @@ from rich.table import Table
 from src.ingest import TTL_SUFFIXES, IngestError, ingest_ttl, list_sources
 from src.ingest_pdf import ingest_pdf
 from src.llm.anthropic import AnthropicClient
-from src.html_io import (
-    html_paths_for_pdf,
-    load_or_extract_html,
-)
+from src.html_io import load_or_extract_html
 from src.models import ModelConfig
 from src.project import (
     DEFAULT_PIPELINE,
@@ -191,7 +188,7 @@ def convert(input_path: Path, note: str | None, force: bool, debug: bool):
         sys.exit(2)
 
     client = _anthropic_client()
-    # HTML lives inside the per-doc dir (`docs/<slug>/<pdf-stem>.html`).
+    # HTML lives inside the per-doc dir as `docs/<slug>/converted.html`.
     from src.ingest import make_slug
     from src.project import doc_dir as _doc_dir
     slug = make_slug(source.stem)
@@ -416,7 +413,8 @@ def diagram(target: str | None, all_sources: bool, fmt: str, direction: str):
     original source file (e.g. `~/Documents/Zahnrechnung2025.pdf`); paths are
     resolved against the project's sources.ttl.
 
-    Pipeline:  graphs/<slug>.trig  →  diagrams/<slug>.puml  →  diagrams/<slug>.svg
+    Pipeline:
+      docs/<slug>/delta.*.trig  →  docs/<slug>/diagram.puml  →  diagram.svg
 
     The .puml is always written. Rendering is best-effort over the public
     PlantUML server; if the network call fails the .puml is still on disk.
@@ -467,19 +465,14 @@ def coverage(target: str):
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
 
-    # HTML lives inside the per-doc dir (`docs/<slug>/<pdf-stem>.html`).
-    # PDF stem preserves case; slug is lowercased — match case-insensitive.
+    # HTML lives inside the per-doc dir as `docs/<slug>/converted.html`
+    # (single-doc PDFs) or `docs/<slug>/converted.<part>.html` (multi-doc).
+    from src.html_io import html_paths
     from src.project import doc_dir as _doc_dir
     from src.deltas import doc_scope, materialize
     sd = _doc_dir(project_root, slug)
-    html_path: Path | None = None
-    if sd.exists():
-        for p in sd.glob("*.html"):
-            if p.name == "annotated.html":
-                continue
-            if p.stem.casefold() == slug.casefold() or p.name == "canonical.html":
-                html_path = p
-                break
+    found = html_paths(sd) if sd.exists() else []
+    html_path: Path | None = found[0] if found else None
 
     # Materialize the extract graph from the doc-scope deltas to a temp
     # file the coverage analyser can read.
@@ -569,16 +562,11 @@ def view(target: str, no_open: bool):
         annotated_html_path as _ann_path,
         doc_dir as _doc_dir,
     )
+    from src.html_io import html_paths
     from src.deltas import doc_scope, materialize
     sd = _doc_dir(project_root, slug)
-    html_path: Path | None = None
-    if sd.exists():
-        for p in sd.glob("*.html"):
-            if p.name == "annotated.html":
-                continue
-            if p.stem.casefold() == slug.casefold() or p.name == "canonical.html":
-                html_path = p
-                break
+    found = html_paths(sd) if sd.exists() else []
+    html_path: Path | None = found[0] if found else None
 
     import tempfile
     g = materialize(project_root, doc_scope(slug))
@@ -695,17 +683,20 @@ def diff(target: str, seq_a: int, seq_b: int):
 @click.option("--at", "at_seq", type=int, default=None,
               help="Materialize state at this seq (default: HEAD).")
 @click.option("--out", "out_path", type=click.Path(path_type=Path), default=None,
-              help="Output .ttl path (default: <slug>.<seq>.snapshot.ttl OR "
-                   "<slug>.HEAD.snapshot.ttl in graphs/).")
-def snapshot(target: str, at_seq: int | None, out_path: Path | None):
-    """Write a materialized snapshot (full Turtle) of a doc's scope.
+              help="Output .ttl path (default: docs/<slug>/graph.ttl for HEAD, "
+                   "docs/<slug>/graph.NNN.ttl for --at).")
+@click.option("--no-diagram", is_flag=True,
+              help="Skip diagram rendering — just write the graph snapshot.")
+def snapshot(target: str, at_seq: int | None, out_path: Path | None, no_diagram: bool):
+    """Write a materialized snapshot (Turtle + diagram) of a doc's scope.
 
-    Default writes HEAD (all deltas applied) to
-    `<graphs>/<slug>.HEAD.snapshot.ttl`. With `--at <seq>`, writes the
-    historical state after the step with that seq to
-    `<graphs>/<slug>.NNN.snapshot.ttl`.
+    Default writes HEAD (all deltas applied) to `docs/<slug>/graph.ttl` and
+    refreshes `docs/<slug>/diagram.{puml,svg}`. With `--at <seq>`, writes
+    the historical state after the step with that seq to
+    `docs/<slug>/graph.NNN.ttl` and `docs/<slug>/diagram.NNN.{puml,svg}`.
     """
     from src.deltas import doc_scope, materialize
+    from src.project import graph_ttl_path
 
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
@@ -717,17 +708,22 @@ def snapshot(target: str, at_seq: int | None, out_path: Path | None):
                       f"{f' at seq={at_seq}' if at_seq is not None else ''}.")
         return
 
-    # Snapshot files live inside the scope's dir (docs/<slug>/snapshot.NNN.ttl).
-    from src.deltas import scope_dir
-    if at_seq is not None:
-        default_name = f"snapshot.{at_seq:03d}.ttl"
-    else:
-        default_name = "snapshot.HEAD.ttl"
     if out_path is None:
-        out_path = scope_dir(project_root, scope) / default_name
+        out_path = graph_ttl_path(project_root, slug, at_seq=at_seq)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     g.serialize(destination=str(out_path), format="turtle")
-    console.print(f"  wrote   [dim]{out_path}[/dim] ({len(g)} triples)")
+    console.print(f"  wrote   [dim]{out_path.relative_to(project_root)}[/dim] "
+                  f"({len(g)} triples)")
+
+    if no_diagram:
+        return
+    from src.diagram import DiagramError, make_diagram
+    try:
+        make_diagram(project_root, slug, console, at_seq=at_seq)
+    except DiagramError as exc:
+        console.print(f"  [yellow]diagram skipped[/yellow]: {exc}")
+    except Exception as exc:
+        console.print(f"  [yellow]diagram failed[/yellow]: {exc}")
 
 
 @cli.command()

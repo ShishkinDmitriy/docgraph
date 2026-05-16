@@ -142,10 +142,10 @@ def test_snapshot_writes_head_state(tmp_path, monkeypatch):
     project = _setup_project_with_doc(tmp_path)
     monkeypatch.chdir(project)
     result = CliRunner().invoke(
-        cli, ["snapshot", "demo"], catch_exceptions=False)
+        cli, ["snapshot", "demo", "--no-diagram"], catch_exceptions=False)
     assert result.exit_code == 0
-    from src.deltas import scope_dir
-    out_file = scope_dir(project, doc_scope("demo")) / "snapshot.HEAD.ttl"
+    from src.project import graph_ttl_path
+    out_file = graph_ttl_path(project, "demo")
     assert out_file.is_file()
     g = Graph()
     g.parse(out_file, format="turtle")
@@ -158,10 +158,10 @@ def test_snapshot_at_historical_seq(tmp_path, monkeypatch):
     project = _setup_project_with_doc(tmp_path)
     monkeypatch.chdir(project)
     result = CliRunner().invoke(
-        cli, ["snapshot", "demo", "--at", "1"], catch_exceptions=False)
+        cli, ["snapshot", "demo", "--at", "1", "--no-diagram"], catch_exceptions=False)
     assert result.exit_code == 0
-    from src.deltas import scope_dir
-    out_file = scope_dir(project, doc_scope("demo")) / "snapshot.001.ttl"
+    from src.project import graph_ttl_path
+    out_file = graph_ttl_path(project, "demo", at_seq=1)
     assert out_file.is_file()
     g = Graph()
     g.parse(out_file, format="turtle")

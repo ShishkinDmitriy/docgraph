@@ -46,7 +46,7 @@ from src.ingest import (
 )
 from src.html_io import (
     build_class_maps,
-    html_paths_for_pdf,
+    html_paths,
     load_or_extract_html,
     render_markdown_view,
 )
@@ -54,11 +54,11 @@ from src.markdown_io import md_paths_for_pdf
 from src.models import ModelConfig
 from src.pdfinfo import pdfinfo
 from src.project import (
-    canonical_html_path,
     cache_dir,
+    converted_html_path,
+    converted_md_path,
     doc_dir,
     embeddings_path,
-    prompt_md_path,
     sources_path,
 )
 
@@ -115,8 +115,8 @@ def extract_pdf_part14(
     html_uri = URIRef(base_ns["html"])   # the canonical HTML view
     md_uri   = URIRef(base_ns["md"])     # the markdown projection LLM sees
 
-    # Doc dir for ALL artifacts (deltas + canonical.html + prompt.md +
-    # annotated.html + snapshots).
+    # Doc dir for ALL artifacts (deltas + converted.html + converted.md +
+    # annotated.html + graph.ttl snapshots + diagram.* renders).
     sd = doc_dir(project_root, slug)
     sd.mkdir(parents=True, exist_ok=True)
 
@@ -197,14 +197,14 @@ def extract_pdf_part14(
         for cls, ids in c2i.items():
             class_to_ids.setdefault(cls, set()).update(ids)
 
-    # ── Resolve the canonical HTML path for fragment-URI anchoring ──
-    html_files = html_paths_for_pdf(source, sd)
+    # ── Resolve the converted HTML path for fragment-URI anchoring ──
+    html_files = html_paths(sd)
     html_file_path = html_files[0] if html_files else None
 
-    # ── Cache the markdown view to disk at `docs/<slug>/prompt.md` so
+    # ── Cache the markdown view to disk at `docs/<slug>/converted.md` so
     # the LLM prompt is reproducible and inspectable. Registered as a
     # dg:MarkdownFile in the convert delta for provenance.
-    md_file_path = prompt_md_path(project_root, slug)
+    md_file_path = converted_md_path(project_root, slug)
     md_file_path.write_text(full_markdown, encoding="utf-8")
 
     # ── CONVERT STEP (seq 2) — HtmlFile + MarkdownFile + conversion

@@ -3,16 +3,21 @@
 Layout (per ARCHITECTURE.md):
 
     .docgraph/
-      meta.ttl                         — docgraph extensions, owl:imports the upper ontologies
-      iso-15926-2.rdf                  — ISO 15926 Part 2 OWL upper ontology (POSC Caesar)
-      iso-15926-2-annotations.rdf      — Part 2 entity definitions / notes / examples
-      prov-o.ttl                       — W3C PROV-O (provenance)
-      dcterms.ttl                      — DCMI Terms (bibliographic metadata)
+      config.ttl                       — project header (Part 14 pipeline marker)
       sources.ttl                      — registry of ingested sources
-      graphs/
-        <slug>.ttl                     — HEAD snapshots per source (real file)
-        doc-<slug>.NNN.trig            — versioned-graph deltas per source
-      cache/                           — PDF→Markdown cache (unchanged)
+      templates.ttl                    — user-template registry
+      docs/<slug>/
+        delta.NNN.trig                 — versioned-graph deltas
+        converted.html                 — PDF→HTML conversion (or converted.<part>.html)
+        converted.md                   — markdown projection fed to the LLM
+        annotated.html                 — derived viewer artifact (`docgraph view`)
+        graph.ttl                      — HEAD snapshot (`docgraph snapshot`)
+        graph.NNN.ttl                  — historical snapshots (`--at N`)
+        diagram.{puml,svg,png}         — HEAD diagram (`docgraph diagram`)
+        diagram.NNN.{puml,svg,png}     — historical diagrams (`snapshot --at N`)
+      project/                         — project-scope deltas (promoted ext classes)
+      rdl/<id>/                        — cached remote RDL deltas
+      cache/                           — PDF→Markdown intermediate cache
 """
 
 import shutil
@@ -43,9 +48,11 @@ PROJECT_SCOPE_SUBDIR             = "project"     # project/...
 RDL_SCOPE_SUBDIR                 = "rdl"         # rdl/<id>/...
 
 # Filenames inside a scope's dir.
-CANONICAL_HTML_FILENAME          = "canonical.html"   # the LLM-rendered HTML
-PROMPT_MD_FILENAME               = "prompt.md"        # the markdown view fed to LLM
+CONVERTED_HTML_FILENAME          = "converted.html"   # PDF→HTML conversion output
+CONVERTED_MD_FILENAME            = "converted.md"     # markdown projection of converted.html
 ANNOTATED_HTML_FILENAME          = "annotated.html"   # derived viewer artifact
+GRAPH_TTL_FILENAME               = "graph.ttl"        # HEAD-state snapshot (Turtle)
+DIAGRAM_BASENAME                 = "diagram"          # diagram.{puml,svg,png}
 
 # Pipelines (see ARCHITECTURE.md § Pipelines — Part 2 and Part 14 in parallel)
 PIPELINE_PART2  = "part2"
@@ -131,9 +138,10 @@ def graphs_dir(project_root: Path) -> Path:
 
 def doc_dir(project_root: Path, slug: str) -> Path:
     """`.docgraph/docs/<slug>/` — every artifact for one doc lives here:
-    delta.NNN.trig files, canonical.html (LLM-rendered), prompt.md
-    (LLM-prompt view), annotated.html (derived viewer), snapshot.*.ttl
-    (on demand). Easy to `rm -rf` a single doc."""
+    delta.NNN.trig (versioned deltas), converted.html (PDF→HTML), converted.md
+    (LLM-prompt view), annotated.html (derived viewer), graph[.NNN].ttl
+    (on-demand snapshots), diagram[.NNN].{puml,svg,png} (on-demand diagrams).
+    Easy to `rm -rf` a single doc."""
     return project_root / DOCGRAPH_DIR / DOCS_SUBDIR / slug
 
 
@@ -151,23 +159,50 @@ def rdl_scope_dir(project_root: Path, rdl_id: str) -> Path:
 # ── Per-doc artifact paths (the typed files inside a doc_dir) ──────────────
 
 
-def canonical_html_path(project_root: Path, slug: str) -> Path:
-    """`.docgraph/docs/<slug>/canonical.html` — LLM-rendered HTML.
-    Source of truth for structure + atomic-unit IDs."""
-    return doc_dir(project_root, slug) / CANONICAL_HTML_FILENAME
+def converted_html_path(project_root: Path, slug: str) -> Path:
+    """`.docgraph/docs/<slug>/converted.html` — PDF→HTML conversion output.
+    Source of truth for structure + atomic-unit IDs. Single-document PDFs
+    use this exact path; multi-document PDFs add `converted.<part>.html`
+    siblings (discovered via glob)."""
+    return doc_dir(project_root, slug) / CONVERTED_HTML_FILENAME
 
 
-def prompt_md_path(project_root: Path, slug: str) -> Path:
-    """`.docgraph/docs/<slug>/prompt.md` — markdown projection of the
-    canonical HTML that's fed to the extract LLM as the prompt input.
-    Cached on disk so the LLM call is reproducible + inspectable."""
-    return doc_dir(project_root, slug) / PROMPT_MD_FILENAME
+def converted_md_path(project_root: Path, slug: str) -> Path:
+    """`.docgraph/docs/<slug>/converted.md` — markdown projection of
+    converted.html that's fed to the extract LLM. Cached on disk so the
+    prompt is reproducible + inspectable."""
+    return doc_dir(project_root, slug) / CONVERTED_MD_FILENAME
 
 
 def annotated_html_path(project_root: Path, slug: str) -> Path:
     """`.docgraph/docs/<slug>/annotated.html` — derived viewer artifact
     from `docgraph view <slug>`. Regenerable any time."""
     return doc_dir(project_root, slug) / ANNOTATED_HTML_FILENAME
+
+
+def graph_ttl_path(project_root: Path, slug: str, *,
+                    at_seq: int | None = None) -> Path:
+    """`.docgraph/docs/<slug>/graph.ttl` (HEAD) or `graph.NNN.ttl` (at seq).
+
+    Written by `docgraph snapshot`. The HEAD snapshot is what the doc's
+    graph looks like after every delta is applied; numbered snapshots
+    freeze a historical state for diffing or sharing."""
+    name = GRAPH_TTL_FILENAME if at_seq is None else f"graph.{at_seq:03d}.ttl"
+    return doc_dir(project_root, slug) / name
+
+
+def diagram_path(project_root: Path, slug: str, *,
+                  fmt: str = "puml", at_seq: int | None = None) -> Path:
+    """`.docgraph/docs/<slug>/diagram.<fmt>` (HEAD) or
+    `diagram.NNN.<fmt>` (at seq).
+
+    Written by `docgraph diagram` (HEAD) and `docgraph snapshot --at N`
+    (numbered). *fmt* is one of {"puml", "svg", "png"}."""
+    if at_seq is None:
+        name = f"{DIAGRAM_BASENAME}.{fmt}"
+    else:
+        name = f"{DIAGRAM_BASENAME}.{at_seq:03d}.{fmt}"
+    return doc_dir(project_root, slug) / name
 
 
 def ontologies_dir(project_root: Path) -> Path:
