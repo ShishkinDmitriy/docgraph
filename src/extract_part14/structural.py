@@ -119,47 +119,89 @@ def build_recognize_graph(
 ) -> Graph:
     """Recognize step (seq 1): typed file object + typed document object.
 
-    Builds two entities — no HTML, no conversion activity yet (that's the
-    convert step's delta):
-      - <file_uri> a dg:PdfFile, lis:PhysicalObject, prov:Entity ; …
-        carries pdfinfo-derived metadata (pageCount, pdfProducer)
-      - <doc_uri> a dg:Document, lis:InformationObject ; …
-        carries dcterms:title/creator/created/modified from pdfinfo when
-        present, plus rdfs:label fallback. Linked back to the file via
-        `<file> lis:representedBy <doc>`.
+    Each metadata field on the file is emitted as a uniform LIS-14
+    Quality + Datum chain, so the templates step folds every chain into
+    one tpl:Invocation — `lis14tpl:PhysicalObjectHasQuantity` for the
+    scalar size, `lis14tpl:ObjectHasNominalQuality` for the nominal
+    path/hash/mimeType/createdBy. The lifted invocations replace the
+    lowered triples in the final doc graph.
 
-    Title/creator from pdfinfo are often noisy; the convert step may
-    later REMOVE these and ADD better LLM-derived values via a follow-up
-    delta. That's the delta system working as designed.
+    File ⇄ Document direction follows LIS-14: the bytes ARE a
+    representation of the abstract document content, so:
+        <file> lis:represents <doc>
+    (range-free; the file plays the representor role). The inverse
+    `<doc> lis:representedBy <file>` would require typing the file as
+    InformationObject, which it is not in our model.
+
+    Page count attaches to the *document* — pagination is intrinsic to
+    the work, not to the bytes. Title/creator/dates from pdfinfo land
+    on the document as dcterms metadata; the convert step may later
+    overwrite these via a follow-up delta.
     """
     g = Graph()
     _bind_prefixes(g, file_uri)
     g.bind("dcterms", DCTERMS, override=True, replace=True)
 
-    # File
+    # File — typing only; every metadata field becomes a Quality chain.
     g.add((file_uri, RDF.type, DG.PdfFile))
     g.add((file_uri, RDF.type, LIS.PhysicalObject))
     g.add((file_uri, RDF.type, PROV.Entity))
-    g.add((file_uri, DG.filePath, Literal(str(file_path.relative_to(project_root)))))
-    g.add((file_uri, DG.fileHash, Literal(file_hash)))
-    g.add((file_uri, DG.fileSize, Literal(file_size, datatype=XSD.integer)))
-    g.add((file_uri, DG.mimeType, Literal(mime_type)))
 
+    # Scalar quality: size in bytes (LT_0003 PhysicalObjectHasQuantity).
+    _emit_scalar_quality(
+        g, bearer=file_uri, quality_local="size",
+        quality_type=DG.FileSize, value=float(file_size), uom=DG.Byte,
+    )
+    # Nominal qualities: path, hash, mimeType (LT_nominal).
+    _emit_nominal_quality(
+        g, bearer=file_uri, quality_local="path",
+        quality_type=DG.FilePath,
+        value=str(file_path.relative_to(project_root)),
+    )
+    _emit_nominal_quality(
+        g, bearer=file_uri, quality_local="hash",
+        quality_type=DG.FileHash, value=file_hash,
+    )
+    _emit_nominal_quality(
+        g, bearer=file_uri, quality_local="mime",
+        quality_type=DG.MimeType, value=mime_type,
+    )
+
+    # Created-by quality: prefer pdfinfo Author (the human), fall back to
+    # Producer (the software) — both, when present, describe who/what
+    # brought the file into being.
+    creator_value = None
     if pdf_info:
-        if pages := pdf_info.get("Pages"):
-            try:
-                g.add((file_uri, DG.pageCount, Literal(int(pages), datatype=XSD.integer)))
-            except (TypeError, ValueError):
-                pass
-        if producer := pdf_info.get("Producer"):
-            g.add((file_uri, DG.pdfProducer, Literal(producer)))
+        creator_value = pdf_info.get("Author") or pdf_info.get("Producer")
+    if creator_value:
+        _emit_nominal_quality(
+            g, bearer=file_uri, quality_local="createdBy",
+            quality_type=DG.CreationAgent, value=str(creator_value),
+        )
 
-    # Document
+    # Document — InformationObject side of the file→doc representation.
     g.add((doc_uri, RDF.type, DG.Document))
     g.add((doc_uri, RDF.type, LIS.InformationObject))
-    g.add((file_uri, LIS.representedBy, doc_uri))
+    # The file represents the document (bytes embody the abstract work).
+    g.add((file_uri, LIS.represents, doc_uri))
 
     if pdf_info:
+        # Pages live on the *document* (intrinsic to the paginated work),
+        # not on the file's PhysicalObject. Use `lis:hasQuality` — the
+        # general property — since `lis:hasPhysicalQuantity` is
+        # restricted to PhysicalObject subjects.
+        if pages_raw := pdf_info.get("Pages"):
+            try:
+                pages = int(pages_raw)
+            except (TypeError, ValueError):
+                pages = None
+            if pages is not None:
+                _emit_scalar_quality(
+                    g, bearer=doc_uri, quality_local="pages",
+                    quality_type=DG.PageCount, value=float(pages),
+                    uom=DG.Page, bearer_property=LIS.hasQuality,
+                )
+
         # Doc-level metadata via dcterms — title/creator/dates from pdfinfo.
         if title := pdf_info.get("Title"):
             g.add((doc_uri, DCTERMS.title, Literal(title)))
@@ -172,6 +214,67 @@ def build_recognize_graph(
             g.add((doc_uri, DCTERMS.modified, Literal(modified)))
 
     return g
+
+
+def _emit_scalar_quality(
+    g: Graph, *,
+    bearer: URIRef,
+    quality_local: str,
+    quality_type: URIRef,
+    value: float,
+    uom: URIRef,
+    bearer_property: URIRef = LIS.hasPhysicalQuantity,
+) -> None:
+    """Emit the scalar Quality+ScalarQuantityDatum chain (LT_0003):
+
+        <bearer> hasPhysicalQuantity <quality> .
+        <quality> a Quality, <quality_type> ;
+                  qualityQuantifiedAs <datum> .
+        <datum> a ScalarQuantityDatum ;
+                datumUOM <uom> ; datumValue <value>^^xsd:double .
+
+    For non-PhysicalObject bearers (InformationObject, …) pass
+    `bearer_property=lis:hasQuality` — the more general superproperty.
+    """
+    quality_uri, datum_uri = _quality_and_datum_uris(bearer, quality_local)
+    g.add((bearer,      bearer_property,            quality_uri))
+    g.add((quality_uri, RDF.type,                   LIS.Quality))
+    g.add((quality_uri, RDF.type,                   quality_type))
+    g.add((quality_uri, LIS.qualityQuantifiedAs,    datum_uri))
+    g.add((datum_uri,   RDF.type,                   LIS.ScalarQuantityDatum))
+    g.add((datum_uri,   LIS.datumUOM,               uom))
+    g.add((datum_uri,   LIS.datumValue,             Literal(value, datatype=XSD.double)))
+
+
+def _emit_nominal_quality(
+    g: Graph, *,
+    bearer: URIRef,
+    quality_local: str,
+    quality_type: URIRef,
+    value: str,
+) -> None:
+    """Emit the nominal Quality+QuantityDatum chain (no UoM, string value):
+
+        <bearer> hasQuality <quality> .
+        <quality> a Quality, <quality_type> ;
+                  qualityQuantifiedAs <datum> .
+        <datum> a QuantityDatum ; datumValue "<value>" .
+
+    Matched by `lis14tpl:ObjectHasNominalQuality` and folded by the
+    templates step into one invocation per quality.
+    """
+    quality_uri, datum_uri = _quality_and_datum_uris(bearer, quality_local)
+    g.add((bearer,      LIS.hasQuality,             quality_uri))
+    g.add((quality_uri, RDF.type,                   LIS.Quality))
+    g.add((quality_uri, RDF.type,                   quality_type))
+    g.add((quality_uri, LIS.qualityQuantifiedAs,    datum_uri))
+    g.add((datum_uri,   RDF.type,                   LIS.QuantityDatum))
+    g.add((datum_uri,   LIS.datumValue,             Literal(value)))
+
+
+def _quality_and_datum_uris(bearer: URIRef, local: str) -> tuple[URIRef, URIRef]:
+    """Mint `<bearer>/<local>` and `<bearer>/<local>-datum` for a chain."""
+    return URIRef(f"{bearer}/{local}"), URIRef(f"{bearer}/{local}-datum")
 
 
 def build_convert_graph(

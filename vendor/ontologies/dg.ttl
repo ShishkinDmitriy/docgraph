@@ -1,6 +1,7 @@
 @prefix dg:      <urn:docgraph:vocab:meta#> .
 @prefix prov:    <http://www.w3.org/ns/prov#> .
 @prefix sd:      <http://www.w3.org/ns/sparql-service-description#> .
+@prefix lis:     <http://rds.posccaesar.org/ontology/lis14/rdl/> .
 @prefix owl:     <http://www.w3.org/2002/07/owl#> .
 @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
@@ -54,12 +55,63 @@ dg:isAbout    a owl:ObjectProperty ;
     rdfs:range  owl:Class .
 
 # ── File metadata ─────────────────────────────────────────────────────────────
+# Identifiers + classification stay as simple data properties on the file
+# (they're identity, not measured quantities). Size + page count are
+# modelled as Quality + QuantityDatum chains per LIS-14 template LT_0003
+# (PhysicalObject has Quantity) — see Quality subclasses + UoM individuals
+# below. The shortcut data properties (dg:fileSize, dg:pageCount) are
+# kept in the vocab for legacy / SPARQL convenience but the recognize step
+# emits the full quality chain instead.
 dg:filePath    a owl:DatatypeProperty ; rdfs:label "filePath"    ; rdfs:range xsd:string  .
 dg:fileHash    a owl:DatatypeProperty ; rdfs:label "fileHash"    ; rdfs:range xsd:string  .  # "sha256:..."
-dg:fileSize    a owl:DatatypeProperty ; rdfs:label "fileSize"    ; rdfs:range xsd:integer .  # bytes
+dg:fileSize    a owl:DatatypeProperty ; rdfs:label "fileSize"    ; rdfs:range xsd:integer .  # bytes — legacy shortcut
 dg:mimeType    a owl:DatatypeProperty ; rdfs:label "mimeType"    ; rdfs:range xsd:string  .
-dg:pageCount   a owl:DatatypeProperty ; rdfs:label "pageCount"   ; rdfs:range xsd:integer .
+dg:pageCount   a owl:DatatypeProperty ; rdfs:label "pageCount"   ; rdfs:range xsd:integer .  # legacy shortcut
 dg:pdfProducer a owl:DatatypeProperty ; rdfs:label "pdfProducer" ; rdfs:range xsd:string  .
+
+# ── Quality subclasses for file / document metadata (LIS-14 template) ──────
+# Each `lis:Quality` subclass below is what gets attached to the bearer
+# (a file's PhysicalObject, a document's InformationObject) via
+# `lis:hasPhysicalQuantity` (for scalar quantities) or `lis:hasQuality`
+# (for nominal qualities and InformationObjects), then quantified
+# through `lis:qualityQuantifiedAs` to a Datum.
+#
+# Scalar (numeric) qualities use `lis:ScalarQuantityDatum + lis:datumUOM`;
+# nominal (string) qualities use plain `lis:QuantityDatum` (no UoM).
+# The templates step folds each chain into one tpl:Invocation —
+# scalar ones match `lis14tpl:PhysicalObjectHasQuantity`, nominal ones
+# match `lis14tpl:ObjectHasNominalQuality`.
+#
+# All marked `dg:extractable false` — the walker never proposes instances
+# of these during extraction; they're emitted mechanically by the
+# recognize step.
+dg:FileSize   a owl:Class ; rdfs:label "FileSize" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Byte size of a file's content. Scalar; UoM is dg:Byte." .
+
+dg:PageCount  a owl:Class ; rdfs:label "PageCount" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Number of pages in a paginated document. Scalar; UoM is dg:Page. Attached to the InformationObject, not the file — pagination is intrinsic to the work." .
+
+dg:FilePath   a owl:Class ; rdfs:label "FilePath" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Project-relative filesystem path. Nominal." .
+
+dg:FileHash   a owl:Class ; rdfs:label "FileHash" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Content hash (e.g. 'sha256:<hex>'). Nominal." .
+
+dg:MimeType   a owl:Class ; rdfs:label "MimeType" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "RFC-6838 media type ('application/pdf', 'text/html', …). Nominal." .
+
+dg:CreationAgent a owl:Class ; rdfs:label "CreationAgent" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Name of the agent (person / software) that created the file — for PDFs, pdfinfo's Author or Producer. Nominal." .
+
+# Unit-of-measure individuals used by the scalar quantity chains.
+dg:Byte  a lis:UnitOfMeasure ; rdfs:label "Byte"  .
+dg:Page  a lis:UnitOfMeasure ; rdfs:label "Page"  .
 
 # ── Conversion / activity I/O (subproperties of PROV's used / generated) ──────
 dg:hasInput   a owl:ObjectProperty ;

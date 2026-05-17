@@ -113,8 +113,8 @@ def test_build_chain_emits_file_doc_only(tmp_path: Path):
     assert (file_uri, RDF.type, LIS.PhysicalObject) in g
     assert (file_uri, RDF.type, PROV.Entity) in g
 
-    # File represents the document
-    assert (file_uri, LIS.representedBy, doc_uri) in g
+    # File represents the document (file bytes embody the abstract work).
+    assert (file_uri, LIS.represents, doc_uri) in g
     assert (doc_uri, RDF.type, DG.Document) in g
     assert (doc_uri, RDF.type, LIS.InformationObject) in g
     assert (doc_uri, RDFS.label, None) in [(s, p, None) for s, p, o in g.triples((doc_uri, RDFS.label, None))]
