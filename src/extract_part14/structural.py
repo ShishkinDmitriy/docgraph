@@ -1,108 +1,23 @@
 """Build the file → document chain in Part 14 idiom.
 
-M1 produces only:
+Two builders, one per pipeline step:
 
-    <file>     a dg:PdfFile, lis:PhysicalObject, prov:Entity ;
-               dg:filePath/Hash/Size/MimeType/PageCount ... ;
-               lis:representedBy <doc> .
+  build_recognize_graph(...)  — seq 1: typed file + document + metadata
+  build_convert_graph(...)    — seq 2: HtmlFile + MarkdownFile + activity
 
-    <doc>      a dg:Document, lis:InformationObject ;
-               rdfs:label "<title>" .
-
-No chapters, no quotes — those are minted top-down by M2's branch walker as
-evidence cited by extracted entities (see docs/architecture/extraction.md
-§ Quote model). The `parse_markdown` helper stays because M2 uses it to give
-the LLM structured markdown context.
+Each emits the named graphs the pipeline writes as its own delta.
 """
 
 from __future__ import annotations
 
-import hashlib
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import PROV, RDF, RDFS, XSD
 
-DG  = Namespace("urn:docgraph:vocab:meta#")
-LIS = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
-
-
-# ── parse_markdown — unused in M1, used by M2 for structured LLM context ────
-
-@dataclass
-class QuoteSpec:
-    text: str
-    locator: str        # human-readable provenance ("Section 2 / ¶3")
-
-    @property
-    def uri_local(self) -> str:
-        return "quote-" + hashlib.sha1(self.text.encode("utf-8")).hexdigest()[:12]
-
-
-@dataclass
-class ChapterSpec:
-    title: str
-    quotes: list[QuoteSpec] = field(default_factory=list)
-
-
-def parse_markdown(md_text: str) -> list[ChapterSpec]:
-    """Split markdown into chapters (## headings) with paragraphs as quotes.
-
-    NOT used in M1 (no bottom-up quote minting). M2's stage-1 entity
-    extraction uses this to present structured markdown to the LLM so its
-    quote citations can reference paragraph positions accurately. Filters
-    structural-but-empty lines (separators, bare headings).
-    """
-    chapters: list[ChapterSpec] = []
-    current = ChapterSpec(title="(prelude)")
-    para_lines: list[str] = []
-
-    def flush_paragraph():
-        text = "\n".join(para_lines).strip()
-        if text and not _is_structural_only(text):
-            locator = f"{current.title} / ¶{len(current.quotes) + 1}"
-            current.quotes.append(QuoteSpec(text=text, locator=locator))
-        para_lines.clear()
-
-    for line in md_text.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("## ") and not stripped.startswith("### "):
-            flush_paragraph()
-            if current.quotes or current.title != "(prelude)":
-                chapters.append(current)
-            current = ChapterSpec(title=stripped[3:].strip())
-        elif stripped == "":
-            flush_paragraph()
-        else:
-            para_lines.append(line)
-
-    flush_paragraph()
-    if current.quotes or current.title != "(prelude)":
-        chapters.append(current)
-
-    return chapters
-
-
-def _is_structural_only(text: str) -> bool:
-    """True if the paragraph is just markdown structure with no semantic content
-    (horizontal rules, bare headings, repeated separators)."""
-    stripped = text.strip()
-    if not stripped:
-        return True
-    # Horizontal rules / separators
-    if all(c in "-=*_" for c in stripped):
-        return True
-    # Bare heading (single line starting with #)
-    lines = [l for l in stripped.splitlines() if l.strip()]
-    if len(lines) == 1 and lines[0].lstrip().startswith("#"):
-        return True
-    return False
-
-
-# ── build_chain — M1's structural emission (file → doc only) ────────────────
-
+DG      = Namespace("urn:docgraph:vocab:meta#")
+LIS     = Namespace("http://rds.posccaesar.org/ontology/lis14/rdl/")
 DCTERMS = Namespace("http://purl.org/dc/terms/")
 
 
@@ -355,50 +270,6 @@ def build_convert_graph(
         if convert_agent_uri:
             g.add((conv_uri, PROV.wasAssociatedWith, convert_agent_uri))
 
-    return g
-
-
-# Backward-compat: kept for any callers still using the legacy single-call
-# shape. New code should call build_recognize_graph + build_convert_graph
-# separately and emit each as its own delta.
-def build_chain(
-    file_path: Path,
-    file_uri: URIRef,
-    doc_uri: URIRef,
-    document_title: str,
-    document_description: str,
-    *,
-    project_root: Path,
-    file_hash: str,
-    file_size: int,
-    mime_type: str,
-    md_uri: URIRef | None = None,
-    md_file_path: Path | None = None,
-    pdf_info: dict | None = None,
-    convert_started: datetime | None = None,
-    convert_ended: datetime | None = None,
-    convert_agent_uri: URIRef | None = None,
-) -> Graph:
-    """Legacy combined builder — recognize triples + convert triples in one Graph."""
-    g = build_recognize_graph(
-        file_path=file_path, file_uri=file_uri, doc_uri=doc_uri,
-        project_root=project_root,
-        file_hash=file_hash, file_size=file_size, mime_type=mime_type,
-        pdf_info=pdf_info,
-    )
-    if md_uri is not None and md_file_path is not None:
-        # Legacy callers passed the HTML file via `md_uri` (back when
-        # this was misnamed); the back-compat shim treats it as the
-        # HTML URI/path. Markdown view is unset in this legacy shape.
-        for triple in build_convert_graph(
-            file_uri=file_uri, doc_uri=doc_uri,
-            html_uri=md_uri, html_file_path=md_file_path,
-            project_root=project_root,
-            document_title=document_title, document_description=document_description,
-            convert_started=convert_started, convert_ended=convert_ended,
-            convert_agent_uri=convert_agent_uri,
-        ):
-            g.add(triple)
     return g
 
 

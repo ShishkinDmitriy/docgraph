@@ -480,18 +480,6 @@ def _embed_and_store(
 # ── Legacy fallback (used only when llm_client is None — tests) ─────────
 
 
-@dataclass
-class Substitution:
-    """Back-compat shim — emitted only when walk_dedup runs in legacy
-    mode (no LLM client provided). Pure cosine substitute. Real pipeline
-    runs use RelationDecision."""
-    proposed_uri:   URIRef
-    proposed_slug:  str
-    canonical_uri:  URIRef
-    canonical_slug: str
-    similarity:     float
-
-
 _LEGACY_AUTO_THRESHOLD = 0.88
 
 
@@ -514,23 +502,6 @@ def _legacy_auto_substitute(
                 reason=f"legacy auto-substitute (cosine {sim:.2f})",
             ))
     return out
-
-
-def apply_substitution(graph: Graph, sub: Substitution) -> None:
-    """Back-compat shim: mirror the original pure-substitute behavior so
-    older tests keep passing. The new equivalent-path enriches via
-    skos:altLabel + skos:scopeNote — those tests should migrate to
-    _apply_equivalent."""
-    for s, p, o in list(graph.triples((sub.proposed_uri, None, None))):
-        graph.remove((s, p, o))
-    instances_substituted: set = set()
-    for s, p, o in list(graph.triples((None, None, sub.proposed_uri))):
-        graph.remove((s, p, o))
-        graph.add((s, p, sub.canonical_uri))
-        if p == RDF.type:
-            instances_substituted.add(s)
-    for inst in instances_substituted:
-        graph.add((inst, DG.proposedAs, Literal(sub.proposed_slug)))
 
 
 # ── Console helpers ─────────────────────────────────────────────────────
