@@ -19,7 +19,7 @@ Three-tier storage:
      contains the class definition alongside the instance triples. The
      doc graph is self-contained.
   2. **Project-wide `.docgraph/ontologies/ext.ttl`** — populated by an
-     explicit `docgraph promote-classes` step that finds classes used
+     explicit `docgraph consolidate` step that finds classes used
      across N docs, normalizes labels/comments, writes a single canonical
      definition. Loaded by the loader as another foundational.
   3. **External RDL** — reached via enrich (POSC Caesar, etc.).
@@ -77,7 +77,7 @@ class ExtClass:
       - Doc-local proposal: `urn:docgraph:source:<slug>/` (the doc's
         own base_ns) — the default for mega-walker-emitted proposals.
       - Promoted/canonical: project-wide ext namespace
-        (`urn:docgraph:vocab:ext#`) — set by `docgraph promote`.
+        (`urn:docgraph:vocab:ext#`) — set by `docgraph consolidate`.
     """
     slug:         str                                     # local-name (URI tail)
     anchor:       URIRef                                  # rdfs:subClassOf target

@@ -736,29 +736,28 @@ def snapshot(target: str, at_seq: int | None, out_path: Path | None, no_diagram:
 @cli.command()
 @click.option("--threshold", "threshold", type=int, default=2,
               help="Minimum number of docs that must declare a class for it to "
-                   "promote (default 2).")
+                   "consolidate to project scope (default 2).")
 @click.option("--dry-run", is_flag=True,
-              help="Show what would be promoted without writing any deltas.")
-def promote(threshold: int, dry_run: bool):
-    """Promote stable ext: classes from per-doc graphs to project scope.
+              help="Show what would be consolidated without writing any deltas.")
+def consolidate(threshold: int, dry_run: bool):
+    """Consolidate equivalent ext: classes from per-doc graphs into the
+    project scope (the cross-doc lift of `add`'s local proposals).
 
-    Scans every doc-scope graph for ext: class declarations. Classes
+    Scans every doc-scope graph for ext-class declarations. Classes
     declared in ≥threshold docs are merged into a canonical definition
-    written to project scope. Each contributing doc's scope gets a
-    `promote` delta that REMOVES the class declaration (the canonical
-    URI continues to be valid; instances in those docs keep working).
+    at the project ext: namespace. Each contributing doc's scope gets a
+    `consolidate` delta that REMOVES the doc-local class declaration AND
+    rewrites instance triples to type as the new project URI.
 
-    Pure mechanical, no LLM. The dedup phase did the LLM-aided semantic
-    matching upstream; promote just consolidates the result into a
-    cross-doc ontology layer.
+    Pure slug-collision aggregation today. The next iteration also
+    absorbs the embedding + LLM relation classifier for different-slug
+    semantic equivalents (see docs/architecture/rdl-scopes.md).
     """
-    from src.extract_part14.promote import walk_promote
+    from src.extract_part14.consolidate import walk_consolidate
 
     project_root = _find_project(Path.cwd())
 
     if dry_run:
-        # Build the decisions without writing — caller wants a preview
-        from src.extract_part14.promote import PromotionDecision
         from src.deltas import list_scopes, materialize, project_scope
         from src.extract_part14.ext_ontology import extract_classes_from_graph
         from collections import defaultdict
@@ -778,7 +777,7 @@ def promote(threshold: int, dry_run: bool):
         if not candidates:
             console.print(f"[yellow]No ext class meets threshold ≥{threshold} docs.[/yellow]")
             return
-        console.print(f"[bold]Would promote {len(candidates)} class(es)[/bold] "
+        console.print(f"[bold]Would consolidate {len(candidates)} class(es)[/bold] "
                       f"(threshold ≥{threshold} docs):\n")
         for slug, contribs in sorted(candidates):
             console.print(f"  ext:[bold]{slug}[/bold]   "
@@ -786,11 +785,11 @@ def promote(threshold: int, dry_run: bool):
         console.print()
         return
 
-    console.print(f"[bold]promote[/bold]   (threshold ≥{threshold} docs)")
-    decisions = walk_promote(project_root, threshold=threshold, console=console)
+    console.print(f"[bold]consolidate[/bold]   (threshold ≥{threshold} docs)")
+    decisions = walk_consolidate(project_root, threshold=threshold, console=console)
     if not decisions:
         return
-    console.print(f"  → promoted {len(decisions)} class(es) to project scope")
+    console.print(f"  → consolidated {len(decisions)} class(es) into project scope")
 
 
 @cli.command()

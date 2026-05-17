@@ -1,12 +1,12 @@
-"""Cross-doc promotion of stable ext: classes.
+"""Cross-doc consolidation of stable ext: classes.
 
-When the same class slug shows up in multiple docs (e.g. doc 1 proposed
-`Invoice` under its own namespace, and doc 2 did too), the class is
-"stable" — used widely enough to deserve a canonical home in the
-project-scope ext: ontology rather than buried in whichever docs
-first proposed it.
+The explicit operation that walks the RDL scope hierarchy and lifts
+doc-local classes to project scope when N docs share the same slug
+(this commit handles the slug-collision case; the next commit absorbs
+the semantic compare from the old ext_dedup so different-slug
+equivalents also fold). See docs/architecture/rdl-scopes.md.
 
-`walk_promote()`:
+`walk_consolidate()`:
   1. Scans every per-doc graph for ext-class declarations (matched by
      `dg:provenance` marker, not URI prefix — so per-doc-namespaced
      proposals are picked up).
@@ -21,10 +21,7 @@ first proposed it.
      into `<entity> rdf:type ext:<Slug>` so instances stay typed
      against the now-canonical project URI.
 
-Existing project-scope classes (already promoted) aren't re-promoted.
-
-Pure mechanical pass — no LLM. The dedup phase did the LLM-aided
-semantic dedup upstream; promote just consolidates the result.
+Existing project-scope classes (already consolidated) aren't re-lifted.
 """
 
 from __future__ import annotations
@@ -68,22 +65,22 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class PromotionDecision:
+class ConsolidationDecision:
     """One ext class promoted from per-doc scopes to project scope."""
     slug:           str
     canonical:      ExtClass            # merged canonical definition
     contributors:   list[str]           # doc slugs that contributed the declaration
 
 
-def walk_promote(
+def walk_consolidate(
     project_root: Path,
     *,
     threshold: int = 2,
     agent:     URIRef | None = None,
     timestamp: datetime | None = None,
     console=None,
-) -> list[PromotionDecision]:
-    """Scan + promote ext: classes used in ≥threshold docs.
+) -> list[ConsolidationDecision]:
+    """Scan + consolidate ext: classes used in ≥threshold docs.
 
     Returns the list of promotions made. Mutates files under project_root by
     writing one project-scope delta + one delta per contributing doc.
@@ -110,7 +107,7 @@ def walk_promote(
             declarations_by_slug[slug].append(cls)
 
     # ── 2. Filter to stable classes ──
-    decisions: list[PromotionDecision] = []
+    decisions: list[ConsolidationDecision] = []
     for slug, contribs in contributors_by_slug.items():
         if len(contribs) < threshold:
             continue
@@ -138,7 +135,7 @@ def walk_promote(
             first_seen = merged.first_seen,
             namespace  = EXT,
         )
-        decisions.append(PromotionDecision(
+        decisions.append(ConsolidationDecision(
             slug=slug, canonical=canonical, contributors=contribs,
         ))
 
@@ -160,7 +157,7 @@ def walk_promote(
     project_seq = next_seq(project_root, project_scope())
     project_delta = StepDelta(
         scope     = project_scope(),
-        step      = "promote",
+        step      = "consolidate",
         seq       = project_seq,
         added     = project_added,
         parent_seq= project_seq - 1,
@@ -194,7 +191,7 @@ def walk_promote(
         seq   = next_seq(project_root, scope)
         delta = StepDelta(
             scope     = scope,
-            step      = "promote",
+            step      = "consolidate",
             seq       = seq,
             added     = per_doc_added.get(slug, Graph()),
             removed   = per_doc_removed.get(slug, Graph()),

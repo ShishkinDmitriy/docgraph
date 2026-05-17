@@ -131,7 +131,7 @@ def test_ext_class_proposal_lands_in_graph_and_is_usable_as_type(ontology, model
     result = _run(payload, ontology=ontology, model=model)
     g = result.graph
     # Proposals live in the doc's OWN namespace (the test's base_ns) —
-    # they only escape to project ext: via `docgraph promote`.
+    # they only escape to project ext: via `docgraph consolidate`.
     local_ns = Namespace("http://example.org/src/test/")
     invoice_uri = local_ns.Invoice
     # Class definition triples land in the per-doc graph

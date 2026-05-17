@@ -1,8 +1,10 @@
-"""Tests for the ext-class promotion phase.
+"""Tests for the ext-class consolidate phase.
 
-walk_promote() scans per-doc graphs for ext: class declarations,
-counts contributing docs, and promotes classes meeting the threshold
-into project-scope. Each contributing doc gets a removal delta.
+walk_consolidate() scans per-doc graphs for ext: class declarations,
+counts contributing docs, and lifts classes meeting the threshold
+into project scope. Each contributing doc gets a delta that removes
+the doc-local declaration and rewrites instance triples to the
+project canonical URI.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ from src.extract_part14.ext_ontology import (
     class_definitions_graph,
     extract_classes_from_graph,
 )
-from src.extract_part14.promote import walk_promote
+from src.extract_part14.consolidate import walk_consolidate
 
 
 def _doc_local_ns(doc_slug: str) -> Namespace:
@@ -73,7 +75,7 @@ def test_promote_skips_class_below_threshold(tmp_path):
                               ExtClass(slug="Invoice",
                                        anchor=LIS.InformationObject,
                                        label="Invoice"))
-    decisions = walk_promote(tmp_path, threshold=2)
+    decisions = walk_consolidate(tmp_path, threshold=2)
     assert decisions == []
     # No project-scope delta written
     assert list_deltas_for_scope(tmp_path, project_scope()) == []
@@ -86,7 +88,7 @@ def test_promote_emits_project_delta_when_threshold_met(tmp_path):
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
 
-    decisions = walk_promote(tmp_path, threshold=2)
+    decisions = walk_consolidate(tmp_path, threshold=2)
     assert len(decisions) == 1
     assert decisions[0].slug == "Invoice"
     assert sorted(decisions[0].contributors) == ["doc-a", "doc-b"]
@@ -109,7 +111,7 @@ def test_promote_removes_class_from_contributing_doc_scopes(tmp_path):
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
 
-    walk_promote(tmp_path, threshold=2)
+    walk_consolidate(tmp_path, threshold=2)
 
     # Each doc's materialized state no longer declares the class — at
     # either the doc-local URI (was there pre-promote) OR the project
@@ -123,7 +125,7 @@ def test_promote_removes_class_from_contributing_doc_scopes(tmp_path):
 
 
 def test_promote_preserves_instance_triples_in_contributors(tmp_path):
-    """The promote step removes only the class metadata; instance triples
+    """The consolidate step removes only the class metadata; instance triples
     survive — and get rewritten from the doc-local class URI to the
     promoted project-scope URI so they stay typed."""
     local_ns_a = _doc_local_ns("doc-a")
@@ -145,7 +147,7 @@ def test_promote_preserves_instance_triples_in_contributors(tmp_path):
                                        anchor=LIS.InformationObject,
                                        label="Invoice"))
 
-    walk_promote(tmp_path, threshold=2)
+    walk_consolidate(tmp_path, threshold=2)
 
     state = materialize(tmp_path, doc_scope("doc-a"))
     # Doc-local class metadata gone
@@ -168,7 +170,7 @@ def test_promote_unions_alt_labels_across_contributors(tmp_path):
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls_a)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls_b)
 
-    walk_promote(tmp_path, threshold=2)
+    walk_consolidate(tmp_path, threshold=2)
     project_state = materialize(tmp_path, project_scope())
     alts = {str(o) for o in project_state.objects(EXT.IBAN, SKOS.altLabel)}
     assert "BankAccountNumber"              in alts
@@ -182,7 +184,7 @@ def test_promote_audits_contributors_via_firstSeenIn(tmp_path):
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
 
-    walk_promote(tmp_path, threshold=2)
+    walk_consolidate(tmp_path, threshold=2)
     project_state = materialize(tmp_path, project_scope())
     contribs = {str(o) for o in project_state.objects(EXT.Invoice, DG.firstSeenIn)}
     assert "urn:docgraph:scope/doc/doc-a" in contribs
@@ -193,15 +195,15 @@ def test_promote_audits_contributors_via_firstSeenIn(tmp_path):
 
 
 def test_promote_skips_already_promoted_classes(tmp_path):
-    """Once a class is in project scope, subsequent walk_promote runs
+    """Once a class is in project scope, subsequent walk_consolidate runs
     don't re-promote it (would create redundant project delta + double
     removal from doc scopes)."""
     cls = ExtClass(slug="Invoice", anchor=LIS.InformationObject, label="Invoice")
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
 
-    decisions1 = walk_promote(tmp_path, threshold=2)
-    decisions2 = walk_promote(tmp_path, threshold=2)
+    decisions1 = walk_consolidate(tmp_path, threshold=2)
+    decisions2 = walk_consolidate(tmp_path, threshold=2)
     assert len(decisions1) == 1
     assert decisions2 == []          # second run no-ops
 
@@ -215,11 +217,11 @@ def test_promote_with_higher_threshold(tmp_path):
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
 
-    decisions = walk_promote(tmp_path, threshold=3)
+    decisions = walk_consolidate(tmp_path, threshold=3)
     assert decisions == []
 
     _seed_doc_with_ext_class(tmp_path, "doc-c", cls)
-    decisions = walk_promote(tmp_path, threshold=3)
+    decisions = walk_consolidate(tmp_path, threshold=3)
     assert len(decisions) == 1
 
 
@@ -228,5 +230,5 @@ def test_promote_with_higher_threshold(tmp_path):
 
 def test_promote_with_no_doc_scopes(tmp_path):
     """Empty project — no deltas — no promotions."""
-    decisions = walk_promote(tmp_path, threshold=2)
+    decisions = walk_consolidate(tmp_path, threshold=2)
     assert decisions == []

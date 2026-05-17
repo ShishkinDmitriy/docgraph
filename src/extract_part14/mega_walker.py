@@ -415,13 +415,14 @@ def walk_mega(
         console.print("  [bold]mega-extraction[/bold] (one call: entities + properties)...")
 
     # Existing ext classes — only ones that have been PROMOTED (i.e. lifted
-    # to the project ext: namespace by `docgraph promote` after meeting
-    # the cross-doc threshold) are visible to the extracting LLM. Classes
-    # that other docs proposed locally (dg:provenance "proposed-by-llm",
-    # living in their proposing doc's `urn:docgraph:source:<slug>/`
-    # namespace) stay invisible cross-doc — by design, so each doc's
-    # extraction is independent and the dedup + promote steps decide what
-    # gets shared. See ARCHITECTURE.md § ext-class lifecycle.
+    # to the project ext: namespace by `docgraph consolidate` after
+    # meeting the cross-doc threshold) are visible to the extracting LLM.
+    # Classes that other docs proposed locally (dg:provenance
+    # "proposed-by-llm", living in their proposing doc's
+    # `urn:docgraph:source:<slug>/` namespace) stay invisible cross-doc —
+    # by design, so each doc's extraction is independent and
+    # `consolidate` decides what gets shared. See
+    # docs/architecture/rdl-scopes.md.
     existing_ext = {
         slug: cls for slug, cls in extract_classes_from_graph(ontology).items()
         if cls.provenance == "promoted"
@@ -595,7 +596,7 @@ def _parse_proposals(raw_new: list, *, source_uri: URIRef | None,
     The new class lives in the doc's OWN namespace (`base_ns` —
     `urn:docgraph:source:<slug>/`), not the project-wide ext: namespace.
     So `Invoice` becomes `urn:docgraph:source:zahnrechnung2025/Invoice`,
-    next to the doc's entity URIs. Promotion (via `docgraph promote`)
+    next to the doc's entity URIs. Consolidation (via `docgraph consolidate`)
     later moves stable classes into the project ext: namespace.
     """
     out: list[ExtClass] = []
