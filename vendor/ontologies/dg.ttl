@@ -55,19 +55,14 @@ dg:isAbout    a owl:ObjectProperty ;
     rdfs:range  owl:Class .
 
 # ── File metadata ─────────────────────────────────────────────────────────────
-# Identifiers + classification stay as simple data properties on the file
-# (they're identity, not measured quantities). Size + page count are
-# modelled as Quality + QuantityDatum chains per LIS-14 template LT_0003
-# (PhysicalObject has Quantity) — see Quality subclasses + UoM individuals
-# below. The shortcut data properties (dg:fileSize, dg:pageCount) are
-# kept in the vocab for legacy / SPARQL convenience but the recognize step
-# emits the full quality chain instead.
-dg:filePath    a owl:DatatypeProperty ; rdfs:label "filePath"    ; rdfs:range xsd:string  .
-dg:fileHash    a owl:DatatypeProperty ; rdfs:label "fileHash"    ; rdfs:range xsd:string  .  # "sha256:..."
-dg:fileSize    a owl:DatatypeProperty ; rdfs:label "fileSize"    ; rdfs:range xsd:integer .  # bytes — legacy shortcut
-dg:mimeType    a owl:DatatypeProperty ; rdfs:label "mimeType"    ; rdfs:range xsd:string  .
-dg:pageCount   a owl:DatatypeProperty ; rdfs:label "pageCount"   ; rdfs:range xsd:integer .  # legacy shortcut
-dg:pdfProducer a owl:DatatypeProperty ; rdfs:label "pdfProducer" ; rdfs:range xsd:string  .
+# Identity / classification properties — used by sources.ttl IngestionRecord
+# (dg:filePath / dg:fileHash / dg:fileSize / dg:mimeType). The per-doc
+# recognize graph models the same fields as LIS-14 Quality + Datum chains
+# instead (see the Quality subclasses below).
+dg:filePath    a owl:DatatypeProperty ; rdfs:label "filePath" ; rdfs:range xsd:string  .
+dg:fileHash    a owl:DatatypeProperty ; rdfs:label "fileHash" ; rdfs:range xsd:string  .  # "sha256:..."
+dg:fileSize    a owl:DatatypeProperty ; rdfs:label "fileSize" ; rdfs:range xsd:integer .  # bytes
+dg:mimeType    a owl:DatatypeProperty ; rdfs:label "mimeType" ; rdfs:range xsd:string  .
 
 # ── Quality subclasses for file / document metadata (LIS-14 template) ──────
 # Each `lis:Quality` subclass below is what gets attached to the bearer
@@ -121,13 +116,6 @@ dg:hasInput   a owl:ObjectProperty ;
 dg:hasOutput  a owl:ObjectProperty ;
     rdfs:label  "hasOutput" ;
     rdfs:subPropertyOf prov:generated .
-
-# ── Stub status (for graphs/_unresolved.ttl) ──────────────────────────────────
-dg:status     a owl:ObjectProperty ;
-    rdfs:label "status" .
-
-dg:Unresolved a owl:NamedIndividual ;
-    rdfs:label "Unresolved" .
 
 dg:firstSeenIn a owl:ObjectProperty ;
     rdfs:label "firstSeenIn" .
@@ -189,7 +177,6 @@ dg:HtmlFile     a owl:Class ; rdfs:label "HtmlFile"     ; rdfs:subClassOf dg:Fil
 # Project-metadata and ingestion-record classes — also plumbing.
 dg:DocgraphProject  dg:extractable false .
 dg:Pipeline         dg:extractable false .
-dg:Part2Pipeline    dg:extractable false .
 dg:Part14Pipeline   dg:extractable false .
 dg:Modality         dg:extractable false .
 dg:IngestionRecord  dg:extractable false .
@@ -199,8 +186,6 @@ dg:filePath         dg:extractable false .
 dg:fileHash         dg:extractable false .
 dg:fileSize         dg:extractable false .
 dg:mimeType         dg:extractable false .
-dg:pageCount        dg:extractable false .
-dg:pdfProducer      dg:extractable false .
 dg:graphFile        dg:extractable false .
 dg:addedAt          dg:extractable false .
 dg:detectedRole     dg:extractable false .
@@ -212,7 +197,6 @@ dg:typeConfidence   dg:extractable false .
 dg:typeCoverage     dg:extractable false .
 dg:typeNearestSimilarity dg:extractable false .
 dg:isAbout          dg:extractable false .
-dg:status           dg:extractable false .
 dg:firstSeenIn      dg:extractable false .
 dg:hasInput         dg:extractable false .
 dg:hasOutput        dg:extractable false .
