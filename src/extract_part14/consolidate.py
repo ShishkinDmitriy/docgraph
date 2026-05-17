@@ -228,7 +228,152 @@ def walk_consolidate(
                           f"({len(d.contributors)} contributors: "
                           f"{', '.join(d.contributors)})[/dim]")
 
+    # ── 5. Retire-upward pass — find project-ext classes whose slug also
+    #    exists in an upstream RDL (LIS-14, dg, any registered third-
+    #    party RDL). Emit deprecation triples on the project-ext class
+    #    pointing at the upstream URI, and rewrite contributing-doc
+    #    instance triples from `ext:Foo` to `<upstream>:Foo`. Slug-match
+    #    only today; embedding+LLM semantic compare is a follow-up.
+    upstream_view = _project_with_upstream(project_root)
+    if upstream_view is not None:
+        _retire_upward(
+            project_root, ontology_view=upstream_view,
+            agent=agent, timestamp=timestamp, console=console,
+        )
+
     return decisions
+
+
+def _project_with_upstream(project_root: Path) -> Graph | None:
+    """Materialize project scope + all docs into one Graph view that
+    also contains upstream RDL classes. Used by `_retire_upward` to
+    spot upstream slugs (LIS-14, dg vocab, etc.) without re-loading
+    the foundationals from disk.
+
+    Returns None when the project isn't fully initialised (no config.ttl,
+    e.g. test fixtures that only seed bare deltas). The retire-upward
+    pass is then skipped — it's a best-effort enhancement on top of
+    mint-upward, not a precondition for it.
+    """
+    try:
+        from src.extract_part14.loader import build_dataset, union_view
+        ds = build_dataset(project_root)
+        return union_view(ds)
+    except FileNotFoundError:
+        return None
+
+
+def _retire_upward(
+    project_root: Path,
+    *,
+    ontology_view: Graph,
+    agent:     URIRef | None,
+    timestamp: datetime,
+    console=None,
+) -> int:
+    """Find project-ext classes that have a same-slug equivalent in an
+    upstream RDL; emit deprecation triples + rewrite contributing-doc
+    instance triples. Returns the number of classes retired."""
+    project_state = materialize(project_root, project_scope())
+    deprecated_lit = Literal(True, datatype=XSD.boolean)
+
+    retires: list[tuple[ExtClass, URIRef]] = []
+    for slug, cls in extract_classes_from_graph(project_state).items():
+        if cls.namespace != EXT:
+            continue                                # only retire project-ext
+        if (cls.uri, OWL.deprecated, deprecated_lit) in project_state:
+            continue                                # idempotency
+        upstream_uri = _find_upstream_class_by_slug(ontology_view, slug, exclude=cls.uri)
+        if upstream_uri is not None:
+            retires.append((cls, upstream_uri))
+
+    if not retires:
+        return 0
+
+    # Project-scope delta: deprecation triples on each retired class.
+    project_added = _graph_with_ns_seed()
+    for cls, upstream_uri in retires:
+        project_added.add((cls.uri, OWL.deprecated,        deprecated_lit))
+        project_added.add((cls.uri, OWL.equivalentClass,   upstream_uri))
+        project_added.add((cls.uri, DCTERMS.isReplacedBy,  upstream_uri))
+
+    project_seq = next_seq(project_root, project_scope())
+    write_delta(
+        StepDelta(
+            scope     = project_scope(),
+            step      = "consolidate",
+            seq       = project_seq,
+            added     = project_added,
+            parent_seq= project_seq - 1,
+            agent     = agent,
+            timestamp = timestamp,
+        ),
+        delta_path(project_root, project_scope(), project_seq),
+    )
+
+    # Per-doc deltas: rewrite instance triples typed as the retired URI
+    # to the upstream URI. Pure object replacement; the deprecated URI
+    # itself is still resolvable via the equivalentClass triple.
+    retire_map = {cls.uri: upstream for cls, upstream in retires}
+    per_doc_removed: dict[str, Graph] = defaultdict(_graph_with_ns_seed)
+    per_doc_added:   dict[str, Graph] = defaultdict(_graph_with_ns_seed)
+
+    for scope in list_scopes(project_root):
+        if scope.kind != "doc" or not scope.name:
+            continue
+        doc_state = materialize(project_root, scope)
+        for retired_uri, upstream_uri in retire_map.items():
+            for s in doc_state.subjects(RDF.type, retired_uri):
+                per_doc_removed[scope.name].add((s, RDF.type, retired_uri))
+                per_doc_added[scope.name].add((s, RDF.type, upstream_uri))
+
+    for slug_doc in set(per_doc_removed) | set(per_doc_added):
+        scope = doc_scope(slug_doc)
+        seq   = next_seq(project_root, scope)
+        write_delta(
+            StepDelta(
+                scope     = scope,
+                step      = "consolidate",
+                seq       = seq,
+                added     = per_doc_added.get(slug_doc, Graph()),
+                removed   = per_doc_removed.get(slug_doc, Graph()),
+                parent_seq= seq - 1,
+                agent     = agent,
+                timestamp = timestamp,
+            ),
+            delta_path(project_root, scope, seq),
+        )
+
+    if console:
+        for cls, upstream_uri in retires:
+            console.print(f"    [dim]retired ext:{cls.slug} → {upstream_uri}[/dim]")
+    return len(retires)
+
+
+def _find_upstream_class_by_slug(
+    ontology: Graph, slug: str, *, exclude: URIRef,
+) -> URIRef | None:
+    """Look up an owl:Class whose local-name part matches *slug* and
+    that lives outside of docgraph's own namespaces (doc-local source +
+    project ext:). Returns the upstream URI or None.
+
+    Matches against any registered upstream RDL — LIS-14, dg vocab,
+    PROV, any third-party ontology the loader has pulled in. Caller
+    passes the URI of the class being checked via *exclude* so a class
+    can't "retire" to itself.
+    """
+    SOURCE_PREFIX = "urn:docgraph:source:"
+    EXT_PREFIX    = str(EXT)
+    for cls_uri in ontology.subjects(RDF.type, OWL.Class):
+        if not isinstance(cls_uri, URIRef) or cls_uri == exclude:
+            continue
+        s = str(cls_uri)
+        if s.startswith(SOURCE_PREFIX) or s.startswith(EXT_PREFIX):
+            continue
+        local = s.rsplit("#", 1)[-1].rsplit("/", 1)[-1]
+        if local == slug:
+            return cls_uri
+    return None
 
 
 def _graph_with_ns_seed() -> Graph:

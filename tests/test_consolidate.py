@@ -238,3 +238,102 @@ def test_promote_with_no_doc_scopes(tmp_path):
     """Empty project — no deltas — no promotions."""
     decisions = walk_consolidate(tmp_path, threshold=2)
     assert decisions == []
+
+
+# ── retire-upward (project-ext → upstream RDL slug match) ───────────────
+
+
+def _init_project(tmp_path: Path) -> Path:
+    """Initialise a minimal Part 14 project so the loader can build a
+    dataset that includes LIS-14 + dg as upstream graphs."""
+    from rich.console import Console
+    from src.project import init_project
+    init_project(tmp_path, Console(quiet=True))
+    return tmp_path
+
+
+def test_consolidate_retires_project_class_when_upstream_has_same_slug(tmp_path):
+    """When a project-ext class shares its slug with an upstream RDL class
+    (LIS-14, dg, etc.), the retire-upward pass marks the project-ext
+    class deprecated and rewrites contributing-doc instance triples to
+    the upstream URI."""
+    _init_project(tmp_path)
+    # `lis:InformationObject` exists in LIS-14. Seed two docs each
+    # proposing `InformationObject` so mint-upward elevates it to
+    # `ext:InformationObject`; retire-upward should then deprecate it
+    # in favor of the LIS-14 canonical.
+    cls = ExtClass(slug="InformationObject", anchor=LIS.InformationObject,
+                   label="InformationObject")
+    _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
+    _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
+    # Add an instance in each doc typed at the doc-local URI so we can
+    # observe end-to-end retyping doc-local → ext: → upstream.
+    for slug in ("doc-a", "doc-b"):
+        g = Graph()
+        local_uri = _doc_local_ns(slug).InformationObject
+        inst = URIRef(f"http://example.org/{slug}/inst")
+        g.add((inst, RDF.type, local_uri))
+        write_delta(
+            StepDelta(scope=doc_scope(slug), step="extract", seq=2, added=g,
+                      parent_seq=1),
+            delta_path(tmp_path, doc_scope(slug), 2),
+        )
+
+    walk_consolidate(tmp_path, threshold=2)
+
+    project_state = materialize(tmp_path, project_scope())
+    # The retired project-ext class carries the deprecation triple set,
+    # all three pointing at the upstream LIS-14 URI.
+    upstream = LIS.InformationObject
+    assert (EXT.InformationObject, OWL.deprecated,
+            Literal(True, datatype=XSD.boolean))                in project_state
+    assert (EXT.InformationObject, OWL.equivalentClass, upstream) in project_state
+    assert (EXT.InformationObject, DCTERMS.isReplacedBy, upstream) in project_state
+
+    # And each doc's instance is now typed directly at the upstream URI.
+    for slug in ("doc-a", "doc-b"):
+        state = materialize(tmp_path, doc_scope(slug))
+        inst  = URIRef(f"http://example.org/{slug}/inst")
+        assert (inst, RDF.type, upstream)               in state
+        assert (inst, RDF.type, EXT.InformationObject)  not in state
+
+
+def test_consolidate_no_retire_when_no_upstream_match(tmp_path):
+    """A project-ext class whose slug has no upstream equivalent
+    survives the retire pass unchanged."""
+    _init_project(tmp_path)
+    cls = ExtClass(slug="ZahnPraxis",       # made-up slug, not in any RDL
+                   anchor=LIS.InformationObject,
+                   label="ZahnPraxis")
+    _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
+    _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
+
+    walk_consolidate(tmp_path, threshold=2)
+    project_state = materialize(tmp_path, project_scope())
+    # Class was minted to project scope, NOT retired.
+    assert (EXT.ZahnPraxis, RDF.type, OWL.Class)                   in project_state
+    assert (EXT.ZahnPraxis, OWL.deprecated,
+            Literal(True, datatype=XSD.boolean))                   not in project_state
+    assert (EXT.ZahnPraxis, DCTERMS.isReplacedBy, None) not in [
+        (s, p, None) for s, p, o in project_state.triples(
+            (EXT.ZahnPraxis, DCTERMS.isReplacedBy, None))
+    ]
+
+
+def test_consolidate_retire_is_idempotent(tmp_path):
+    """Re-running consolidate doesn't re-emit retire triples for a class
+    already marked deprecated."""
+    _init_project(tmp_path)
+    cls = ExtClass(slug="InformationObject", anchor=LIS.InformationObject,
+                   label="InformationObject")
+    _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
+    _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
+
+    walk_consolidate(tmp_path, threshold=2)
+    deltas_after_first = list_deltas_for_scope(tmp_path, project_scope())
+
+    walk_consolidate(tmp_path, threshold=2)
+    deltas_after_second = list_deltas_for_scope(tmp_path, project_scope())
+
+    # Second run produces no new project-scope deltas.
+    assert deltas_after_second == deltas_after_first
