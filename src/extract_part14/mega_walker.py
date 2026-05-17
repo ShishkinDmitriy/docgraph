@@ -414,18 +414,22 @@ def walk_mega(
     if console:
         console.print("  [bold]mega-extraction[/bold] (one call: entities + properties)...")
 
-    # Existing ext classes — only ones that have been PROMOTED (i.e. lifted
-    # to the project ext: namespace by `docgraph consolidate` after
-    # meeting the cross-doc threshold) are visible to the extracting LLM.
-    # Classes that other docs proposed locally (dg:provenance
-    # "proposed-by-llm", living in their proposing doc's
-    # `urn:docgraph:source:<slug>/` namespace) stay invisible cross-doc —
-    # by design, so each doc's extraction is independent and
+    # Existing ext classes visible to the extract LLM: only PROMOTED
+    # (i.e. lifted to the project ext: namespace by `docgraph consolidate`
+    # after meeting the cross-doc threshold) AND not currently deprecated
+    # (a consolidated class can later be retired in favor of an upstream
+    # RDL canonical — its `owl:deprecated true` triple is the signal that
+    # new extractions should NOT reuse it). Doc-local proposals from other
+    # docs (dg:provenance "proposed-by-llm", living in their proposing
+    # doc's `urn:docgraph:source:<slug>/` namespace) stay invisible
+    # cross-doc — by design, so each doc's extraction is independent and
     # `consolidate` decides what gets shared. See
     # docs/architecture/rdl-scopes.md.
+    _deprecated_lit = Literal(True, datatype=XSD.boolean)
     existing_ext = {
         slug: cls for slug, cls in extract_classes_from_graph(ontology).items()
         if cls.provenance == "promoted"
+           and (cls.uri, OWL.deprecated, _deprecated_lit) not in ontology
     }
 
     payload = _call_llm(
