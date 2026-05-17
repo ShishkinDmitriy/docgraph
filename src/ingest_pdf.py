@@ -193,7 +193,8 @@ def ingest_pdf(
         project_root, slug, source, graph_file,
         file_hash=file_hash, file_size=file_size, mime_type=_mime_type(source),
     )
-    console.print(f"  registered as [bold]{slug}[/bold]")
+    # `registered as <slug>` is printed by the caller in main.py after
+    # any post-pipeline work, so it stays the very last line.
     return graph_file
 
 

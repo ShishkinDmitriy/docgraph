@@ -98,7 +98,7 @@ def make_diagram(
 
     puml_path = diagram_path(project_root, slug, fmt="puml", at_seq=at_seq)
     puml_path.write_text(puml_text, encoding="utf-8")
-    console.print(f"  wrote   [dim]{puml_path.relative_to(project_root)}[/dim] "
+    console.print(f"  wrote   [dim]{puml_path.name}[/dim] "
                   f"({len(puml_text):,} chars)")
 
     try:
@@ -109,7 +109,7 @@ def make_diagram(
 
     out_path = diagram_path(project_root, slug, fmt=render_format, at_seq=at_seq)
     out_path.write_bytes(rendered)
-    console.print(f"  rendered [dim]{out_path.relative_to(project_root)}[/dim] "
+    console.print(f"  rendered [dim]{out_path.name}[/dim] "
                   f"({len(rendered):,} bytes)")
     return puml_path
 

@@ -300,6 +300,8 @@ def extract(input_path: Path, debug: bool):
     except (IngestError, NotImplementedError) as exc:
         console.print(f"[red]Error:[/red] {exc}")
         sys.exit(1)
+    slug = _resolve_slug(project_root, str(source))
+    console.print(f"registered as [bold]{slug}[/bold]")
 
 
 @cli.command()
@@ -344,16 +346,19 @@ def add(input_path: Path, note: str | None, force: bool, reconvert: bool,
             _ingest_pdf_dispatched(project_root, source,
                                    client=client, model=DEFAULT_VISION_MODEL,
                                    note=note, force=force, reconvert=reconvert)
+            slug = _resolve_slug(project_root, str(source))
 
             if not no_diagram:
                 from src.diagram import DiagramError, make_diagram
-                slug = _resolve_slug(project_root, str(source))
+                console.print("[bold]diagram[/bold]")
                 try:
                     make_diagram(project_root, slug, console)
                 except DiagramError as exc:
                     console.print(f"  [yellow]diagram skipped[/yellow]: {exc}")
                 except Exception as exc:
                     console.print(f"  [yellow]diagram failed[/yellow]: {exc}")
+
+            console.print(f"registered as [bold]{slug}[/bold]")
             return
     except (IngestError, NotImplementedError) as exc:
         console.print(f"[red]Error:[/red] {exc}")

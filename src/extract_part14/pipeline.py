@@ -120,12 +120,6 @@ def extract_pdf_part14(
     sd = doc_dir(project_root, slug)
     sd.mkdir(parents=True, exist_ok=True)
 
-    # ── pdfinfo metadata (local, no LLM) ──
-    info = pdfinfo(source)
-    if info:
-        console.print(f"  pdfinfo: [dim]{info.get('Pages', '?')} page(s), "
-                      f"{info.get('Title') or '(no title)'}[/dim]")
-
     # ── RECOGNIZE STEP (seq 1) — file + document objects, pdfinfo metadata.
     # Pure-local, no LLM. The graph carries just enough to identify the
     # file (dg:PdfFile + hash/size/mimeType/pageCount/producer) and the
@@ -133,6 +127,10 @@ def extract_pdf_part14(
     # pdfinfo when present). HTML conversion + extraction land in later
     # deltas.
     console.print("[bold]recognize[/bold]")
+    info = pdfinfo(source)
+    if info:
+        console.print(f"  pdfinfo: [dim]{info.get('Pages', '?')} page(s), "
+                      f"{info.get('Title') or '(no title)'}[/dim]")
     convert_scope = doc_scope(slug)
     agent_uri     = URIRef(AGENT_NS[make_slug(model.model_id)])
     g_recognize   = build_recognize_graph(
@@ -155,6 +153,7 @@ def extract_pdf_part14(
         timestamp = _now(),
     )
     write_delta(recognize_delta, delta_path(project_root, convert_scope, recognize_seq))
+    _print_delta_summary(console, recognize_seq, len(g_recognize), 0)
 
     # ── Convert PDF → HTML (cached, canonical, immutable) ──
     # The HTML is the source-of-truth artifact: structure + atomic-unit IDs
@@ -162,8 +161,7 @@ def extract_pdf_part14(
     # view rendered mechanically from the HTML — token-efficient for the
     # LLM, with `{#id-N}` markers per element so evidence cites by anchor.
     # See docs/architecture/html-pipeline.md.
-    # HTML cache lives inside the per-doc dir: `docs/<slug>/<pdf-stem>.html`
-    # (and `…<pdf-stem>.<part>.html` for multi-doc PDFs).
+    console.print("[bold]convert[/bold]")
     convert_started = _now()
     docs_raw = load_or_extract_html(
         source, force=reconvert, client=client, model=model,
@@ -211,7 +209,6 @@ def extract_pdf_part14(
     # activity. Document gets a (likely better) title/description from
     # the LLM. The HtmlFile is the canonical converted view; the
     # MarkdownFile is the LLM-prompt view derived from the HTML.
-    console.print("[bold]convert[/bold]")
     g_convert = build_convert_graph(
         file_uri             = file_uri,
         doc_uri              = doc_uri,
@@ -242,11 +239,13 @@ def extract_pdf_part14(
         timestamp = convert_ended,
     )
     write_delta(convert_delta, delta_path(project_root, convert_scope, convert_seq))
+    _print_delta_summary(console, convert_seq, len(g_convert), 0)
 
     # ── EXTRACT LAYER — subject + entities + properties + quotes ──
     # Separate graph from convert; written to a separate file. They share
     # URIs (file_uri etc.) but live in different named graphs so each
     # stage's contribution is provenance-distinct.
+    console.print("[bold]extract[/bold]")
     g = Graph()
     g.bind("dg",   DG,   override=True, replace=True)
     g.bind("lis",  LIS,  override=True, replace=True)
@@ -319,6 +318,7 @@ def extract_pdf_part14(
             timestamp = _now(),
         )
         write_delta(extract_delta, delta_path(project_root, convert_scope, extract_seq))
+        _print_delta_summary(console, extract_seq, len(g), 0)
 
     # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm,
     # folded IN PLACE on the doc-scope graph. The fold removes lowered
@@ -341,6 +341,8 @@ def extract_pdf_part14(
         )
         if len(templates_delta.added) > 0 or len(templates_delta.removed) > 0:
             write_delta(templates_delta, delta_path(project_root, convert_scope, templates_delta.seq))
+            _print_delta_summary(console, templates_delta.seq,
+                                 len(templates_delta.added), len(templates_delta.removed))
 
     # ── EXT-CLASS DEDUP PHASE — anchor-scoped embedding compare. New
     # ext: classes proposed by the LLM are folded into existing canonical
@@ -378,6 +380,8 @@ def extract_pdf_part14(
         )
         if len(dedup_delta.added) > 0 or len(dedup_delta.removed) > 0:
             write_delta(dedup_delta, delta_path(project_root, convert_scope, dedup_delta.seq))
+            _print_delta_summary(console, dedup_delta.seq,
+                                 len(dedup_delta.added), len(dedup_delta.removed))
 
     # ── Form classification deferred ──
     # Lands once at least one user-ingested form ontology is loaded.
@@ -394,15 +398,23 @@ def extract_pdf_part14(
         project_root, slug, source, first_delta,
         file_hash=file_hash, file_size=file_size, mime_type="application/pdf",
     )
-    delta_files = sorted(sd.glob("delta.[0-9][0-9][0-9].trig"))
-    console.print(f"  wrote   {len(delta_files)} delta file(s): "
-                  f"[dim]{', '.join(p.name for p in delta_files)}[/dim]")
-    console.print(f"  registered as [bold]{slug}[/bold]")
+    # Caller (`docgraph add`) prints `registered as <slug>` after any
+    # post-pipeline work (diagram rendering, etc.) so the finale line
+    # stays the very last output.
     return first_delta
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _print_delta_summary(console, seq: int, added: int, removed: int) -> None:
+    """One-line confirmation under each step that wrote a delta —
+    shows the file just produced and how many triples it carries."""
+    counts = f"[green]+{added}[/green]"
+    if removed:
+        counts += f" [red]-{removed}[/red]"
+    console.print(f"  wrote   [dim]delta.{seq:03d}.trig[/dim] ({counts})")
 
 
 def _build_document_context(*, title: str, description: str, markdown: str) -> str:
