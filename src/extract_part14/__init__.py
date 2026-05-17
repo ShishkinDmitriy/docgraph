@@ -13,8 +13,9 @@ Layout:
   structural.py — recognize + convert delta builders
   mega_walker.py — the mega-extraction LLM call (entities + properties +
                    ext-class proposals in one batch)
-  ext_ontology.py / ext_dedup.py / consolidate.py — LLM-proposed extension
-                   classes plus their cross-doc dedup + consolidation
+  ext_ontology.py / consolidate.py — LLM-proposed extension classes
+                   plus their cross-doc consolidation (see
+                   docs/architecture/rdl-scopes.md)
   template_recognizer.py — SPARQL-based template fold pass
   enrich.py     — external-RDL refinement (POSC Caesar, …)
 """

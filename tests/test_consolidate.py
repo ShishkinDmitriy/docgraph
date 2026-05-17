@@ -13,7 +13,9 @@ from pathlib import Path
 
 import pytest
 from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import OWL, RDF, RDFS, SKOS
+from rdflib.namespace import OWL, RDF, RDFS, SKOS, XSD
+
+DCTERMS = Namespace("http://purl.org/dc/terms/")
 
 from src.deltas import (
     StepDelta,
@@ -103,36 +105,40 @@ def test_promote_emits_project_delta_when_threshold_met(tmp_path):
 # ── per-doc removals ─────────────────────────────────────────────────────
 
 
-def test_promote_removes_class_from_contributing_doc_scopes(tmp_path):
-    """After promotion, each contributing doc's materialized scope no
-    longer has the doc-local class declaration — it's now in project
-    scope only, under the project ext: namespace."""
+def test_consolidate_deprecates_doc_local_class_definitions(tmp_path):
+    """Lifecycle invariant (docs/architecture/rdl-scopes.md): a class
+    definition never disappears silently. After consolidate, the doc-local
+    class definition STAYS in the doc scope but gains deprecation triples
+    pointing at the project canonical (owl:deprecated, owl:equivalentClass,
+    dcterms:isReplacedBy)."""
     cls = ExtClass(slug="Invoice", anchor=LIS.InformationObject, label="Invoice")
     _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
     _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
 
     walk_consolidate(tmp_path, threshold=2)
 
-    # Each doc's materialized state no longer declares the class — at
-    # either the doc-local URI (was there pre-promote) OR the project
-    # ext: URI (never lived in the doc scope).
     for slug in ("doc-a", "doc-b"):
         state = materialize(tmp_path, doc_scope(slug))
         local_uri = _doc_local_ns(slug).Invoice
-        assert (local_uri,    RDF.type, OWL.Class) not in state
-        assert (local_uri,    RDFS.subClassOf, LIS.InformationObject) not in state
-        assert (EXT.Invoice,  RDF.type, OWL.Class) not in state
+        # Doc-local class definition stays.
+        assert (local_uri, RDF.type, OWL.Class)                       in state
+        assert (local_uri, RDFS.subClassOf, LIS.InformationObject)    in state
+        # Deprecation triple set, all pointing at the project canonical.
+        assert (local_uri, OWL.deprecated,
+                Literal(True, datatype=XSD.boolean))                   in state
+        assert (local_uri, OWL.equivalentClass,   EXT.Invoice)         in state
+        assert (local_uri, DCTERMS.isReplacedBy,  EXT.Invoice)         in state
 
 
-def test_promote_preserves_instance_triples_in_contributors(tmp_path):
-    """The consolidate step removes only the class metadata; instance triples
-    survive — and get rewritten from the doc-local class URI to the
-    promoted project-scope URI so they stay typed."""
+def test_consolidate_rewrites_instance_triples_in_contributors(tmp_path):
+    """Instance type triples get rewritten from the doc-local URI to the
+    project canonical, so live queries hit the canonical. The doc-local
+    class definition itself stays (marked deprecated, with forward
+    pointers) — see test_consolidate_deprecates_doc_local_class_definitions."""
     local_ns_a = _doc_local_ns("doc-a")
     cls_local = ExtClass(slug="Invoice", anchor=LIS.InformationObject,
                           label="Invoice", namespace=local_ns_a)
 
-    # Doc A has the (doc-local) class + an instance typed at the doc-local URI.
     g_a = Graph()
     for t in class_definitions_graph([cls_local]):
         g_a.add(t)
@@ -150,9 +156,9 @@ def test_promote_preserves_instance_triples_in_contributors(tmp_path):
     walk_consolidate(tmp_path, threshold=2)
 
     state = materialize(tmp_path, doc_scope("doc-a"))
-    # Doc-local class metadata gone
-    assert (local_ns_a.Invoice, RDF.type, OWL.Class) not in state
-    # Instance triple still there — now typed against the project ext: URI
+    # Doc-local class definition is still present (just deprecated).
+    assert (local_ns_a.Invoice, RDF.type, OWL.Class) in state
+    # Instance triple rewritten — now typed against the project ext: URI.
     assert (inv_a, RDF.type, local_ns_a.Invoice) not in state
     assert (inv_a, RDF.type, EXT.Invoice) in state
 

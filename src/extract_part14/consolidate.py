@@ -33,7 +33,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import OWL, RDF, RDFS, SKOS
+from rdflib.namespace import OWL, RDF, RDFS, SKOS, XSD
+
+DCTERMS = Namespace("http://purl.org/dc/terms/")
 
 from src.deltas import (
     StepDelta,
@@ -103,6 +105,12 @@ def walk_consolidate(
         for slug, cls in per_doc_classes.items():
             if slug in already_promoted:
                 continue
+            # Skip classes already deprecated by an earlier consolidate
+            # run (they have an owl:equivalentClass forward pointer; no
+            # need to re-process). Idempotency: re-running consolidate
+            # produces no further deltas once everything has been lifted.
+            if (cls.uri, OWL.deprecated, Literal(True, datatype=XSD.boolean)) in doc_state:
+                continue
             contributors_by_slug[slug].append(scope.name)
             declarations_by_slug[slug].append(cls)
 
@@ -166,21 +174,34 @@ def walk_consolidate(
     )
     write_delta(project_delta, delta_path(project_root, project_scope(), project_seq))
 
-    # ── 4. Per-doc deltas — drop the per-doc class definition AND
-    #    rewrite instance type triples from the doc-local class URI
-    #    to the project-scope canonical URI (so instances stay typed).
+    # ── 4. Per-doc deltas — mark the doc-local class deprecated (W3C
+    #    pattern: owl:deprecated + owl:equivalentClass + dcterms:isReplacedBy
+    #    pointing at the canonical), AND rewrite instance type triples
+    #    from the doc-local URI to the project canonical. The doc-local
+    #    class DEFINITION stays (lifecycle invariant: class defs never
+    #    disappear silently). See docs/architecture/rdl-scopes.md.
     per_doc_removed: dict[str, Graph] = defaultdict(_graph_with_ns_seed)
     per_doc_added:   dict[str, Graph] = defaultdict(_graph_with_ns_seed)
 
     for d in decisions:
         for contrib in d.contributors:
             doc_local_uri = _doc_local_uri(contrib, d.slug)
-            # Remove the doc-local class definition (all triples about it).
             doc_state = materialize(project_root, doc_scope(contrib))
-            for s, p, o in doc_state.triples((doc_local_uri, None, None)):
-                per_doc_removed[contrib].add((s, p, o))
-            # Rewrite instance type triples: rdf:type doc_local_uri →
-            # rdf:type canonical.uri.
+
+            # Deprecation triples on the doc-local URI (additive — class
+            # definition itself stays as a historical record).
+            per_doc_added[contrib].add(
+                (doc_local_uri, OWL.deprecated,
+                 Literal(True, datatype=XSD.boolean)))
+            per_doc_added[contrib].add(
+                (doc_local_uri, OWL.equivalentClass, d.canonical.uri))
+            per_doc_added[contrib].add(
+                (doc_local_uri, DCTERMS.isReplacedBy, d.canonical.uri))
+
+            # Rewrite instance type triples to the canonical so live
+            # queries hit the project URI; the deprecated doc-local URI
+            # still resolves via the equivalentClass triple if anyone
+            # walks the history.
             for s in doc_state.subjects(RDF.type, doc_local_uri):
                 per_doc_removed[contrib].add((s, RDF.type, doc_local_uri))
                 per_doc_added[contrib].add((s, RDF.type, d.canonical.uri))
