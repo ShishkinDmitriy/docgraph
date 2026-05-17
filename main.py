@@ -12,7 +12,6 @@ from rich.console import Console
 from rich.table import Table
 
 from src.ingest import TTL_SUFFIXES, IngestError, ingest_ttl, list_sources
-from src.ingest_pdf import ingest_pdf
 from src.llm.anthropic import AnthropicClient
 from src.html_io import load_or_extract_html
 from src.models import ModelConfig
@@ -50,10 +49,9 @@ def cli():
 @click.option("--force", "-f", is_flag=True, help="Reinitialise even if .docgraph/ already exists.")
 @click.option("--pipeline", type=click.Choice(PIPELINES), default=DEFAULT_PIPELINE,
               show_default=True,
-              help="Upper-ontology pipeline. 'part2' is the legacy ISO 15926 Part 2 "
-                   "pipeline (current default; copies foundationals into .docgraph/). "
-                   "'part14' is the new ISO 15926 Part 14 pipeline (writes config.ttl "
-                   "only; loader reads foundationals from vendor/ontologies/).")
+              help="Upper-ontology pipeline. Currently only 'part14' (ISO 15926 "
+                   "Part 14 / LIS-14) is supported; the option remains as the "
+                   "extension point for a future Part 15 / domain pipeline.")
 def init(directory: Path | None, force: bool, pipeline: str):
     """Initialise a .docgraph/ project directory (analogous to git init)."""
     target = (directory or Path.cwd()).resolve()
@@ -148,12 +146,16 @@ def _anthropic_client():
 
 
 def _ingest_pdf_dispatched(project_root: Path, source: Path, **kwargs):
-    """Route to the pipeline configured for this project."""
+    """Route to the pipeline configured for this project.
+
+    Currently only Part 14 is wired up; the dispatcher shape is preserved
+    so a future upper-ontology pipeline can slot in via `read_pipeline()`.
+    """
     pipeline = read_pipeline(project_root)
     if pipeline == PIPELINE_PART14:
         from src.extract_part14.pipeline import extract_pdf_part14
         return extract_pdf_part14(source, project_root, console, **kwargs)
-    return ingest_pdf(source, project_root, console, **kwargs)
+    raise ValueError(f"unknown pipeline {pipeline!r}; no PDF dispatcher available")
 
 
 @cli.command()

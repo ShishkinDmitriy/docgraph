@@ -1,20 +1,20 @@
-"""ISO 15926 Part 14 extraction pipeline (in development).
+"""ISO 15926 Part 14 extraction pipeline.
 
-This package implements the part14 pipeline as a decision-tree walk over the
-Part 14 upper ontology (LIS-14.ttl). Built in parallel with classify_part2/
-which it will eventually replace once it reaches feature parity (M3 in the
-parallel-pipelines plan; see ARCHITECTURE.md § Pipelines).
-
-Status: skeleton. M1 (structural-only ingest) not yet wired up. Calling
-``extract_pdf_part14`` raises NotImplementedError with a pointer to the plan.
+This package implements the active extraction pipeline as a decision-tree
+walk over the LIS-14 upper ontology (vendor/ontologies/LIS-14.ttl).
+It's currently the only pipeline in `src/project.py:PIPELINES`; the
+dispatcher in `main.py:_ingest_pdf_dispatched` keeps a slot open for a
+future upper-ontology choice.
 
 Layout:
-  pipeline.py   — top-level extract_pdf_part14() entry point (dispatched
-                  to from main.py when the project's pipeline is part14)
+  pipeline.py   — top-level extract_pdf_part14() entry point
   loader.py     — builds the in-memory Dataset from vendor/ontologies/ +
-                  .docgraph/ (per ARCHITECTURE.md § Storage layout / Loader recipe)
-  branches/     — per-branch policy + prompt files (one per Part 14 top-level
-                  class) — added in M2
-  walker.py     — the decision-tree walker over the loaded upper ontology
-                  (added in M2)
+                  .docgraph/ (per ARCHITECTURE.md § Storage layout)
+  structural.py — recognize + convert delta builders
+  mega_walker.py — the mega-extraction LLM call (entities + properties +
+                   ext-class proposals in one batch)
+  ext_ontology.py / ext_dedup.py / promote.py — LLM-proposed extension
+                   classes plus their cross-doc dedup + promotion
+  template_recognizer.py — SPARQL-based template fold pass
+  enrich.py     — external-RDL refinement (POSC Caesar, …)
 """

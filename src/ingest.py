@@ -13,17 +13,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rdflib import Dataset, Graph, Literal, Namespace, URIRef, RDF, RDFS, XSD
+from rdflib import Graph, Literal, Namespace, URIRef, RDF, RDFS, XSD
 from rich.console import Console
 
 from src.project import (
     GRAPHS_SUBDIR,
-    dcterms_path,
     graphs_dir,
-    iso15926_annotations_path,
-    iso15926_path,
-    meta_path,
-    prov_o_path,
     sources_path,
 )
 
@@ -262,32 +257,3 @@ def list_sources(project_root: Path) -> list[dict]:
     return sorted(out, key=lambda r: r["addedAt"])
 
 
-def load_combined(project_root: Path) -> Dataset:
-    """Load meta + every bundled upper ontology + every graphs/*.ttl into a Dataset.
-
-    The default graph holds meta.ttl, the ISO 15926 Part 2 OWL + annotations,
-    prov-o.ttl, and dcterms.ttl (the permanent backbone). Each ingested source
-    lives in its own named graph.
-    """
-    # default_union=True: SPARQL queries without explicit FROM clauses see the
-    # union of every graph in the dataset — needed so subclasses defined in
-    # named graphs (i.e. ingested sources) participate in classification.
-    ds = Dataset(default_union=True)
-    ds.parse(meta_path(project_root),                  format="turtle")
-    ds.parse(iso15926_path(project_root),              format="xml")
-    ds.parse(iso15926_annotations_path(project_root),  format="xml")
-    ds.parse(prov_o_path(project_root),                format="turtle")
-    ds.parse(dcterms_path(project_root), format="turtle")
-    g_dir = graphs_dir(project_root)
-    ext_base = "urn:docgraph:extraction:"
-    for f in sorted(g_dir.iterdir()):
-        if f.suffix == ".ttl":
-            if f.is_symlink():
-                # Imported TTL ontologies: keyed by file URI.
-                ds.graph(URIRef(f"file://{f.resolve()}")).parse(f, format="turtle")
-            else:
-                # PDF-derived sources: load into the extraction named graph.
-                ds.graph(URIRef(f"{ext_base}{f.stem}")).parse(f, format="turtle")
-        elif f.suffix == ".trig":
-            ds.parse(f, format="trig")
-    return ds
