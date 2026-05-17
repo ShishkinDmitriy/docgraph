@@ -23,8 +23,6 @@ from src.extract_part14.structural import DG, LIS, build_convert_graph, build_re
 from src.extract_part14.mega_walker import walk_mega
 from src.extract_part14.property_walker import infer_cross_entity_links
 from src.extract_part14.template_recognizer import fold_templates_in_place
-from src.extract_part14.ext_dedup import walk_dedup
-from src.embeddings import EmbeddingClient, EmbeddingError, EmbeddingStore
 from src.deltas import (
     StepDelta,
     delta_from_diff,
@@ -58,7 +56,6 @@ from src.project import (
     converted_html_path,
     converted_md_path,
     doc_dir,
-    embeddings_path,
     sources_path,
 )
 
@@ -344,47 +341,12 @@ def extract_pdf_part14(
             _print_delta_summary(console, templates_delta.seq,
                                  len(templates_delta.added), len(templates_delta.removed))
 
-    # ── EXT-CLASS DEDUP PHASE — anchor-scoped embedding compare. New
-    # ext: classes proposed by the LLM are folded into existing canonical
-    # URIs from prior docs when their label/comment embeddings are close.
-    # Mutates the (now-templated) doc graph in place; updates the project
-    # embedding store. Skipped silently if OPENAI_API_KEY is absent.
-    try:
-        embed_client = EmbeddingClient()
-    except EmbeddingError as exc:
-        embed_client = None
-        if extracted:
-            console.print(f"  [dim]dedup skipped: {exc}[/dim]")
-    if embed_client is not None and extracted:
-        console.print("[bold]dedup[/bold]")
-        embed_store = EmbeddingStore.load(embeddings_path(project_root))
-        g_before_dedup = snapshot(g)
-        decisions = walk_dedup(
-            g, None,                  # single-graph model — no separate templates graph
-            ontology=ontology,
-            embedding_store=embed_store,
-            embedding_client=embed_client,
-            llm_client=client,
-            llm_model=model,
-            console=console,
-        )
-        embed_store.save()
-        if not decisions:
-            console.print("  [dim]no related candidates in any anchor scope[/dim]")
-        dedup_delta = delta_from_diff(
-            g_before_dedup, g,
-            scope=convert_scope, step="dedup",
-            seq=next_seq(project_root, convert_scope),
-            parent_seq=next_seq(project_root, convert_scope) - 1,
-            agent=agent_uri, timestamp=_now(),
-        )
-        if len(dedup_delta.added) > 0 or len(dedup_delta.removed) > 0:
-            write_delta(dedup_delta, delta_path(project_root, convert_scope, dedup_delta.seq))
-            _print_delta_summary(console, dedup_delta.seq,
-                                 len(dedup_delta.added), len(dedup_delta.removed))
-
-    # ── Form classification deferred ──
-    # Lands once at least one user-ingested form ontology is loaded.
+    # Cross-doc ext-class consolidation happens in `docgraph consolidate`,
+    # not during `add` — `add` is scope-local by design (see
+    # docs/architecture/rdl-scopes.md). The extract LLM only sees
+    # promoted classes (see mega_walker's existing_ext filter); any
+    # equivalence between this doc's local classes and other docs' is
+    # discovered + resolved on demand by `consolidate`.
 
     # ── Source registration ──
     # Deltas are the source of truth. HEAD snapshots are no longer

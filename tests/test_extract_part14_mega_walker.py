@@ -196,12 +196,17 @@ def test_ext_class_with_forbidden_anchor_is_dropped(ontology, model):
 
 def test_ext_class_proposal_with_existing_slug_does_not_redeclare(
         ontology, model, tmp_path):
-    """If the project ontology already declares ext:IBAN, a fresh proposal
-    doesn't re-mint its triples — but the entity can still type as ext:IBAN."""
-    # Build a custom ontology view with a pre-existing ext class.
+    """If the project ontology already declares ext:IBAN as PROMOTED
+    (visible cross-doc), a fresh proposal doesn't re-mint its triples —
+    but the entity can still type as ext:IBAN.
+
+    The class must be promoted, not merely proposed-by-llm: locally-
+    proposed classes in other docs stay hidden from this doc's mega
+    extraction so each doc's extraction is independent."""
     extra = class_definitions_graph([
         ExtClass(slug="IBAN", anchor=LIS.InformationObject, label="IBAN",
-                 comment="ISO 13616 account identifier."),
+                 comment="ISO 13616 account identifier.",
+                 provenance="promoted"),
     ])
     seeded = Graph()
     for t in ontology:

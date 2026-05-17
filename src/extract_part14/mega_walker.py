@@ -414,9 +414,18 @@ def walk_mega(
     if console:
         console.print("  [bold]mega-extraction[/bold] (one call: entities + properties)...")
 
-    # Existing ext classes — visible from the loader's union view of the
-    # project so the LLM can reuse before proposing.
-    existing_ext = extract_classes_from_graph(ontology)
+    # Existing ext classes — only ones that have been PROMOTED (i.e. lifted
+    # to the project ext: namespace by `docgraph promote` after meeting
+    # the cross-doc threshold) are visible to the extracting LLM. Classes
+    # that other docs proposed locally (dg:provenance "proposed-by-llm",
+    # living in their proposing doc's `urn:docgraph:source:<slug>/`
+    # namespace) stay invisible cross-doc — by design, so each doc's
+    # extraction is independent and the dedup + promote steps decide what
+    # gets shared. See ARCHITECTURE.md § ext-class lifecycle.
+    existing_ext = {
+        slug: cls for slug, cls in extract_classes_from_graph(ontology).items()
+        if cls.provenance == "promoted"
+    }
 
     payload = _call_llm(
         markdown        = full_markdown,
