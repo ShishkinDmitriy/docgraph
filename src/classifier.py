@@ -129,26 +129,3 @@ def pdf_to_html(
     return docs
 
 
-def markdown_content_block(docs: list[ExtractedDoc]) -> dict:
-    """
-    Build a prompt-cached text content block from one or more extracted documents.
-    Pass this to the classifier/extractor instead of the raw PDF block so that
-    follow-up calls reuse the cached text at ~10 % token cost.
-    """
-    parts = []
-    for i, doc in enumerate(docs, 1):
-        header = f"## Document {i}: {doc['title']}" if len(docs) > 1 else f"## {doc['title']}"
-        section = header
-        if doc["description"]:
-            section += f"\n\n> {doc['description']}"
-        section += f"\n\n{doc['markdown']}"
-        if doc["stamps"]:
-            section += f"\n\n*Stamps / annotations: {', '.join(doc['stamps'])}*"
-        parts.append(section)
-
-    text = "\n\n---\n\n".join(parts)
-    return {
-        "type": "text",
-        "text": text,
-        "cache_control": {"type": "ephemeral"},
-    }
