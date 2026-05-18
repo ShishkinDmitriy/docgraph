@@ -205,14 +205,14 @@ def walk_consolidate(
     #    from the doc-local URI to the canonical. The doc-local class
     #    DEFINITION stays (lifecycle invariant). See
     #    docs/architecture/rdl-scopes.md.
-    per_doc_removed: dict[str, Graph] = defaultdict(_graph_with_ns_seed)
-    per_doc_added:   dict[str, Graph] = defaultdict(_graph_with_ns_seed)
+    per_doc_removed: dict[str, Graph] = defaultdict(graph_with_ns_seed)
+    per_doc_added:   dict[str, Graph] = defaultdict(graph_with_ns_seed)
 
     # Mint-upward: deprecate doc-local URIs onto the new project canonical.
     for d in decisions:
         for contrib in d.contributors:
             doc_local_uri = _doc_local_uri(contrib, d.slug)
-            _apply_deprecation_to_doc(
+            apply_deprecation_to_doc(
                 project_root, contrib, doc_local_uri, d.canonical.uri,
                 per_doc_added[contrib], per_doc_removed[contrib],
                 deprecated_lit,
@@ -226,7 +226,7 @@ def walk_consolidate(
         upstream_uri = deprecation_targets[slug]
         for contrib in contribs:
             doc_local_uri = _doc_local_uri(contrib, slug)
-            _apply_deprecation_to_doc(
+            apply_deprecation_to_doc(
                 project_root, contrib, doc_local_uri, upstream_uri,
                 per_doc_added[contrib], per_doc_removed[contrib],
                 deprecated_lit,
@@ -323,7 +323,7 @@ def _retire_upward(
         return 0
 
     # Project-scope delta: deprecation triples on each retired class.
-    project_added = _graph_with_ns_seed()
+    project_added = graph_with_ns_seed()
     for cls, upstream_uri in retires:
         project_added.add((cls.uri, OWL.deprecated,        deprecated_lit))
         project_added.add((cls.uri, OWL.equivalentClass,   upstream_uri))
@@ -347,8 +347,8 @@ def _retire_upward(
     # to the upstream URI. Pure object replacement; the deprecated URI
     # itself is still resolvable via the equivalentClass triple.
     retire_map = {cls.uri: upstream for cls, upstream in retires}
-    per_doc_removed: dict[str, Graph] = defaultdict(_graph_with_ns_seed)
-    per_doc_added:   dict[str, Graph] = defaultdict(_graph_with_ns_seed)
+    per_doc_removed: dict[str, Graph] = defaultdict(graph_with_ns_seed)
+    per_doc_added:   dict[str, Graph] = defaultdict(graph_with_ns_seed)
 
     for scope in list_scopes(project_root):
         if scope.kind != "doc" or not scope.name:
@@ -408,7 +408,7 @@ def _find_upstream_class_by_slug(
     return None
 
 
-def _apply_deprecation_to_doc(
+def apply_deprecation_to_doc(
     project_root: Path,
     doc_slug: str,
     doc_local_uri: URIRef,
@@ -430,7 +430,7 @@ def _apply_deprecation_to_doc(
         added_g.add((s, RDF.type, canonical_uri))
 
 
-def _graph_with_ns_seed() -> Graph:
+def graph_with_ns_seed() -> Graph:
     """Default factory for the per-doc removal Graphs. Seeds the ext
     namespace so the resulting delta file's @prefix declarations are
     populated (rule: namespaces must propagate to serialization)."""

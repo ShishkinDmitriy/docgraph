@@ -341,12 +341,26 @@ def extract_pdf_part14(
             _print_delta_summary(console, templates_delta.seq,
                                  len(templates_delta.added), len(templates_delta.removed))
 
-    # Cross-doc ext-class consolidation happens in `docgraph consolidate`,
-    # not during `add` — `add` is scope-local by design (see
-    # docs/architecture/rdl-scopes.md). The extract LLM only sees
-    # promoted classes (see mega_walker's existing_ext filter); any
-    # equivalence between this doc's local classes and other docs' is
-    # discovered + resolved on demand by `consolidate`.
+    # ── ALIGN PHASE — for each doc-local ext class the LLM just
+    #    proposed, check if the slug already exists at a higher scope
+    #    (project ext: + upstream RDLs) and, if so, deprecate the
+    #    doc-local URI onto the canonical and retype instances. Keeps
+    #    each single doc self-consistent on first ingest — the LLM
+    #    sometimes mints a duplicate even when the existing class is
+    #    in the prompt; alignment catches it server-side.
+    #
+    #    Cross-doc duplication (two docs reach the same name
+    #    independently, no higher-scope canonical exists yet) is NOT
+    #    alignment's concern — that's `docgraph consolidate`'s
+    #    mint-upward pass. See docs/architecture/rdl-scopes.md.
+    if extracted:
+        from src.extract_part14.align import align_doc
+        aligned_count = align_doc(
+            project_root, slug, ontology=ontology,
+            agent=agent_uri, timestamp=_now(), console=console,
+        )
+        if aligned_count:
+            console.print(f"  [dim]aligned {aligned_count} class(es)[/dim]")
 
     # ── Source registration ──
     # Deltas are the source of truth. HEAD snapshots are no longer
