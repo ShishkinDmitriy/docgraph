@@ -1,66 +1,26 @@
-"""Top-level extract entry point for the part14 pipeline (M1).
+"""Top-level entry point for the part14 add pipeline.
 
-M1 deliverable: produce a Part 14 named graph for a PDF source containing
-the file → document chain plus subject classification. No chapters, no
-quotes — those are minted top-down by M2's branch walker as evidence cited
-by extracted entities (see docs/architecture/extraction.md § Quote model).
+Validates the input PDF and hands off to the task DAG in
+``pipeline_tasks.py`` (recognize → convert → extract → templates →
+align → register → diagram → add). Each phase is a standalone
+``@add_registry.task`` with its own ``@dirty`` predicate. The
+recognize task owns identity resolution: it computes the source
+hash, looks up an existing slug in sources.ttl (or mints a fresh
+one), and populates ctx for all downstream tasks.
 
-See ARCHITECTURE.md § Pipelines — Part 14 build-out for the milestone plan.
+See docs/architecture/rdl-scopes.md for the operation model.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
-from rdflib import Graph, Literal, Namespace, URIRef
-from rdflib.namespace import PROV, RDF, RDFS, XSD
 from rich.console import Console
 
-from src.extract_part14.loader import build_dataset, union_view
-from src.extract_part14.structural import DG, LIS, build_convert_graph, build_recognize_graph
-from src.extract_part14.mega_walker import walk_mega
-from src.extract_part14.property_walker import infer_cross_entity_links
-from src.extract_part14.template_recognizer import fold_templates_in_place
-from src.deltas import (
-    StepDelta,
-    delta_from_diff,
-    delta_path,
-    doc_scope,
-    next_seq,
-    snapshot,
-    write_delta,
-)
-from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
-from src.ingest import (
-    IngestError,
-    SOURCE_NS,
-    _check_existing,
-    _register_source,
-    _unique_slug,
-    compute_hash,
-    make_slug,
-)
-from src.html_io import (
-    build_class_maps,
-    html_paths,
-    load_or_extract_html,
-    render_markdown_view,
-)
-from src.markdown_io import md_paths_for_pdf
 from src.models import ModelConfig
-from src.pdfinfo import pdfinfo
-from src.project import (
-    cache_dir,
-    converted_html_path,
-    converted_md_path,
-    doc_dir,
-    sources_path,
-)
+from src.sources import IngestError
 
-GRAPH_SUFFIX = ".ttl"
-AGENT_NS = Namespace("urn:docgraph:agent:")
 logger = logging.getLogger(__name__)
 
 
@@ -72,339 +32,49 @@ def extract_pdf_part14(
     client,
     model: ModelConfig,
     note: str | None = None,
-    force: bool = False,
-    reconvert: bool = False,
-) -> Path:
-    """M1 entry point: structural file→doc chain + subject classification.
+    target: str = "add",
+    exclude: "list[str] | tuple[str, ...]" = (),
+    force:   "list[str] | tuple[str, ...]" = (),
+) -> str:
+    """Entry point for the PDF add pipeline. Returns the doc's slug.
 
-    *force*     — drop any existing entry for this file (keyed by hash) and
-                  re-run extraction. Cached markdown is reused unless
-                  *reconvert* is also set.
-    *reconvert* — implies *force*; also drops the cached markdown so the
-                  PDF→Markdown conversion runs again.
+    *target*  — which task in the add registry to run; downstream tasks
+                its deps cover are pulled in too. Default "add" runs
+                everything (recognize → convert → extract → templates
+                → align → register → diagram). Use a partial target
+                (e.g. "convert") to stop early — useful for `dg convert`
+                CLI semantics.
+    *exclude* — task names to skip (Gradle-style ``-x``).
+    *force*   — task names whose dirty check is overridden to True so
+                they run regardless. ``--force convert`` also drops
+                cached HTML and re-runs the PDF→HTML LLM call.
+
+    Idempotent — re-running on an unchanged file is a safe no-op: the
+    hash matches an existing slug, the task DAG re-enters under that
+    slug, every dirty check returns False, and no deltas are written.
     """
-    if reconvert:
-        force = True
-
     source = source.resolve()
     if not source.is_file():
         raise IngestError(f"{source} is not a file")
     if source.suffix.lower() != ".pdf":
         raise IngestError(f"{source.suffix} is not a PDF")
 
-    file_hash = compute_hash(source)
-    file_size = source.stat().st_size
+    # Hand off to the task DAG. The identity init task owns slug
+    # resolution — it computes the source hash, looks up an existing
+    # slug in sources.ttl (or mints a fresh one), and populates ctx
+    # with slug/URIs/doc-dir for all downstream tasks.
+    from src.tasks import add_registry
+    forced_tasks = set(force)
+    ctx = {
+        "project_root":  project_root,
+        "source":        source,
+        "client":        client,
+        "model":         model,
+        "console":       console,
+        "note":          note,
+        "forced_tasks":  forced_tasks,
+    }
+    add_registry.run(target, ctx, console=console,
+                     exclude=exclude, force=forced_tasks)
+    return ctx["slug"]
 
-    reg = Graph()
-    reg.parse(sources_path(project_root), format="turtle")
-    _check_existing(reg, project_root, file_hash, force=force, console=console)
-
-    # Pick a unique slug — check both the new per-doc dir layout and
-    # the legacy flat-graphs layout for collisions.
-    from src.project import DOCGRAPH_DIR, DOCS_SUBDIR
-    docs_root = project_root / DOCGRAPH_DIR / DOCS_SUBDIR
-    docs_root.mkdir(parents=True, exist_ok=True)
-    slug = _unique_slug(make_slug(source.stem), docs_root)
-
-    base_ns  = Namespace(f"{SOURCE_NS}{slug}/")
-    file_uri = URIRef(SOURCE_NS[slug])
-    doc_uri  = URIRef(base_ns["doc"])
-    html_uri = URIRef(base_ns["html"])   # the canonical HTML view
-    md_uri   = URIRef(base_ns["md"])     # the markdown projection LLM sees
-
-    # Doc dir for ALL artifacts (deltas + converted.html + converted.md +
-    # annotated.html + graph.ttl snapshots + diagram.* renders).
-    sd = doc_dir(project_root, slug)
-    sd.mkdir(parents=True, exist_ok=True)
-
-    # ── RECOGNIZE STEP (seq 1) — file + document objects, pdfinfo metadata.
-    # Pure-local, no LLM. The graph carries just enough to identify the
-    # file (dg:PdfFile + hash/size/mimeType/pageCount/producer) and the
-    # abstract document (dg:Document + dcterms:title/creator/dates from
-    # pdfinfo when present). HTML conversion + extraction land in later
-    # deltas.
-    console.print("[bold]recognize[/bold]")
-    info = pdfinfo(source)
-    if info:
-        console.print(f"  pdfinfo: [dim]{info.get('Pages', '?')} page(s), "
-                      f"{info.get('Title') or '(no title)'}[/dim]")
-    convert_scope = doc_scope(slug)
-    agent_uri     = URIRef(AGENT_NS[make_slug(model.model_id)])
-    g_recognize   = build_recognize_graph(
-        file_path    = source,
-        file_uri     = file_uri,
-        doc_uri      = doc_uri,
-        project_root = project_root,
-        file_hash    = file_hash,
-        file_size    = file_size,
-        mime_type    = "application/pdf",
-        pdf_info     = info,
-    )
-    recognize_seq   = next_seq(project_root, convert_scope)
-    recognize_delta = StepDelta(
-        scope     = convert_scope,
-        step      = "recognize",
-        seq       = recognize_seq,
-        added     = g_recognize,
-        parent_seq= recognize_seq - 1,
-        timestamp = _now(),
-    )
-    write_delta(recognize_delta, delta_path(project_root, convert_scope, recognize_seq))
-    _print_delta_summary(console, recognize_seq, len(g_recognize), 0)
-
-    # ── Convert PDF → HTML (cached, canonical, immutable) ──
-    # The HTML is the source-of-truth artifact: structure + atomic-unit IDs
-    # seeded by the conversion LLM. Extraction passes consume a Markdown
-    # view rendered mechanically from the HTML — token-efficient for the
-    # LLM, with `{#id-N}` markers per element so evidence cites by anchor.
-    # See docs/architecture/html-pipeline.md.
-    console.print("[bold]convert[/bold]")
-    convert_started = _now()
-    docs_raw = load_or_extract_html(
-        source, force=reconvert, client=client, model=model,
-        con=console, note=note, html_dir=sd,
-    )
-    convert_ended = _now()
-
-    if not docs_raw:
-        raise IngestError("conversion produced no HTML documents")
-
-    # ── Document title / description / source path ──
-    primary = docs_raw[0]
-    document_title       = primary.get("title", "(untitled)")
-    document_description = primary.get("description", "") or ""
-    # Render the markdown view from each HTML document and concatenate. The
-    # extraction LLM sees this; anchor markers (`{#id-N}`) point back into
-    # the canonical HTML for fragment-URI minting.
-    full_markdown        = "\n\n---\n\n".join(
-        render_markdown_view(d.get("html", "")) for d in docs_raw
-    )
-
-    # ── Build id↔class maps for citation-collapse during extraction ──
-    # When all members of a `class-N` group are cited as evidence for one
-    # entity, the walker emits a single `<doc#class-N>` triple instead of
-    # N per-id triples (cleaner graph, same semantics).
-    id_to_class:  dict[str, str]      = {}
-    class_to_ids: dict[str, set[str]] = {}
-    for d in docs_raw:
-        i2c, c2i = build_class_maps(d.get("html", ""))
-        id_to_class.update(i2c)
-        for cls, ids in c2i.items():
-            class_to_ids.setdefault(cls, set()).update(ids)
-
-    # ── Resolve the converted HTML path for fragment-URI anchoring ──
-    html_files = html_paths(sd)
-    html_file_path = html_files[0] if html_files else None
-
-    # ── Cache the markdown view to disk at `docs/<slug>/converted.md` so
-    # the LLM prompt is reproducible and inspectable. Registered as a
-    # dg:MarkdownFile in the convert delta for provenance.
-    md_file_path = converted_md_path(project_root, slug)
-    md_file_path.write_text(full_markdown, encoding="utf-8")
-
-    # ── CONVERT STEP (seq 2) — HtmlFile + MarkdownFile + conversion
-    # activity. Document gets a (likely better) title/description from
-    # the LLM. The HtmlFile is the canonical converted view; the
-    # MarkdownFile is the LLM-prompt view derived from the HTML.
-    g_convert = build_convert_graph(
-        file_uri             = file_uri,
-        doc_uri              = doc_uri,
-        html_uri             = html_uri,
-        html_file_path       = html_file_path,
-        md_uri               = md_uri,
-        md_file_path         = md_file_path,
-        project_root         = project_root,
-        document_title       = document_title,
-        document_description = document_description,
-        convert_started      = convert_started,
-        convert_ended        = convert_ended,
-        convert_agent_uri    = agent_uri,
-    )
-    g_convert.add((agent_uri, RDF.type,    PROV.SoftwareAgent))
-    g_convert.add((agent_uri, RDFS.label,  Literal(model.label)))
-    g_convert.add((agent_uri, DG.provider, Literal(model.provider)))
-    g_convert.add((agent_uri, DG.modelId,  Literal(model.model_id)))
-
-    convert_seq   = next_seq(project_root, convert_scope)
-    convert_delta = StepDelta(
-        scope     = convert_scope,
-        step      = "convert",
-        seq       = convert_seq,
-        added     = g_convert,
-        parent_seq= convert_seq - 1,
-        agent     = agent_uri,
-        timestamp = convert_ended,
-    )
-    write_delta(convert_delta, delta_path(project_root, convert_scope, convert_seq))
-    _print_delta_summary(console, convert_seq, len(g_convert), 0)
-
-    # ── EXTRACT LAYER — subject + entities + properties + quotes ──
-    # Separate graph from convert; written to a separate file. They share
-    # URIs (file_uri etc.) but live in different named graphs so each
-    # stage's contribution is provenance-distinct.
-    console.print("[bold]extract[/bold]")
-    g = Graph()
-    g.bind("dg",   DG,   override=True, replace=True)
-    g.bind("lis",  LIS,  override=True, replace=True)
-    g.bind("prov", PROV, override=True, replace=True)
-    g.bind("rdfs", RDFS, override=True, replace=True)
-    g.bind("xsd",  XSD,  override=True, replace=True)
-    g.bind("ex",   base_ns, override=True, replace=True)
-
-    # ── Load ontology view (used by both subject classification and walker) ──
-    ds       = build_dataset(project_root)
-    ontology = union_view(ds)
-
-    # ── EXTRACT — single mega-call: subject + entities + properties + invocations + roles + ext-class proposals ──
-    extracted: list = []
-    roles:     list = []
-    if full_markdown.strip():
-        rdl_cache_dir = cache_dir(project_root) / "rdl"
-        rdl_resolvers = [RdlResolver(POSC_CAESAR, cache_dir=rdl_cache_dir)]
-        result = walk_mega(
-            full_markdown   = full_markdown,
-            document_title  = document_title,
-            document_descr  = document_description,
-            base_ns         = base_ns,
-            # Evidence fragments (`<…#id-N>`) anchor at the HTML — that's
-            # the canonical artifact where `id="id-N"` attributes literally
-            # exist. The markdown view's `{#id-N}` markers are projected
-            # from there.
-            md_source_uri   = html_uri,
-            file_uri        = file_uri,
-            ontology        = ontology,
-            client          = client,
-            model           = model,
-            id_to_class     = id_to_class,
-            class_to_ids    = class_to_ids,
-            rdl_resolvers   = rdl_resolvers,
-            console         = console,
-        )
-        for triple in result.graph:
-            g.add(triple)
-        for prefix, ns in result.graph.namespaces():
-            g.bind(prefix, ns, override=False)
-        extracted = result.entities
-        console.print(f"  → {len(extracted)} entit{'y' if len(extracted) == 1 else 'ies'}, "
-                      f"{len(result.new_ext_classes)} new ext class(es)")
-
-    # ── Inferred cross-entity links — fills missing class-ranged property
-    # triples by quote co-occurrence (e.g. ScalarQuantityDatum's mention of
-    # "EUR" in its supporting quote → lis:datumUOM link to <unitofmeasure/eur>).
-    # Deterministic, no LLM. Only fires when the LLM missed an obvious link.
-    if extracted:
-        inferred_graph = infer_cross_entity_links(
-            extracted, g, ontology, console=console,
-        )
-        for triple in inferred_graph:
-            g.add(triple)
-
-    # ── EXTRACT DELTA — snapshot the doc-scope contribution of the
-    # extract phase (entities + properties + inferred links). All
-    # additions; nothing removed. Skipped when there's no extracted
-    # content (markdown was empty).
-    if len(g) > 0:
-        extract_seq = next_seq(project_root, convert_scope)
-        extract_delta = StepDelta(
-            scope     = convert_scope,
-            step      = "extract",
-            seq       = extract_seq,
-            added     = g,
-            parent_seq= extract_seq - 1,
-            agent     = agent_uri,
-            timestamp = _now(),
-        )
-        write_delta(extract_delta, delta_path(project_root, convert_scope, extract_seq))
-        _print_delta_summary(console, extract_seq, len(g), 0)
-
-    # ── TEMPLATES PHASE — SPARQL recognition + batched-loop LLM-confirm,
-    # folded IN PLACE on the doc-scope graph. The fold removes lowered
-    # pattern triples and adds lifted invocation triples. After this,
-    # the doc graph is the templated view (lifted forms instead of
-    # raw binary properties).
-    if extracted:
-        console.print("[bold]templates[/bold]")
-        g_before_templates = snapshot(g)
-        fold_templates_in_place(
-            g, extracted=extracted, ontology=ontology, base_ns=base_ns,
-            markdown=full_markdown, client=client, model=model, console=console,
-        )
-        templates_delta = delta_from_diff(
-            g_before_templates, g,
-            scope=convert_scope, step="templates",
-            seq=next_seq(project_root, convert_scope),
-            parent_seq=next_seq(project_root, convert_scope) - 1,
-            agent=agent_uri, timestamp=_now(),
-        )
-        if len(templates_delta.added) > 0 or len(templates_delta.removed) > 0:
-            write_delta(templates_delta, delta_path(project_root, convert_scope, templates_delta.seq))
-            _print_delta_summary(console, templates_delta.seq,
-                                 len(templates_delta.added), len(templates_delta.removed))
-
-    # ── ALIGN PHASE — for each doc-local ext class the LLM just
-    #    proposed, check if the slug already exists at a higher scope
-    #    (project ext: + upstream RDLs) and, if so, deprecate the
-    #    doc-local URI onto the canonical and retype instances. Keeps
-    #    each single doc self-consistent on first ingest — the LLM
-    #    sometimes mints a duplicate even when the existing class is
-    #    in the prompt; alignment catches it server-side.
-    #
-    #    Cross-doc duplication (two docs reach the same name
-    #    independently, no higher-scope canonical exists yet) is NOT
-    #    alignment's concern — that's `docgraph consolidate`'s
-    #    mint-upward pass. See docs/architecture/rdl-scopes.md.
-    if extracted:
-        from src.extract_part14.align import align_doc
-        aligned_count = align_doc(
-            project_root, slug, ontology=ontology,
-            agent=agent_uri, timestamp=_now(), console=console,
-        )
-        if aligned_count:
-            console.print(f"  [dim]aligned {aligned_count} class(es)[/dim]")
-
-    # ── Source registration ──
-    # Deltas are the source of truth. HEAD snapshots are no longer
-    # auto-written here — use `docgraph snapshot <slug>` to materialize
-    # any view (current HEAD or any historical seq) on demand. The
-    # graph_file pointer in sources.ttl points at the first delta
-    # (the recognize delta — always present), giving the loader a
-    # canonical anchor when discovering the source's graphs.
-    first_delta = delta_path(project_root, convert_scope, recognize_seq)
-    _register_source(
-        project_root, slug, source, first_delta,
-        file_hash=file_hash, file_size=file_size, mime_type="application/pdf",
-    )
-    # Caller (`docgraph add`) prints `registered as <slug>` after any
-    # post-pipeline work (diagram rendering, etc.) so the finale line
-    # stays the very last output.
-    return first_delta
-
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _print_delta_summary(console, seq: int, added: int, removed: int) -> None:
-    """One-line confirmation under each step that wrote a delta —
-    shows the file just produced and how many triples it carries."""
-    counts = f"[green]+{added}[/green]"
-    if removed:
-        counts += f" [red]-{removed}[/red]"
-    console.print(f"  wrote   [dim]delta.{seq:03d}.trig[/dim] ({counts})")
-
-
-def _build_document_context(*, title: str, description: str, markdown: str) -> str:
-    """Build the small "document context" block injected into stage 2 prompts.
-
-    Property extraction sees only an entity's supporting quotes (cheap,
-    targeted), but some properties (issue date, sender, document number)
-    typically live in headers far from any specific entity's quotes. This
-    block carries the stable header info so stage 2 isn't blind to it.
-    """
-    parts = [f"Title: {title!r}"]
-    if description:
-        parts.append(f"Description: {description}")
-    head = (markdown or "").strip()[:600]
-    if head:
-        parts.append(f"Document head (first ~600 chars):\n{head}")
-    return "\n".join(parts)

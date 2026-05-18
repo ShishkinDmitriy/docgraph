@@ -64,6 +64,31 @@ class DiagramError(Exception):
     pass
 
 
+def diagram_is_current(project_root: Path, slug: str, *,
+                        at_seq: int | None = None,
+                        fmt: str = "puml") -> bool:
+    """True iff the diagram file for *slug* exists AND its mtime is at
+    least as new as every delta file in the doc's scope. Used by the
+    `add` CLI to skip `make_diagram` on already-current docs.
+
+    Mtime comparison is sufficient because deltas only ever land in the
+    same doc dir via `write_delta`, and `write_delta` bumps the
+    enclosing dir's contents — so any new delta is newer than the last
+    diagram render."""
+    target = diagram_path(project_root, slug, fmt=fmt, at_seq=at_seq)
+    if not target.exists():
+        return False
+    target_mtime = target.stat().st_mtime
+    sd = doc_dir(project_root, slug)
+    if not sd.is_dir():
+        return True
+    deltas = sorted(sd.glob("delta.[0-9][0-9][0-9].trig"))
+    if not deltas:
+        return True
+    latest_delta_mtime = max(p.stat().st_mtime for p in deltas)
+    return target_mtime >= latest_delta_mtime
+
+
 def make_diagram(
     project_root: Path,
     slug: str,

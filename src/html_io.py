@@ -256,8 +256,7 @@ def load_or_extract_html(
     if force:
         for path in html_paths(html_dir):
             path.unlink()
-            con.print(f"  [yellow]--reconvert[/yellow]: dropped html cache "
-                      f"[dim]{path.name}[/dim]")
+            con.print(f"  [dim]dropped cached [dim]{path.name}[/dim][/dim]")
 
     cached = load_html(html_dir)
     if cached:

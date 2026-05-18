@@ -56,7 +56,7 @@ from src.extract_part14.ext_ontology import (
     extract_classes_from_graph,
 )
 
-SOURCE_NS = Namespace("urn:docgraph:source:")
+from src.sources import SOURCE_NS
 
 
 def _doc_local_uri(doc_slug: str, class_slug: str) -> URIRef:

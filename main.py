@@ -11,7 +11,8 @@ from rdflib import URIRef
 from rich.console import Console
 from rich.table import Table
 
-from src.ingest import TTL_SUFFIXES, IngestError, ingest_ttl, list_sources
+from src.sources import IngestError, list_sources
+from src.ttl_ingest import TTL_SUFFIXES, ingest_ttl
 from src.llm.anthropic import AnthropicClient
 from src.html_io import load_or_extract_html
 from src.models import ModelConfig
@@ -158,49 +159,69 @@ def _ingest_pdf_dispatched(project_root: Path, source: Path, **kwargs):
     raise ValueError(f"unknown pipeline {pipeline!r}; no PDF dispatcher available")
 
 
-@cli.command()
-@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
-@click.option("--note", type=str, default=None,
-              help="Free-text hint passed to the converter.")
-@click.option("-f", "--force", is_flag=True,
-              help="Re-run conversion even if cached HTML exists.")
-@click.option("--debug", is_flag=True, help="Log every LLM prompt and response.")
-def convert(input_path: Path, note: str | None, force: bool, debug: bool):
-    """Convert a PDF source to canonical HTML and cache the result.
+# ── Per-doc task CLI commands (auto-generated) ────────────────────────
+#
+# `dg <task> <pdf>` runs the named task and its dependencies via the
+# add registry. All commands share the same flag set (--note, -x, -f,
+# --debug) so a user who knows one knows them all. The framework's
+# dirty checks decide what (if anything) actually runs.
 
-    First stage of the extraction pipeline (see docs/architecture/html-pipeline.md).
-    Output lands in `.docgraph/html/<slug>.html` (one file per detected
-    document — most PDFs are one doc, but invoice + receipt PDFs split).
-    Subsequent `docgraph extract` and `docgraph add` invocations reuse this
-    cache; the markdown view consumed by extraction is derived on demand.
+_DOC_TASK_TARGETS = (
+    "recognize", "convert", "extract", "templates", "align",
+    # diagram is hand-written (accepts slug-or-path, has --all flag).
+)
 
-    For .ttl/.n3 sources this is a no-op (the file is already its own
-    representation).
-    """
+
+def _run_doc_task(target: str, input_path: Path, note: str | None,
+                   exclude: tuple[str, ...], force_tasks: tuple[str, ...],
+                   debug: bool) -> None:
+    """Shared body for every per-doc task CLI command."""
     _setup_logging(debug)
     source = input_path.resolve()
     project_root = _find_project(source)
-
-    suffix = source.suffix.lower()
-    if suffix in TTL_SUFFIXES:
-        console.print(f"  [dim]TTL source — no conversion needed[/dim]")
-        return
-    if suffix != ".pdf":
-        console.print(f"[yellow]Not yet supported:[/yellow] convert from {suffix!r}.")
+    if source.suffix.lower() != ".pdf":
+        console.print(
+            f"[red]Error:[/red] {source.suffix!r} is not supported for "
+            f"`dg {target}`. Only PDF inputs route through the task DAG; "
+            f"use `dg add <file.ttl>` for TTL sources."
+        )
         sys.exit(2)
+    try:
+        slug = _ingest_pdf_dispatched(
+            project_root, source,
+            client=_anthropic_client(), model=DEFAULT_VISION_MODEL,
+            note=note, target=target,
+            exclude=tuple(exclude), force=tuple(force_tasks),
+        )
+        console.print(f"[dim]doc:[/dim] [bold]{slug}[/bold]")
+    except (IngestError, NotImplementedError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
 
-    client = _anthropic_client()
-    # HTML lives inside the per-doc dir as `docs/<slug>/converted.html`.
-    from src.ingest import make_slug
-    from src.project import doc_dir as _doc_dir
-    slug = make_slug(source.stem)
-    sd = _doc_dir(project_root, slug)
-    sd.mkdir(parents=True, exist_ok=True)
-    docs = load_or_extract_html(
-        source, force=force, client=client, model=DEFAULT_VISION_MODEL,
-        con=console, note=note, html_dir=sd,
-    )
-    console.print(f"  cached [bold]{len(docs)}[/bold] HTML document(s)")
+
+def _add_doc_task_command(target_name: str) -> None:
+    """Register `dg <target_name>` as a CLI command that runs the named
+    task (and its deps) via the add registry."""
+    @cli.command(name=target_name,
+                 help=f"Run the '{target_name}' task and its dependencies "
+                      f"for a PDF source. Idempotent — only dirty tasks "
+                      f"actually do work.")
+    @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+    @click.option("--note", type=str, default=None,
+                  help="Free-text hint passed to the converter LLM.")
+    @click.option("-x", "--exclude", multiple=True, metavar="TASK",
+                  help="Skip this task. Repeatable.")
+    @click.option("-f", "--force", "force_tasks", multiple=True, metavar="TASK",
+                  help="Force this task to run even if clean. Repeatable.")
+    @click.option("--debug", is_flag=True,
+                  help="Log every LLM prompt and response.")
+    def _cmd(input_path, note, exclude, force_tasks, debug):
+        _run_doc_task(target_name, input_path, note, exclude, force_tasks, debug)
+    return _cmd
+
+
+for _name in _DOC_TASK_TARGETS:
+    _add_doc_task_command(_name)
 
 
 @cli.command()
@@ -268,109 +289,40 @@ def enrich(target: str | None, all_sources: bool, debug: bool):
 
 @cli.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
-@click.option("--debug", is_flag=True, help="Log every LLM prompt and response.")
-def extract(input_path: Path, debug: bool):
-    """Re-run extraction (classify + 14-aspect pipeline) for a source.
+@click.option("--note", type=str, default=None,
+              help="Free-text hint passed to the converter LLM.")
+@click.option("-x", "--exclude", multiple=True, metavar="TASK",
+              help="Skip this task. Repeatable.")
+@click.option("-f", "--force", "force_tasks", multiple=True, metavar="TASK",
+              help="Force this task to run even if clean. Repeatable.")
+@click.option("--debug", is_flag=True,
+              help="Log every LLM prompt and response.")
+def add(input_path: Path, note: str | None,
+        exclude: tuple[str, ...], force_tasks: tuple[str, ...], debug: bool):
+    """Ingest a source into the project graph (full pipeline).
 
-    Reuses cached markdown if present (use `docgraph convert --force` first
-    to refresh the markdown). Drops the existing graph entry for this source
-    and rewrites it from cached markdown.
+    Same shape as `dg recognize` / `dg convert` / `dg extract` / etc.
+    — it just targets the `add` composite task, which depends on
+    every other per-doc task. Idempotent re-runs no-op cleanly.
 
-    NOTE: For the Part 2 pipeline this is currently the same as
-    `docgraph add --force` — Q1/Q2 classify and 14-aspect extract are not
-    yet split into separate commands. The `classify` command will land
-    alongside `src/extract_part14/` (see ARCHITECTURE.md § Pipelines).
+    Special-cases TTL inputs (.ttl/.n3): symlinks them into
+    `.docgraph/graphs/` and registers in sources.ttl. No task DAG
+    involved — TTL is its own one-shot pipeline.
     """
     _setup_logging(debug)
     source = input_path.resolve()
     project_root = _find_project(source)
 
-    suffix = source.suffix.lower()
-    if suffix in TTL_SUFFIXES:
-        console.print("[yellow]extract is a no-op for .ttl sources[/yellow] — "
-                      "use `docgraph add --force` to re-register.")
+    if source.suffix.lower() in TTL_SUFFIXES:
+        try:
+            ingest_ttl(source, project_root, console,
+                       force=bool(force_tasks))
+        except (IngestError, NotImplementedError) as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            sys.exit(1)
         return
-    if suffix != ".pdf":
-        console.print(f"[yellow]Not yet supported:[/yellow] extract from {suffix!r}.")
-        sys.exit(2)
 
-    client = _anthropic_client()
-    try:
-        _ingest_pdf_dispatched(project_root, source,
-                               client=client, model=DEFAULT_VISION_MODEL,
-                               force=True, reconvert=False)
-    except (IngestError, NotImplementedError) as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        sys.exit(1)
-    slug = _resolve_slug(project_root, str(source))
-    console.print(f"registered as [bold]{slug}[/bold]")
-
-
-@cli.command()
-@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
-@click.option("--note", type=str, default=None, help="Free-text hint passed to the converter.")
-@click.option("-f", "--force", is_flag=True,
-              help="Re-add even if already ingested. Drops the existing entry "
-                   "and reruns extract; cached HTML is reused.")
-@click.option("--reconvert", is_flag=True,
-              help="Also redo PDF→HTML conversion (drops cached HTML). "
-                   "Implies --force.")
-@click.option("--no-diagram", is_flag=True,
-              help="Skip diagram generation after a successful PDF ingest.")
-@click.option("--debug", is_flag=True, help="Log every LLM prompt and response.")
-def add(input_path: Path, note: str | None, force: bool, reconvert: bool,
-        no_diagram: bool, debug: bool):
-    """Ingest a source into the project graph (whole pipeline).
-
-    Convenience wrapper around `convert` + `extract`. Equivalent to running
-    them in sequence; cached intermediate artifacts are reused.
-
-    Supported inputs:
-      .ttl/.n3  — symlinked into .docgraph/graphs/ and registered (no LLM).
-      .pdf      — converted to HTML (canonical, cached at .docgraph/html/),
-                  then extracted via the Part 14 root walker. Extraction
-                  consumes a markdown view derived on demand from the HTML.
-
-    Pass --debug to log the full prompt and response for every LLM call.
-    """
-    _setup_logging(debug)
-    source = input_path.resolve()
-    project_root = _find_project(source)
-
-    suffix = source.suffix.lower()
-    try:
-        if suffix in TTL_SUFFIXES:
-            ingest_ttl(source, project_root, console, force=force or reconvert)
-            return
-
-        if suffix == ".pdf":
-            client = _anthropic_client()
-            _ingest_pdf_dispatched(project_root, source,
-                                   client=client, model=DEFAULT_VISION_MODEL,
-                                   note=note, force=force, reconvert=reconvert)
-            slug = _resolve_slug(project_root, str(source))
-
-            if not no_diagram:
-                from src.diagram import DiagramError, make_diagram
-                console.print("[bold]diagram[/bold]")
-                try:
-                    make_diagram(project_root, slug, console)
-                except DiagramError as exc:
-                    console.print(f"  [yellow]diagram skipped[/yellow]: {exc}")
-                except Exception as exc:
-                    console.print(f"  [yellow]diagram failed[/yellow]: {exc}")
-
-            console.print(f"registered as [bold]{slug}[/bold]")
-            return
-    except (IngestError, NotImplementedError) as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        sys.exit(1)
-
-    console.print(
-        f"[yellow]Not yet supported:[/yellow] extraction from {suffix!r} files. "
-        "See ARCHITECTURE.md (extraction pipeline)."
-    )
-    sys.exit(2)
+    _run_doc_task("add", input_path, note, exclude, force_tasks, debug)
 
 
 def _resolve_slug(project_root: Path, target: str) -> str:
@@ -388,7 +340,7 @@ def _resolve_slug(project_root: Path, target: str) -> str:
             if s["sourcePath"] == absolute:
                 return s["slug"]
         # Path didn't match — try hash for moved/renamed files.
-        from src.ingest import compute_hash
+        from src.sources import compute_hash
         file_hash = compute_hash(p.resolve())
         for s in sources:
             if s["fileHash"] == file_hash:

@@ -52,10 +52,10 @@ from src.deltas import (
 from src.extract_part14.consolidate import (
     EXT,
     DCTERMS,
-    SOURCE_NS,
     apply_deprecation_to_doc,
     graph_with_ns_seed,
 )
+from src.sources import SOURCE_NS
 from src.extract_part14.ext_ontology import (
     ExtClass,
     extract_classes_from_graph,

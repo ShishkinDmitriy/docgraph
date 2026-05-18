@@ -16,7 +16,7 @@ from rich.console import Console
 
 from main import cli
 from src.deltas import StepDelta, delta_path, doc_scope, write_delta
-from src.ingest import _register_source, SOURCE_NS
+from src.sources import SOURCE_NS, register_source
 from src.project import (
     PIPELINE_PART14,
     graphs_dir,
@@ -44,7 +44,7 @@ def _setup_project_with_doc(tmp_path: Path, slug: str = "demo") -> Path:
     sd.mkdir(parents=True, exist_ok=True)
     placeholder = sd / "anchor.txt"      # not matched by delta.NNN.trig glob
     placeholder.write_text("", encoding="utf-8")
-    _register_source(
+    register_source(
         project, slug, fake_file, placeholder,
         file_hash="sha256:abc", file_size=0, mime_type="application/pdf",
     )
@@ -99,7 +99,7 @@ def test_history_when_no_deltas_yet(tmp_path, monkeypatch):
     sd.mkdir(parents=True, exist_ok=True)
     placeholder = sd / "placeholder"
     placeholder.write_text("", encoding="utf-8")
-    _register_source(project, "empty", fake_file, placeholder,
+    register_source(project, "empty", fake_file, placeholder,
                      file_hash="sha256:0", file_size=0, mime_type="application/pdf")
 
     monkeypatch.chdir(project)
