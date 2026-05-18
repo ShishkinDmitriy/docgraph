@@ -320,6 +320,51 @@ def test_consolidate_no_retire_when_no_upstream_match(tmp_path):
     ]
 
 
+def test_consolidate_follows_deprecation_chain_for_new_doc(tmp_path):
+    """After a project-ext class has been retired upward to an upstream
+    canonical (e.g., ext:InformationObject → lis:InformationObject), a
+    NEWLY added doc that proposes the same slug should have its
+    doc-local URI deprecated DIRECTLY to the upstream canonical —
+    skipping the deprecated intermediate. Otherwise the new doc's
+    instances would orphan at the doc-local URI forever."""
+    _init_project(tmp_path)
+    cls = ExtClass(slug="InformationObject", anchor=LIS.InformationObject,
+                   label="InformationObject")
+    _seed_doc_with_ext_class(tmp_path, "doc-a", cls)
+    _seed_doc_with_ext_class(tmp_path, "doc-b", cls)
+    # First consolidate: mint ext:InformationObject, then retire to lis:InformationObject.
+    walk_consolidate(tmp_path, threshold=2)
+
+    # Now add a third doc with the same slug + an instance typed locally.
+    _seed_doc_with_ext_class(tmp_path, "doc-c", cls, seq=1)
+    g = Graph()
+    local_uri_c = _doc_local_ns("doc-c").InformationObject
+    inst = URIRef("http://example.org/doc-c/inst")
+    g.add((inst, RDF.type, local_uri_c))
+    write_delta(
+        StepDelta(scope=doc_scope("doc-c"), step="extract", seq=2, added=g,
+                  parent_seq=1),
+        delta_path(tmp_path, doc_scope("doc-c"), 2),
+    )
+
+    walk_consolidate(tmp_path, threshold=2)
+
+    # Doc-C's doc-local URI is now deprecated AND points at the upstream
+    # canonical directly (not at the intermediate ext:InformationObject).
+    state_c = materialize(tmp_path, doc_scope("doc-c"))
+    upstream = LIS.InformationObject
+    assert (local_uri_c, OWL.deprecated,
+            Literal(True, datatype=XSD.boolean))                in state_c
+    assert (local_uri_c, OWL.equivalentClass, upstream)         in state_c
+    assert (local_uri_c, DCTERMS.isReplacedBy, upstream)        in state_c
+    # NOT pointing at the deprecated intermediate.
+    assert (local_uri_c, DCTERMS.isReplacedBy, EXT.InformationObject) not in state_c
+
+    # Doc-C's instance is typed directly at the upstream URI.
+    assert (inst, RDF.type, upstream)    in state_c
+    assert (inst, RDF.type, local_uri_c) not in state_c
+
+
 def test_consolidate_retire_is_idempotent(tmp_path):
     """Re-running consolidate doesn't re-emit retire triples for a class
     already marked deprecated."""

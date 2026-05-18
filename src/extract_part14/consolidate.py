@@ -88,13 +88,31 @@ def walk_consolidate(
     writing one project-scope delta + one delta per contributing doc.
     """
     timestamp = timestamp or datetime.now(timezone.utc)
+    deprecated_lit = Literal(True, datatype=XSD.boolean)
+
     # ── 1. Scan: build per-class list of contributing docs ──
     contributors_by_slug: dict[str, list[str]] = defaultdict(list)
     declarations_by_slug: dict[str, list[ExtClass]] = defaultdict(list)
+    # follow_through: slug → docs whose doc-local class should be deprecated
+    #   directly onto the upstream canonical, because the project-ext
+    #   class for that slug is itself already retired (chain-following).
+    follow_through: dict[str, list[str]] = defaultdict(list)
     doc_scopes_seen: list[str] = []
 
     project_state = materialize(project_root, project_scope())
-    already_promoted = set(extract_classes_from_graph(project_state).keys())
+    project_classes = extract_classes_from_graph(project_state)
+    already_promoted = set(project_classes.keys())
+    # Map: project-ext slug → upstream canonical it's been retired to.
+    # Populated when a prior consolidate run's retire-upward pass marked
+    # an ext: class deprecated with a `dcterms:isReplacedBy` pointer.
+    deprecation_targets: dict[str, URIRef] = {}
+    for slug, cls in project_classes.items():
+        if (cls.uri, OWL.deprecated, deprecated_lit) not in project_state:
+            continue
+        target = next((o for o in project_state.objects(cls.uri, DCTERMS.isReplacedBy)
+                       if isinstance(o, URIRef)), None)
+        if target is not None:
+            deprecation_targets[slug] = target
 
     for scope in list_scopes(project_root):
         if scope.kind != "doc" or not scope.name:
@@ -103,13 +121,16 @@ def walk_consolidate(
         doc_state = materialize(project_root, scope)
         per_doc_classes = extract_classes_from_graph(doc_state)
         for slug, cls in per_doc_classes.items():
-            if slug in already_promoted:
+            # Skip already-deprecated doc-local classes (idempotency).
+            if (cls.uri, OWL.deprecated, deprecated_lit) in doc_state:
                 continue
-            # Skip classes already deprecated by an earlier consolidate
-            # run (they have an owl:equivalentClass forward pointer; no
-            # need to re-process). Idempotency: re-running consolidate
-            # produces no further deltas once everything has been lifted.
-            if (cls.uri, OWL.deprecated, Literal(True, datatype=XSD.boolean)) in doc_state:
+            if slug in already_promoted:
+                # If the project-ext class for this slug has itself been
+                # retired upward to a wider RDL, follow the chain: this
+                # doc-local URI should be deprecated DIRECTLY to the
+                # upstream canonical, skipping the deprecated intermediate.
+                if slug in deprecation_targets:
+                    follow_through[slug].append(scope.name)
                 continue
             contributors_by_slug[slug].append(scope.name)
             declarations_by_slug[slug].append(cls)
@@ -147,86 +168,97 @@ def walk_consolidate(
             slug=slug, canonical=canonical, contributors=contribs,
         ))
 
-    if not decisions:
-        if console:
-            console.print(f"  [dim]no ext class met threshold (≥{threshold} docs)[/dim]")
-        return []
+    if not decisions and not follow_through and console:
+        console.print(f"  [dim]no ext class met threshold (≥{threshold} docs)[/dim]")
 
-    # ── 3. Write project-scope additions (one delta) ──
-    project_added = Graph()
-    for d in decisions:
-        for triple in class_definitions_graph([d.canonical]):
-            project_added.add(triple)
-        # Audit: which docs contributed this promotion
-        for contrib in d.contributors:
-            project_added.add((d.canonical.uri, DG.firstSeenIn,
-                               URIRef(f"urn:docgraph:scope/doc/{contrib}")))
+    # ── 3. Write project-scope additions (one delta) — only if there
+    #    are new mint-upward decisions; follow-through and retire pass
+    #    below don't add to project scope here (project-scope deprecation
+    #    triples are emitted by retire-upward, instance retypes by both).
+    if decisions:
+        project_added = Graph()
+        for d in decisions:
+            for triple in class_definitions_graph([d.canonical]):
+                project_added.add(triple)
+            # Audit: which docs contributed this promotion
+            for contrib in d.contributors:
+                project_added.add((d.canonical.uri, DG.firstSeenIn,
+                                   URIRef(f"urn:docgraph:scope/doc/{contrib}")))
 
-    project_seq = next_seq(project_root, project_scope())
-    project_delta = StepDelta(
-        scope     = project_scope(),
-        step      = "consolidate",
-        seq       = project_seq,
-        added     = project_added,
-        parent_seq= project_seq - 1,
-        agent     = agent,
-        timestamp = timestamp,
-    )
-    write_delta(project_delta, delta_path(project_root, project_scope(), project_seq))
+        project_seq = next_seq(project_root, project_scope())
+        write_delta(
+            StepDelta(
+                scope     = project_scope(),
+                step      = "consolidate",
+                seq       = project_seq,
+                added     = project_added,
+                parent_seq= project_seq - 1,
+                agent     = agent,
+                timestamp = timestamp,
+            ),
+            delta_path(project_root, project_scope(), project_seq),
+        )
 
     # ── 4. Per-doc deltas — mark the doc-local class deprecated (W3C
     #    pattern: owl:deprecated + owl:equivalentClass + dcterms:isReplacedBy
     #    pointing at the canonical), AND rewrite instance type triples
-    #    from the doc-local URI to the project canonical. The doc-local
-    #    class DEFINITION stays (lifecycle invariant: class defs never
-    #    disappear silently). See docs/architecture/rdl-scopes.md.
+    #    from the doc-local URI to the canonical. The doc-local class
+    #    DEFINITION stays (lifecycle invariant). See
+    #    docs/architecture/rdl-scopes.md.
     per_doc_removed: dict[str, Graph] = defaultdict(_graph_with_ns_seed)
     per_doc_added:   dict[str, Graph] = defaultdict(_graph_with_ns_seed)
 
+    # Mint-upward: deprecate doc-local URIs onto the new project canonical.
     for d in decisions:
         for contrib in d.contributors:
             doc_local_uri = _doc_local_uri(contrib, d.slug)
-            doc_state = materialize(project_root, doc_scope(contrib))
+            _apply_deprecation_to_doc(
+                project_root, contrib, doc_local_uri, d.canonical.uri,
+                per_doc_added[contrib], per_doc_removed[contrib],
+                deprecated_lit,
+            )
 
-            # Deprecation triples on the doc-local URI (additive — class
-            # definition itself stays as a historical record).
-            per_doc_added[contrib].add(
-                (doc_local_uri, OWL.deprecated,
-                 Literal(True, datatype=XSD.boolean)))
-            per_doc_added[contrib].add(
-                (doc_local_uri, OWL.equivalentClass, d.canonical.uri))
-            per_doc_added[contrib].add(
-                (doc_local_uri, DCTERMS.isReplacedBy, d.canonical.uri))
-
-            # Rewrite instance type triples to the canonical so live
-            # queries hit the project URI; the deprecated doc-local URI
-            # still resolves via the equivalentClass triple if anyone
-            # walks the history.
-            for s in doc_state.subjects(RDF.type, doc_local_uri):
-                per_doc_removed[contrib].add((s, RDF.type, doc_local_uri))
-                per_doc_added[contrib].add((s, RDF.type, d.canonical.uri))
+    # Chain-following: doc-local slugs whose project-ext canonical has
+    # itself been retired upward (Scenario A in rdl-scopes.md). Deprecate
+    # them DIRECTLY to the upstream canonical, skipping the deprecated
+    # intermediate. Same delta-shape as mint-upward.
+    for slug, contribs in follow_through.items():
+        upstream_uri = deprecation_targets[slug]
+        for contrib in contribs:
+            doc_local_uri = _doc_local_uri(contrib, slug)
+            _apply_deprecation_to_doc(
+                project_root, contrib, doc_local_uri, upstream_uri,
+                per_doc_added[contrib], per_doc_removed[contrib],
+                deprecated_lit,
+            )
 
     contributing_slugs = set(per_doc_removed) | set(per_doc_added)
     for slug in contributing_slugs:
         scope = doc_scope(slug)
         seq   = next_seq(project_root, scope)
-        delta = StepDelta(
-            scope     = scope,
-            step      = "consolidate",
-            seq       = seq,
-            added     = per_doc_added.get(slug, Graph()),
-            removed   = per_doc_removed.get(slug, Graph()),
-            parent_seq= seq - 1,
-            agent     = agent,
-            timestamp = timestamp,
+        write_delta(
+            StepDelta(
+                scope     = scope,
+                step      = "consolidate",
+                seq       = seq,
+                added     = per_doc_added.get(slug, Graph()),
+                removed   = per_doc_removed.get(slug, Graph()),
+                parent_seq= seq - 1,
+                agent     = agent,
+                timestamp = timestamp,
+            ),
+            delta_path(project_root, scope, seq),
         )
-        write_delta(delta, delta_path(project_root, scope, seq))
 
     if console:
         for d in decisions:
             console.print(f"    [dim]promoted ext:{d.slug}  "
                           f"({len(d.contributors)} contributors: "
                           f"{', '.join(d.contributors)})[/dim]")
+        for slug, contribs in follow_through.items():
+            console.print(f"    [dim]chain-followed {slug} → "
+                          f"{deprecation_targets[slug]} "
+                          f"({len(contribs)} doc(s))[/dim]")
 
     # ── 5. Retire-upward pass — find project-ext classes whose slug also
     #    exists in an upstream RDL (LIS-14, dg, any registered third-
@@ -374,6 +406,28 @@ def _find_upstream_class_by_slug(
         if local == slug:
             return cls_uri
     return None
+
+
+def _apply_deprecation_to_doc(
+    project_root: Path,
+    doc_slug: str,
+    doc_local_uri: URIRef,
+    canonical_uri: URIRef,
+    added_g: Graph,
+    removed_g: Graph,
+    deprecated_lit: Literal,
+) -> None:
+    """Add the deprecation triple set on *doc_local_uri* pointing at
+    *canonical_uri*, and rewrite that doc's instance triples typed as
+    *doc_local_uri* to type as *canonical_uri* instead. Mutates the
+    caller-supplied added/removed graphs (per-doc accumulators)."""
+    added_g.add((doc_local_uri, OWL.deprecated,        deprecated_lit))
+    added_g.add((doc_local_uri, OWL.equivalentClass,   canonical_uri))
+    added_g.add((doc_local_uri, DCTERMS.isReplacedBy,  canonical_uri))
+    doc_state = materialize(project_root, doc_scope(doc_slug))
+    for s in doc_state.subjects(RDF.type, doc_local_uri):
+        removed_g.add((s, RDF.type, doc_local_uri))
+        added_g.add((s, RDF.type, canonical_uri))
 
 
 def _graph_with_ns_seed() -> Graph:
