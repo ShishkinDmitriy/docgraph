@@ -1,0 +1,32 @@
+@prefix ex: <urn:docgraph:example:> .
+@prefix ns1: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix rdl: <http://data.15926.org/rdl/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b0> a ns1:TemporalWholePart ;
+    ns1:hasPart <urn:tpl-instance/classification-of-individual-7567370943b24358-u1> ;
+    ns1:hasWhole ex:21-P-101 .
+
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b1> a ns1:Classification ;
+    ns1:hasClassified <urn:tpl-instance/classification-of-individual-7567370943b24358-u1> ;
+    ns1:hasClassifier rdl:RDS416834 .
+
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b2> a ns1:Beginning ;
+    ns1:hasPart <urn:tpl-instance/classification-of-individual-7567370943b24358-u2> ;
+    ns1:hasWhole <urn:tpl-instance/classification-of-individual-7567370943b24358-u1> .
+
+<urn:tpl-instance/classification-of-individual-7567370943b24358-anon-_b3> a ns1:Identification ;
+    ns1:hasRepresented <urn:tpl-instance/classification-of-individual-7567370943b24358-u2> ;
+    ns1:hasSign <urn:tpl-instance/classification-of-individual-7567370943b24358-u3> .
+
+rdl:RDS416834 a ns1:ClassOfIndividual .
+
+ex:21-P-101 a ns1:PossibleIndividual .
+
+<urn:tpl-instance/classification-of-individual-7567370943b24358-u3> a ns1:RepresentationOfGregorianDateAndUtcTime ;
+    ns1:hasContent "2021-07-18T13:59:00+00:00"^^xsd:dateTime .
+
+<urn:tpl-instance/classification-of-individual-7567370943b24358-u2> a ns1:PointInTime .
+
+<urn:tpl-instance/classification-of-individual-7567370943b24358-u1> a ns1:PossibleIndividual .
+

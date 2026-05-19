@@ -1,0 +1,23 @@
+PREFIX iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT * WHERE {
+  ?anon_b0 iso15926:hasPart ?u1 .
+  ?anon_b0 iso15926:hasWhole ?hasClassified .
+  ?anon_b0 rdf:type iso15926:TemporalWholePart .
+  ?anon_b1 iso15926:hasClassified ?u1 .
+  ?anon_b1 iso15926:hasClassifier ?hasClassifier .
+  ?anon_b1 rdf:type iso15926:Classification .
+  ?anon_b2 iso15926:hasPart ?u2 .
+  ?anon_b2 iso15926:hasWhole ?u1 .
+  ?anon_b2 rdf:type iso15926:Beginning .
+  ?anon_b3 iso15926:hasRepresented ?u2 .
+  ?anon_b3 iso15926:hasSign ?u3 .
+  ?anon_b3 rdf:type iso15926:Identification .
+  ?hasClassified rdf:type iso15926:PossibleIndividual .
+  ?hasClassifier rdf:type iso15926:ClassOfIndividual .
+  ?u1 rdf:type iso15926:PossibleIndividual .
+  ?u2 rdf:type iso15926:PointInTime .
+  ?u3 iso15926:hasContent ?valEffectiveDate .
+  ?u3 rdf:type iso15926:RepresentationOfGregorianDateAndUtcTime .
+}

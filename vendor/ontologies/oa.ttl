@@ -1,0 +1,100 @@
+@prefix oa:     <http://www.w3.org/ns/oa#> .
+@prefix dg:     <urn:docgraph:vocab:meta#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+
+# All oa: classes are docgraph plumbing for top-down quote citation —
+# never extraction targets in their own right.
+oa:Selector             dg:extractable false .
+oa:TextQuoteSelector    dg:extractable false .
+oa:TextPositionSelector dg:extractable false .
+oa:RangeSelector        dg:extractable false .
+oa:FragmentSelector     dg:extractable false .
+
+# Minimal subset of the W3C Web Annotations Data Model
+# (https://www.w3.org/TR/annotation-vocab/) — the parts docgraph uses for
+# top-down evidence-driven quote citation. Only the selector / source
+# vocabulary is included; full annotation, motivation, and styling
+# vocabularies are out of scope.
+#
+# Replace with the canonical upstream RDF when needed.
+
+<http://www.w3.org/ns/oa>  a owl:Ontology ;
+    rdfs:label   "Web Annotations Data Model (subset)" ;
+    rdfs:comment "Minimal subset bundled with docgraph for top-down quote citation. See https://www.w3.org/TR/annotation-vocab/ for the full vocabulary." ;
+    dcterms:source <https://www.w3.org/TR/annotation-vocab/> .
+
+# ── Selectors — point INTO a source resource ─────────────────────────────────
+oa:Selector  a owl:Class ;
+    rdfs:label   "Selector" ;
+    rdfs:comment "A resource which describes a portion of another resource." .
+
+oa:TextQuoteSelector  a owl:Class ;
+    rdfs:subClassOf oa:Selector ;
+    rdfs:label   "TextQuoteSelector" ;
+    rdfs:comment "Describes a range of text by copying it (oa:exact) plus a small window of surrounding text (oa:prefix, oa:suffix) to disambiguate." .
+
+oa:TextPositionSelector  a owl:Class ;
+    rdfs:subClassOf oa:Selector ;
+    rdfs:label   "TextPositionSelector" ;
+    rdfs:comment "Describes a range of text by character offsets (oa:start, oa:end). Format-agnostic; less robust than TextQuoteSelector under edits." .
+
+oa:RangeSelector  a owl:Class ;
+    rdfs:subClassOf oa:Selector ;
+    rdfs:label   "RangeSelector" ;
+    rdfs:comment "Describes a range bounded by two other selectors (oa:hasStartSelector, oa:hasEndSelector)." .
+
+oa:FragmentSelector  a owl:Class ;
+    rdfs:subClassOf oa:Selector ;
+    rdfs:label   "FragmentSelector" ;
+    rdfs:comment "Describes a portion using the URI fragment syntax defined by the source's media type." .
+
+# ── Properties on selectors / annotations ────────────────────────────────────
+oa:hasSelector  a owl:ObjectProperty ;
+    rdfs:label   "hasSelector" ;
+    rdfs:range   oa:Selector ;
+    rdfs:comment "Links an annotation target (or quote, in docgraph's usage) to a selector that points into the source." .
+
+oa:hasSource    a owl:ObjectProperty ;
+    rdfs:label   "hasSource" ;
+    rdfs:comment "The resource that the selector applies to (e.g., the markdown cache file)." .
+
+oa:exact        a owl:DatatypeProperty ;
+    rdfs:label   "exact" ;
+    rdfs:domain  oa:TextQuoteSelector ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "The verbatim text being selected." .
+
+oa:prefix       a owl:DatatypeProperty ;
+    rdfs:label   "prefix" ;
+    rdfs:domain  oa:TextQuoteSelector ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "A short window of text immediately before oa:exact, used to disambiguate when the same text appears multiple times." .
+
+oa:suffix       a owl:DatatypeProperty ;
+    rdfs:label   "suffix" ;
+    rdfs:domain  oa:TextQuoteSelector ;
+    rdfs:range   xsd:string ;
+    rdfs:comment "A short window of text immediately after oa:exact, used to disambiguate." .
+
+oa:start        a owl:DatatypeProperty ;
+    rdfs:label   "start" ;
+    rdfs:domain  oa:TextPositionSelector ;
+    rdfs:range   xsd:nonNegativeInteger .
+
+oa:end          a owl:DatatypeProperty ;
+    rdfs:label   "end" ;
+    rdfs:domain  oa:TextPositionSelector ;
+    rdfs:range   xsd:nonNegativeInteger .
+
+oa:hasStartSelector  a owl:ObjectProperty ;
+    rdfs:label   "hasStartSelector" ;
+    rdfs:domain  oa:RangeSelector ;
+    rdfs:range   oa:Selector .
+
+oa:hasEndSelector    a owl:ObjectProperty ;
+    rdfs:label   "hasEndSelector" ;
+    rdfs:domain  oa:RangeSelector ;
+    rdfs:range   oa:Selector .

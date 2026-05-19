@@ -1,469 +1,583 @@
 # DocGraph — Architecture Design Notes
 
-> Session date: 2026-04-15. Last updated: 2026-04-25 (switched upper ontology from ISO 15926 Part 2 to Part 14). Read this file at the start of any session continuing this design.
+> Session date: 2026-04-15. Last updated: **2026-05-06** (groomed: dropped the dead Phase 1–4 analyzer pipeline that the 14-prompt classifier in `src/classify_part2/` replaced; trimmed cascade-delete and SHACL-derivation deep dives; deduped structural-class declarations; pruned open questions; connected the 14-prompt classifier to the template model; split foundational reference material into `docs/architecture/{meta-ontology,information-objects,provenance}.md`; dropped the verbose `tpl:Invocation` sub-template syntax and demoted it to an open question; cleaned `dg:noPart2Anchor` and `cache/{lifts,anchors}/` vestiges of dead Phase pipeline). Read this file at the start of any session continuing this design.
 
 ## Vision
 
-The current codebase is a financial-document extractor with a hardcoded ontology
-(`financial_documents.ttl`). The goal is to make it fully general:
+DocGraph started as a financial-document extractor with a hardcoded ontology
+(`financial_documents.ttl`). The goal is to be **fully general**: ISO 15926
+Part 2 is the meta-ontology so the system can shift across domains without
+hardcoding any one of them.
 
-- **`docgraph init`** seeds only a meta-ontology — no domain classes.
-- **`docgraph add <file>`** — the LLM figures out what kind of document it is and builds
-  the knowledge graph accordingly.
-- **`docgraph remove <file>`** — cascades: removes concepts the document defined, and
-  degrades any individuals previously classified under those concepts to bare
-  `lis:InformationObject` (unclassified, but not lost).
+- **`docgraph init`** seeds only the meta-ontology — no domain classes.
+- **`docgraph add <file>`** — the LLM figures out what kind of document it is
+  and builds the knowledge graph accordingly.
+- **`docgraph remove <file>`** — drops the source's named graph; references to
+  its concepts are repaired or marked unresolved.
 
-The result after adding three documents — a German invoice, an EU standard defining
-Invoice, and a meta-document classifying types of standards — should be a graph with:
-- a class `:Invoice rdfs:subClassOf lis:InformationObject`, defined in the EU standard's
-  named graph
-- an individual for the invoice itself, typed as `:Invoice` in its own named graph
-- meta-classification triples from the third document in yet another named graph
+The original example (German invoice + EU standard defining Invoice + meta-
+document classifying types of standards) is one of many. **Current focus**:
+classification (subject + form), template-instance recognition, and template discovery.
 
-Removing the EU standard cascades: the `:Invoice` class definition disappears, and the
-individual's `rdf:type :Invoice` triple is rewritten to `rdf:type lis:InformationObject`
-(unclassified, but not lost).
+## Companion docs
+
+Foundational reference material lives in `docs/architecture/`:
+
+- [`meta-ontology.md`](docs/architecture/meta-ontology.md) — ISO 15926 Part 2
+  as the meta-ontology. Why Part 2, when to reify vs use plain RDFS, the
+  top-level hierarchy, the `dg:` extension namespace, the structural classes
+  (`dg:Document` / `dg:Chapter` / `dg:Quote` / `dg:File`), modality
+  individuals.
+- [`information-objects.md`](docs/architecture/information-objects.md) — the
+  file → document → chapter → quote chain, concrete turtle, design rules,
+  PDF→Markdown derivation with PROV-O.
+- [`provenance.md`](docs/architecture/provenance.md) — named-graph + Part 2
+  reification provenance model, bundled `dg.ttl` + per-project `config.ttl`
+  backbone, document-sourced assertions, cascade-delete, TTL ingest, DEFINE
+  vs REFERENCE ownership and unresolved-concept stubs.
+- [`templates.md`](docs/architecture/templates.md) — the Part 7-style
+  lifted/lowered template system; recognition / expansion / SPARQL
+  translation; library / structural / learned discovery.
+- [`extraction.md`](docs/architecture/extraction.md) — extraction as a
+  decision-tree walk over the upper ontology; per-branch policy;
+  document-bounded descent; stub-vs-extract decision.
+- [`html-pipeline.md`](docs/architecture/html-pipeline.md) — canonical-HTML
+  source-of-truth representation; PDF→HTML conversion with seeded IDs on
+  referenceable atomic units; MD-view derivation; fragment-URI citations
+  (`<doc#id-N>`); annotated-view rendering for review/coverage.
+
+This file (ARCHITECTURE.md) holds the active design surface: declares-axis,
+modality, templates pointer + 14-prompt connection, storage layout,
+classification, extraction pipeline, init, open questions.
 
 ---
 
-## Meta-ontology — ISO 15926 Part 14 (strict alignment)
+## Pipelines — Part 2 and Part 14 in parallel
 
-The meta-ontology **is** ISO 15926 Part 14, not merely inspired by it. All meta-classes
-must use actual Part 14 class names and URIs. Custom classes must not be invented where
-a Part 14 class already covers the concept.
+DocGraph supports two upper-ontology *pipelines* selected at `init` time:
 
-Part 14 is an OWL 2 DL rendering of the ISO 15926-2 data model. The choice of Part 14
-over Part 2 is deliberate: Part 14 is OWL-native (uses `rdf:type` and `rdfs:subClassOf`
-directly, no reification of classification/specialization, no metaclass machinery) and
-is far smaller — under 30 classes covering the same conceptual ground that Part 2 spreads
-across 100+. This makes it dramatically easier to work with from standard OWL tooling
-without losing semantic alignment.
+| Pipeline | Upper ontology | Classifier path | Templates | Status |
+|---|---|---|---|---|
+| **`dg:Part2Pipeline`** | ISO 15926 Part 2 RDF (POSC Caesar) — full reified Part 2 | `src/classify_part2/` | `data/templates/iso/` | Current default. **Frozen** — no new feature work; bug fixes only. |
+| **`dg:Part14Pipeline`** | ISO 15926 Part 14 OWL (`vendor/ontologies/LIS-14.ttl`) — DL rendering of Part 2 | `src/classify_part14/` | `data/templates/iso14/` | New, **template-driven from day 1**. Built in parallel; default once at parity. |
 
-### Why strict alignment matters
+Why two: Part 2 carries the full reified-relationship model (`Classification`,
+`Description`, `Composition`, …) needed for sourced/temporal/authority-bound
+content. Part 14 is the OWL DL "lifted" rendering of the same model — direct
+properties (`lis:hasPart`, `lis:representedBy`, …) instead of reified clusters
+— which aligns with what modern Reference Data Libraries publish (POSC Caesar,
+IOGP, CFIHOS, 15926.io). Migrating loses Part 2's per-assertion expressiveness
+in exchange for RDL federation, OWL-tooling support, and a much smaller
+on-disk footprint per template instance. Provenance content that previously
+lived in reified clusters moves to PROV-O (`prov:wasDerivedFrom`,
+`prov:generatedAtTime`, `prov:wasAttributedTo`) plus named-graph context.
 
-- Interoperability: graphs produced by docgraph can be consumed by any ISO 15926-aware
-  tool without translation.
-- Discipline: Part 14's vocabulary covers the structural concepts we need; inventing
-  parallel concepts creates confusion.
-- Future-proofing: when the standard adds concepts, we inherit them for free.
+A project commits to one pipeline at `init` time — mixing produces incoherent
+named graphs (Part 2 reified clusters next to Part 14 direct properties). The
+choice is recorded in `.docgraph/config.ttl`'s `dg:pipeline` triple; the CLI
+dispatcher reads it and routes to the matching classifier package.
 
-### Official OWL representation
+### Part 14 build-out — milestones
 
-The Part 14 ontology ships as Turtle locally at `docs/LIS-14.ttl` (READI 2020-09
-deliverable, revised 2019-03-25, version IRI
-`http://standards.iso.org/iso/15926/part14/1.0`).
+The Part 14 pipeline is built incrementally without modifying `classify_part2`.
+Default flips from `part2` to `part14` at M3:
 
-Base namespace (the `lis:` prefix):
-```
-http://standards.iso.org/iso/15926/part14/
-```
+- **M0 — loader & init refactor**: `docgraph init --pipeline part14` produces
+  `.docgraph/config.ttl` (no `meta.ttl` copying); loader reads
+  `vendor/ontologies/{LIS-14.ttl, dg.ttl, tpl.ttl, prov-o.ttl}` based on the
+  pipeline triple. Parity with current Part 2 init flow.
+- **M1 — structural-only ingest**: `docgraph add file.pdf` against a Part 14
+  project produces a valid Part 14 named graph with file/document/chapter/
+  quote chain (`lis:representedBy` + `lis:hasArrangedPart`) plus subject
+  classification. **Skips** branch extraction.
+- **M2 — partial aspect coverage**: template-driven extraction for 5 of the
+  14 aspects (start with the cheapest: identifiers, classes, properties,
+  individuals, classifications). Templates land under `data/templates/iso14/`.
+- **M3 — full aspect coverage at parity**: all 14 aspects covered on the
+  existing test corpus with parity-or-better quality. **`docgraph init`
+  default flips to `part14`** here.
+- **M4 — `classify_part2` retired**: code removed; `Part2Pipeline` value kept
+  in `dg.ttl` for legacy projects that haven't migrated their data.
 
-Note the trailing slash — Part 14 uses slash-separated IRIs (`lis:InformationObject` =
-`http://standards.iso.org/iso/15926/part14/InformationObject`), not hash fragments. The
-ontology IRI itself (`http://standards.iso.org/iso/15926/part14`) has no trailing slash.
+### Open question — possible vs actual individuals
 
-`meta.ttl` should `owl:imports` `docs/LIS-14.ttl` (or load it as a local secondary
-ontology) so the full Part 14 class hierarchy is available in the combined graph without
-any network fetch. The `lis:` prefix maps to the namespace above.
+Part 14 commonly uses **named graphs themselves** to distinguish actual
+individuals from possible individuals (e.g., a graph holding RDL classifiers
+declares "every individual herein is a possible individual"). Our template
+declaration model works at the per-instance level — `var:x rdf:type ex:Foo`
+— and can't naturally express graph-level classifications of this kind.
+Out-of-scope for the initial Part 14 build-out; will need a graph-level
+template shape or an explicit graph-classification mechanism later.
 
-### Core Part 14 hierarchy relevant to docgraph
+---
 
-Part 14's top-level structure splits everything into three disjoint roots:
-`lis:Object` (3D things), `lis:Activity` (4D occurrences), and `lis:Aspect`
-(qualities, dispositions, roles).
+## What does a document declare?
 
-```
-lis:Object                           top of the 3D side
-  lis:InformationObject              ← documents, records (concrete instances)
-    lis:QuantityDatum
-      lis:ScalarQuantityDatum
-    lis:UnitOfMeasure
-      lis:Scale
-  lis:PhysicalObject
-    lis:InanimatePhysicalObject  (lis:Phase, lis:Stream)
-    lis:Organism (lis:Person)
-    lis:Compound, lis:Feature
-  lis:FunctionalObject (lis:System)
-  lis:Location (lis:SpatialLocation, lis:Site)
-  lis:Organization
+Independent of *what* a document is about, every source declares some
+combination of classes, properties, and individuals. The ingester records this
+as `<source> dg:defines …` triples:
 
-lis:Activity                         4D occurrences
-  lis:Event (lis:PointInTime)
-  lis:PeriodInTime
-
-lis:Aspect                           inhering qualities, etc.
-  lis:Quality (lis:PhysicalQuantity)
-  lis:Disposition (lis:Function)
-  lis:Role
-```
-
-Key relations Part 14 already provides:
-`lis:representedBy` (any thing → `lis:InformationObject`), `lis:hasParticipant`,
-`lis:hasRole`, `lis:hasFunction`, `lis:hasQuality`, `lis:hasPart` (and its
-specialisations `hasArrangedPart`, `hasFunctionalPart`, etc.), the temporal `before` /
-`after` / `causes`, and the connectivity `connectedTo`.
-
-### Classes central to docgraph's information model
-
-```turtle
-@prefix lis: <http://standards.iso.org/iso/15926/part14/> .
-
-lis:InformationObject   # superclass for every document and record we ingest
-```
-
-A specific German invoice document is an *individual* of type `lis:InformationObject`.
-A document *type* like "Invoice" is an OWL class with
-`rdfs:subClassOf lis:InformationObject`. Classification is plain `rdf:type`; sub-typing
-is plain `rdfs:subClassOf`. There is no `ClassOfInformationObject` metaclass in
-Part 14 — there doesn't need to be.
-
-### What Part 14 does *not* model — the `dg:` extension namespace
-
-Part 14 omits a few things docgraph needs:
-
-| Concept | Part 14 status | docgraph approach |
+| Question | Stored as | Triggered by |
 |---|---|---|
-| Modality (MUST / SHOULD / MAY / MUST NOT) | Not modelled | `dg:Modality` class with four instances |
-| Provenance / source ownership | Not modelled | named graphs + `dg:` ingestion metadata |
-| Unresolved-stub status | Not modelled | `dg:status dg:Unresolved` |
+| Defines classes? | `<source> dg:defines dg:Classes` | `?x a owl:Class`, `rdfs:Class`, `skos:Concept`, … |
+| Defines properties? | `<source> dg:defines dg:Properties` | `?x a owl:ObjectProperty`, `owl:DatatypeProperty`, `rdf:Property`, … |
+| Defines individuals? | `<source> dg:defines dg:Individuals` | `?x a <some-class-not-in-the-meta-vocabulary>` |
 
-The `dg:` namespace (`http://example.org/docgraph/meta#`) is reserved for these
-docgraph-specific additions. Every structural class must come from `lis:` if Part 14
-covers it.
+Any combination is valid. An ontology TTL with named individuals → all three.
+A receipt PDF → `dg:Individuals` only. A standards PDF defining what an
+Invoice is → `dg:Classes` and `dg:Properties` (and possibly some illustrative
+individuals).
 
-### Built-in modality individuals (RFC 2119 as docgraph individuals)
-
-Baked into `meta.ttl`. They represent the normative modality vocabulary from RFC 2119 /
-ISO drafting directives. Since Part 14 has no metaclass-of-relationship concept, modality
-is simply a docgraph enumeration:
-
-```turtle
-@prefix dg: <http://example.org/docgraph/meta#> .
-
-dg:Modality    a owl:Class .
-
-dg:Mandatory   a dg:Modality .  # MUST / SHALL
-dg:Preferred   a dg:Modality .  # SHOULD
-dg:Optional    a dg:Modality .  # MAY
-dg:Prohibited  a dg:Modality .  # MUST NOT
-
-dg:modality    a owl:ObjectProperty ;
-    rdfs:range  dg:Modality .   # attaches to a property to indicate its modality
-```
+This **declares-axis** is orthogonal to **subject classification** and **form
+classification** — see "Classification" below. A document that *defines*
+`schema:Invoice` is not the same as a document that *is* an instance of
+`schema:Invoice`; subject + form answer the latter, the declares-axis answers
+the former. Both can apply to the same source.
 
 ---
 
-## Provenance via named graphs (replaces Part 2 reification)
+## Modality
 
-ISO 15926-2 reified every relationship so provenance, temporal scope, and jurisdiction
-could attach to the relationship itself. Part 14 drops reification in favour of standard
-OWL. Docgraph follows suit and uses **named graphs** as the unit of provenance:
-
-- Every triple lives in exactly one named graph.
-- Each ingested document owns one named graph (`graphs/<slug>.ttl`).
-- The graph URI *is* the source identifier — no per-triple `dg:definedBy` needed.
-- The permanent meta-ontology backbone lives in `meta.ttl` (its own graph).
-- Cascade-delete = drop the document's named graph + repair dangling type references in
-  the remaining graphs.
-
-### Permanent backbone — `meta.ttl`
-
-`meta.ttl` is the structural scaffolding written once by `init` and never overwritten. It
-loads Part 14 and declares the docgraph-specific extensions:
+Modality is extracted directly from normative text and stored as a triple on the
+**template declaration** that defines the predicate (see "Templates" below — every
+domain predicate is the lifted form of a template). The template's TTL file lives
+in `data/templates/<domain>/` and carries `tpl:modality` alongside its other
+metadata:
 
 ```turtle
-# meta.ttl — permanent scaffolding
-@prefix lis:  <http://standards.iso.org/iso/15926/part14/> .
-@prefix dg:   <http://example.org/docgraph/meta#> .
-@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+# data/templates/financial/invoice-has-vat-number.ttl
+# Template extracted from "The Seller VAT identifier MUST be present"
+@prefix var: <urn:tpl-var/> .
 
-<http://example.org/docgraph/meta>  a owl:Ontology ;
-    owl:imports <http://standards.iso.org/iso/15926/part14> .
+dom:InvoiceHasVatNumber a tpl:Template ;
+    rdfs:label    "VAT Number on an invoice" ;
+    tpl:definition "[invoice] has VAT identifier [value]." ;
+    tpl:slot     var:invoice, var:value ;
+    tpl:modality dg:Mandatory ;                               # MUST
+    tpl:lowered  var:lowered .
 
-dg:Modality   a owl:Class .
-dg:Mandatory  a dg:Modality .
-dg:Preferred  a dg:Modality .
-dg:Optional   a dg:Modality .
-dg:Prohibited a dg:Modality .
-dg:modality   a owl:ObjectProperty ; rdfs:range dg:Modality .
-```
+var:invoice tpl:range dom:Invoice .
+var:value   tpl:range xsd:string .
 
-### Document-sourced assertions
-
-When a document asserts that "Invoice is a subtype of InformationObject" or that
-"this invoice IS an Invoice", these are plain OWL triples written into the document's
-named graph:
-
-```turtle
-# graphs/eu-standard.ttl — named graph for the EU standard
-@prefix lis: <http://standards.iso.org/iso/15926/part14/> .
-@prefix dom: <http://example.org/docgraph/domain/> .
-
-dom:Invoice  a owl:Class ;
-    rdfs:subClassOf lis:InformationObject ;
-    rdfs:label "Invoice" .
-
-dom:hasVatNumber  a owl:DatatypeProperty ;
-    rdfs:domain dom:Invoice ;
-    rdfs:range  xsd:string ;
-    dg:modality dg:Mandatory .
-
-# graphs/german-invoice.ttl — named graph for the invoice document
-<doc/invoice-001>  a dom:Invoice ;
-    dom:hasVatNumber "DE123456789" .
-```
-
-Provenance, temporal scope, and jurisdiction (when needed) attach to the *named graph*,
-not to individual triples. The registry (`sources.ttl`) carries this metadata:
-`dg:addedAt`, `dg:validFrom`, `dg:scope`, etc.
-
-### Cascade delete
-
-`docgraph remove eu-standard.pdf`:
-
-1. Look up the graph file in `sources.ttl` → `graphs/eu-standard.ttl`.
-2. Parse it; collect every class and property URI defined there (subjects with
-   `rdf:type owl:Class`, `owl:ObjectProperty`, or `owl:DatatypeProperty`).
-3. Show the user what will be removed (concepts + dependent individuals).
-4. On confirm: delete the graph file and remove its registry entry.
-5. Scan the remaining named graphs for triples whose predicate or `rdf:type` referenced
-   a now-undefined concept:
-   - `<x> rdf:type <removed-class>` → rewrite to `rdf:type lis:InformationObject`
-     (if the removed class was a subclass of `lis:InformationObject`) or remove the
-     triple otherwise.
-   - `<x> <removed-property> _` → remove the triple.
-
-The meta backbone (`meta.ttl`) is never touched.
-
-### Translating precompiled TTL files
-
-A hand-authored `.ttl` source uses OWL constructs natively (`rdfs:subClassOf`, `rdf:type`,
-`owl:ObjectProperty`). Because Part 14 is also OWL-native, ingest is **a straight load**
-into the source's named graph — no translation, no reification step. The source becomes
-its own named graph and cascade-deletes cleanly.
-
-The ingest does still need to:
-- Resolve any new domain classes against existing concepts (DEFINE vs REFERENCE — see
-  next section).
-- Stamp the registry with `dg:addedAt` and a `dg:detectedRole` (does this source mostly
-  define types, or assert instances?).
-
----
-
-## DEFINE vs REFERENCE — ownership
-
-For every concept the system encounters in a document, the LLM (or the TTL ingester) must
-decide:
-
-| Relationship | Meaning | Lifecycle |
-|---|---|---|
-| Concept defined in this document's graph | This document is the normative source | Remove doc → drop the graph → concept gone |
-| Concept referenced but defined elsewhere | This document uses, doesn't own | Remove doc → no effect on the concept |
-
-With named-graph provenance, ownership is *positional*: a concept is defined by whichever
-graph contains its declaration triple (`a owl:Class` plus `rdfs:subClassOf …`). A
-referencing document just uses the URI without redeclaring it.
-
-When ambiguity arises (the same URI appears with `a owl:Class` in two graphs), it's a
-merge conflict — see open questions below.
-
-### Unresolved concepts
-
-If a document references a concept that has no defining document yet, we can't simply
-omit it — we lose the reference. Instead, the ingester mints a **stub** in a dedicated
-`graphs/_unresolved.ttl` graph:
-
-```turtle
-# graphs/_unresolved.ttl
-dom:Invoice  a lis:InformationObject ;
-    dg:status         dg:Unresolved ;
-    dg:firstSeenIn    <source/german-invoice.pdf> .
-```
-
-A stub is typed as plain `lis:InformationObject` (no subclass relationship yet) and
-flagged `dg:Unresolved`. When a defining document is later added, the loader:
-
-1. Detects that the new graph defines `dom:Invoice` (i.e., contains
-   `dom:Invoice a owl:Class ; rdfs:subClassOf …`).
-2. Removes the stub triples from `_unresolved.ttl`.
-3. Optionally rewrites individuals in other graphs that were typed as
-   `lis:InformationObject` but referenced through `dom:Invoice` to use the now-defined
-   class.
-
-This makes the **order of ingestion irrelevant** — documents can be added in any order
-and the graph heals itself.
-
-`dg:status`, `dg:Unresolved`, and `dg:firstSeenIn` are docgraph-specific (no Part 14
-equivalent for ingestion bookkeeping).
-
----
-
-## Modality and SHACL derivation
-
-Modality is extracted directly from normative text and stored as triples on the property
-declaration, in the defining document's named graph:
-
-```turtle
-# graphs/eu-standard.ttl — extracted from "The Seller VAT identifier MUST be present"
-dom:hasVatNumber  a owl:DatatypeProperty ;
-    rdfs:label  "VAT Number" ;
-    rdfs:domain dom:Invoice ;
-    rdfs:range  xsd:string ;
-    dg:modality dg:Mandatory .
+GRAPH var:lowered {
+    var:invoice dom:hasVatNumber var:value .
+}
 
 # "The buyer reference SHOULD be provided"
-dom:hasBuyerRef  a owl:DatatypeProperty ;
-    rdfs:domain dom:Invoice ;
-    rdfs:range  xsd:string ;
-    dg:modality dg:Preferred .
+dom:InvoiceHasBuyerRef a tpl:Template ;
+    rdfs:label   "Buyer reference on an invoice" ;
+    tpl:slot     var:invoice, var:value ;
+    tpl:modality dg:Preferred ;                               # SHOULD
+    tpl:lowered  var:lowered .
+
+var:invoice tpl:range dom:Invoice .
+var:value   tpl:range xsd:string .
+
+GRAPH var:lowered {
+    var:invoice dom:hasBuyerReference var:value .
+}
 ```
 
-Compared to the previous Part 2 design, this is dramatically simpler: no reified
-`Classification` individuals, no `ClassOfClassOfRelationship` chain. Just an OWL property
-with one extra annotation.
-
-### SHACL as a derived view
-
-SHACL shapes are **not stored** — they are generated on demand from modality triples:
-
-```python
-def derive_shacl(graph):
-    for prop in graph.subjects(RDF.type, OWL.DatatypeProperty):
-        modality = graph.value(prop, DG.modality)
-        if modality is None:
-            continue
-        domain = graph.value(prop, RDFS.domain)
-        range_ = graph.value(prop, RDFS.range)
-        if modality == DG.Mandatory:
-            yield NodeShape(targetClass=domain, path=prop, minCount=1, datatype=range_)
-        elif modality == DG.Prohibited:
-            yield NodeShape(targetClass=domain, path=prop, maxCount=0)
-```
-
-Removing the defining document drops its named graph → modality triples vanish → derived
-shapes change automatically.
+Modality is a `dg:`-namespace simplification, not a reified Part 2 chain — modality
+is a structural property of the *template definition*, not an event-with-extent,
+so plain `tpl:modality` is the right shape.
 
 ---
 
-## Storage layout (file-based, no triplestore yet)
+## Templates — Part 7-style lifted/lowered patterns
 
-Each source document gets its own named-graph TTL file. A registry tracks all sources.
+Templates are the **universal LLM-emit and storage mechanism**: every
+LLM-emitted assertion is a template instance, every domain ontology is a
+template library, and **the on-disk graph is the lifted form** — compact
+typed-anchor + slot-binding triples. The lowered Part 2 cluster is
+materialised on demand for SPARQL paths that need Part 2 shapes; it isn't
+stored. Templates are grounded to Part 2 through their lowered body, so
+materialisation is always possible without losing data.
+
+The full chapter — lifted/lowered semantics, the `var:` namespace and
+skolemization, instance-form and pattern-form examples, the reification
+spectrum, multi-valued slots, sub-template composition, deterministic URI
+minting, recognition via on-the-fly SPARQL translation, the LLM emit format,
+storage layout, domain libraries as template directories, the three-source
+discovery model (library / structural / learned), and cascade behaviors —
+lives in **[`docs/architecture/templates.md`](docs/architecture/templates.md)**.
+
+### 14-prompt classifier as the Part 2 tree's top level
+
+The existing pipeline at `src/classify_part2/` runs **14 prompts** (one per
+ISO 15926 Part 2 aspect: activities, classes, connections, identifiers,
+individuals, lifecycle, participations, properties, roles, temporal,
+whole-parts, …). Each prompt's converter
+(`src/classify_part2/convert/<aspect>.py`) takes the LLM's JSON output and
+emits a reified Part 2 cluster.
+
+Mapped onto the decision-tree model above: **the 14 prompts are exactly
+the tree's top-level branches for the Part 2 pipeline** — one prompt per
+Part 2 top-level class. Each converter's output is the cluster of triples
+those branch-instances expand into, plus (where templates apply) leaf-level
+template-instance fills. What's hardcoded today (the list of 14 aspects, the
+Python-per-aspect shape) becomes data-driven once `src/extract_part14/` is
+built: branches are loaded from `data/branches/<pipeline>/`, the per-branch
+prompt is templated, and the per-aspect Python converters are replaced by
+the generic walker.
+
+Until that migration lands, the 14-prompt pipeline keeps its current shape;
+the template engine (`src/templates/`) and the decision-tree walker are
+developed in parallel against the new Part 14 pipeline.
+
+---
+
+## Storage layout — installation / project / results
+
+Three layers, each with a different category of state and a different lifetime:
+
+| Layer | Owns | Lives in | Versioned with |
+|---|---|---|---|
+| **Bundled foundationals** | Operational ontologies docgraph itself depends on (LIS-14, ISO-15926-2 RDF, PROV-O, base `dg:`/`tpl:` declarations) | `vendor/ontologies/` (per docgraph install) | docgraph release |
+| **Project assets** | User-authored vocabulary and templates (custom domain ontologies, hand-written templates) | the project repo's `data/` (e.g. `data/templates/<custom>/`, `data/ontologies/<custom>.ttl`) | project's git |
+| **Results + caches** | Per-project state generated by docgraph (per-source graphs, registries, caches, RDL mirrors, unresolved stubs) | `.docgraph/` | not versioned (gitignored) |
+
+Bundled foundationals are *never* copied into `.docgraph/`; the loader reads them from `vendor/ontologies/` on startup. Project assets are also never copied — the loader reads them from the project repo by path. `.docgraph/` is exclusively the regenerable per-project state, and deleting it leaves the project's input documents and assets untouched.
+
+### `.docgraph/` directory
+
+**One source document → one TTL file.** Each source gets its own named-graph TTL file under `graphs/` so the result is easy to inspect by eye. A registry tracks all sources.
 
 ```
 .docgraph/
-  meta.ttl             ← imports Part 14 + dg: extensions (written by `init`, never overwritten)
-  sources.ttl          ← registry: source path → graph file → added date, detected role
+  config.ttl             ← project metadata: pipeline choice, init date, version
+  sources.ttl            ← registry: source path → graph file → added date, declares-axis
+  templates.ttl          ← registry of loaded user-authored templates (paths only — TTL files live in the project repo)
   graphs/
-    _unresolved.ttl    ← stubs for concepts referenced before they were defined
-    <slug>.ttl         ← one file per source document (named graph)
-  cache/               ← existing PDF-to-markdown cache (unchanged)
+    _unresolved.ttl      ← stubs for references not yet resolved
+    <slug>.ttl           ← one per ingested source (named graph)
+  cache/
+    pdfmd/               ← PDF → Markdown cache (per-document, key = doc hash)
+    templates/           ← LLM-discovered templates pending user approval
+  rdl/                   ← local mirrors of external Reference Data Libraries
+    <name>/
+      mirror.ttl         ← the dump
+      bm25-index/        ← lexical index for resolution
+      metadata.ttl       ← endpoint URL, version, last-refresh date
 ```
 
-The `lis:` and `dg:` prefixes are pre-bound in every graph file for readability.
+`.docgraph/` is regenerable from the original sources. Every file in it is either a result of ingestion (`graphs/`, `sources.ttl`, `_unresolved.ttl`) or a cache/mirror (`cache/`, `rdl/`). Deleting `.docgraph/` and re-running `docgraph add` for each registered source rebuilds the project state.
+
+The `lis:` or `iso15926:` (depending on pipeline) and `dg:` prefixes are pre-bound in every graph file for readability.
+
+### `config.ttl`
+
+The per-project header is intentionally tiny — no `owl:imports` chain to maintain, no copies of upstream files to keep in sync:
+
+```turtle
+@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<> a dg:DocgraphProject ;
+    dg:pipeline   dg:Part14Pipeline ;
+    dg:createdAt  "2026-05-09"^^xsd:date ;
+    dg:version    "0.x" .
+```
+
+`dg:pipeline` is one of `dg:Part2Pipeline | dg:Part14Pipeline` and decides which classifier path runs (`src/classify_part2/` vs `src/classify_part14/`) and which bundled ontology set is loaded. A project commits to one pipeline at `init` time; mixing pipelines would produce incoherent named graphs (Part 2 reified clusters next to Part 14 direct OWL properties). Switching an existing project to a different pipeline requires re-ingesting sources.
+
+### Loader recipe
+
+The CLI's loader runs once per command, building an in-memory rdflib `Dataset` with every graph relevant to the project:
+
+1. Read `.docgraph/config.ttl`. Determine the pipeline.
+2. Load the bundled foundational set for that pipeline:
+   - **Part 14**: `vendor/ontologies/LIS-14.ttl` + `dg.ttl` + `tpl.ttl` + `prov-o.ttl`.
+   - **Part 2**: `vendor/ontologies/ISO-15926-2_2003.rdf` + `dg.ttl` + `tpl.ttl` + `prov-o.ttl`.
+3. Load the bundled template library for that pipeline (`data/templates/iso14/` or `data/templates/iso/`, plus any enabled bridges under `data/templates/bridges/`).
+4. Load any user-authored templates referenced from `.docgraph/templates.ttl`.
+5. Iterate `.docgraph/sources.ttl` and load each per-source graph from `.docgraph/graphs/<slug>.ttl` into its named graph.
+6. When relevant (resolution queries during ingest), attach RDL mirrors from `.docgraph/rdl/<name>/`.
+
+The standard OWL `owl:imports` mechanism is **not** used to drive resolution — there's no reasoner walking import chains, no IRI-to-file catalog. The loader is a deterministic file-reader following the recipe above; "imports" are encoded as code, not as triples on disk.
+
+### URI naming convention — `urn:docgraph:*`
+
+All project-minted URIs share one root: **`urn:docgraph:`** (URN-based, no
+DNS / domain ownership needed). Hierarchical sub-spaces by colon:
+
+| Family       | Pattern                                  | Example                                       |
+|--------------|------------------------------------------|-----------------------------------------------|
+| Vocab        | `urn:docgraph:vocab:<name>#<term>`       | `urn:docgraph:vocab:meta#provenance`          |
+| Source file  | `urn:docgraph:source:<slug>`             | `urn:docgraph:source:zahnrechnung2025`        |
+| Document     | `urn:docgraph:source:<slug>/doc`         | `urn:docgraph:source:zahnrechnung2025/doc`    |
+| Markdown     | `urn:docgraph:source:<slug>/md`          | `urn:docgraph:source:zahnrechnung2025/md`     |
+| Entity       | `urn:docgraph:source:<slug>/<entity>`    | `urn:docgraph:source:zahnrechnung2025/invoice-1352` |
+| Agent        | `urn:docgraph:agent:<slug>`              | `urn:docgraph:agent:claude-opus-4-7`          |
+| Scope graph  | `urn:docgraph:scope/<kind>/<name>`       | `urn:docgraph:scope/doc/zahnrechnung2025`     |
+| Delta graph  | `urn:docgraph:delta/<scope-prefix>/<NNN>/<sign>` | `urn:docgraph:delta/doc-zahnrechnung2025/001/added` |
+| Example data | `urn:docgraph:example:<localname>`       | `urn:docgraph:example:hbig` (template demos)  |
+
+**Why URN-based and not `http://docgraph.dev/…`?**
+- No domain to register / let expire.
+- All URIs are stable IDs (not resolvable URLs) — pure identifiers.
+- Strictly speaking, `docgraph` isn't a registered URN NID per RFC 8141 (could
+  use `urn:x-docgraph:…` for experimental prefix), but no rdflib / SPARQL
+  tooling cares, and many production systems do the same (`urn:aws:…`,
+  `urn:vsphere:…`, etc.). Trade-off: pragmatism over strict spec compliance.
+
+**Don't use** `http://example.org/*` anywhere — replaced project-wide. A
+slug-extraction regex (e.g., the source-registry slug) MUST split on the last
+`:` first (for new URIs), falling back to `/` (for legacy URIs from old
+projects).
+
+### Namespace propagation across serialization boundaries
+
+**RULE**: every time triples cross a Graph-to-Graph or Graph-to-File
+boundary, the source's namespace bindings must be copied to the target.
+rdflib's serializers emit `@prefix` declarations only for namespaces
+bound on the *target* Graph/Dataset — bindings on a "source" graph that
+the caller iterates triples from are not magically transferred. Files
+missing prefix declarations end up with fallback `ns1:`, `ns2:` aliases
+and lose the curated readability of the project's vocab.
+
+Helper: `src.deltas.copy_namespaces(source, target)` — call it
+whenever you build a new graph by iterating triples from another.
+Already wired into the deltas plumbing (`write_delta`, `read_delta`,
+`materialize`, `delta_from_diff`, `snapshot`) and into the template
+recognizer's lifted-form composition. When adding a new place that
+copies triples between graphs, propagate bindings the same way.
+
+### Graph files are real files
+
+Regardless of input format, `graphs/<slug>.ttl` is a real file written by the
+ingest — never a symlink to the source. The output is a *normalized view*
+(canonical triples + Part 2-anchored classes + reified clusters from the
+14-prompt classifier) that is rarely byte-identical to the source. Storing it
+as a real file lets cascade-delete drop it cleanly without touching the
+user's original input.
+
+The original TTL/PDF source stays where the user put it; the registry
+references it by path, but the graph is ours.
 
 ### sources.ttl example
 
 ```turtle
-@prefix lis: <http://standards.iso.org/iso/15926/part14/> .
-@prefix dg:  <http://example.org/docgraph/meta#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix dg:       <http://example.org/docgraph/meta#> .
 
 <source/eu-standard.pdf>  a dg:IngestionRecord ;
-    dg:sourcePath   "eu-standard.pdf" ;
-    dg:graphFile    ".docgraph/graphs/eu-standard.ttl" ;
-    dg:addedAt      "2026-04-15"^^xsd:date ;
-    dg:detectedRole dg:DefinesTypes .              # this source mostly defines classes
+    dg:sourcePath "eu-standard.pdf" ;
+    dg:graphFile  ".docgraph/graphs/eu-standard.ttl" ;
+    dg:addedAt    "2026-04-15"^^xsd:date ;
+    dg:defines    dg:Classes, dg:Properties .       # standards doc — defines vocabulary
 
 <source/german-invoice.pdf>  a dg:IngestionRecord ;
-    dg:sourcePath   "german-invoice.pdf" ;
-    dg:graphFile    ".docgraph/graphs/german-invoice.ttl" ;
-    dg:addedAt      "2026-04-15"^^xsd:date ;
-    dg:detectedRole dg:AssertsInstances .          # this source is an instance document
+    dg:sourcePath "german-invoice.pdf" ;
+    dg:graphFile  ".docgraph/graphs/german-invoice.ttl" ;
+    dg:addedAt    "2026-04-15"^^xsd:date ;
+    dg:defines    dg:Individuals .                  # instance document
+
+<source/schemaorg.ttl>    a dg:IngestionRecord ;
+    dg:sourcePath "schemaorg-current-https.ttl" ;
+    dg:graphFile  ".docgraph/graphs/schemaorg.ttl" ;
+    dg:addedAt    "2026-04-27"^^xsd:date ;
+    dg:defines    dg:Classes, dg:Properties, dg:Individuals .  # full vocab
 ```
 
-`dg:IngestionRecord`, `dg:sourcePath`, `dg:graphFile`, `dg:addedAt`, `dg:detectedRole`,
-`dg:DefinesTypes`, `dg:AssertsInstances` are docgraph-specific (no Part 14 equivalent for
-ingestion metadata).
+`dg:IngestionRecord`, `dg:sourcePath`, `dg:graphFile`, `dg:addedAt`, `dg:defines`,
+`dg:Classes`, `dg:Properties`, `dg:Individuals` are docgraph-specific.
 
-### Cascade delete
+## Classification — subject and form
 
-`docgraph remove <file>`:
-1. Look up the graph file in `sources.ttl`.
-2. Parse it; collect every class and property URI it declares.
-3. Show the user what will be removed (concepts + dependents).
-4. On confirm: delete the graph file, remove from `sources.ttl`.
-5. Scan all other graph files for triples that reference the removed URIs and repair
-   them (rewrite type to `lis:InformationObject` or drop the triple, per the rules
-   above).
+Classification of an ingested document splits into two independent steps run
+in order. They have different scopes, different candidate sets, and different
+cost profiles.
+
+These are orthogonal to the **declares-axis** above (*what does this document
+define?* — Classes / Properties / Individuals). Subject + form ask about the
+document's content; the declares-axis is structural inspection of triples,
+while subject + form are LLM-driven semantic calls. Both result sets land on
+the same `<source>` IngestionRecord but answer different questions.
+
+### Subject classification — what is this document *about*?
+
+- **Stored as**: `<source> dg:isAbout <UpperClass>, …` (zero or more values).
+- **Candidate scope**: a curated **upper-level Part 2 class set** (~15 classes:
+  `ArrangedIndividual`, `PhysicalObject`, `Organism`, `Person`, `Organization`,
+  `Event`, `Activity`, `Role`, `Quality`, `Disposition`, `Function`, etc.).
+  - Full Part 2 has 100+ classes — too many for a single LLM call. We don't send the
+    whole catalogue; we send a curated upper-level subset that's stable across
+    ingests.
+  - PROV-O is intentionally excluded — we use it for *metadata/provenance*
+    (`prov:Activity`, `prov:wasGeneratedBy`, …), not as a subject vocabulary.
+    Including it would conflate "what the document is about" with "what happened
+    during ingest."
+  - DCMI Terms is also excluded — its classes overlap with Part 2 and introduce noise.
+- **Set size**: ~15 curated classes. Cheap enough to send the whole list to the LLM
+  with no embedding pre-filter. RAG is not used here.
+- **Always runs**, regardless of whether a domain ontology is loaded. This is the
+  question that's *always* answerable: every document is at least intuitively "about"
+  something at the upper-ontology level.
+- **Examples**:
+  - Zahnrechnung (dental invoice) → `dg:isAbout iso15926:Activity, iso15926:Person`
+    (the dental procedure, the participants).
+  - PROV-O ontology document → `dg:isAbout iso15926:Activity,
+    iso15926:ArrangedIndividual` (it defines activity/entity vocabulary).
+  - Sensor reading → `dg:isAbout iso15926:Quality`.
+  - Poetry book → `dg:isAbout iso15926:ArrangedIndividual` (vague — and that
+    vagueness is itself the "outside our domain" signal).
+- **Doubles as the uncovered diagnostic**: if the subject step returns only
+  the most generic answers (`ArrangedIndividual` and nothing more specific)
+  with low confidence, the document is outside the upper ontology's resolution.
+
+### Form classification — what *kind of document* is this?
+
+- **Stored as**: `<source> rdf:type <FormClass>` (single value).
+- **Candidate scope**: leaf classes from **user-ingested ontologies only**.
+  - "User-ingested" = declared in a named graph that came from
+    `docgraph add <file>.ttl`. Bundled foundationals (Part 2, PROV-O, DCMI, docgraph
+    meta) don't contribute form candidates — they're scaffolding, not subject matter.
+    (If a user ingests Part 2 a second time deliberately, it joins the candidate pool
+    — opting in is allowed.)
+  - "Leaf" = no other class declares this as its `rdfs:subClassOf` parent in the
+    combined dataset. Abstract intermediates like `fin:FinancialDocument` (which has
+    4 subclasses) are filtered out — the LLM should always pick the most specific
+    class.
+  - The leaf rule is structural; no per-class annotation is needed.
+- **Set size**: variable. Small (5 in the toy financial example), large in real domain
+  ontologies (200+ in a procurement RDL).
+- **RAG as a count-based optimization**: when there are ≥ 30 candidates, the embedding
+  store narrows to top-30 by cosine similarity before the LLM call; otherwise the
+  candidate list is sent intact. Below 30 the prompt is cheap enough that filtering
+  loses information without saving meaningfully.
+- **Conditionally runs**: when no user ontology is loaded, form classification is
+  skipped with a clear message ("no domain ontology — `docgraph add <ontology.ttl>`
+  first"), not an opaque "uncovered" gate.
+
+### Why the form-vs-subject distinction matters
+
+A common ontology-design mistake is to flatten form and event into the same class
+hierarchy. The financial ontology in `data/financial_documents.ttl` correctly keeps
+them separate — and is the model for how domain ontologies should be authored:
+
+```turtle
+# Form branch — documents (subClassOf iso15926:ArrangedIndividual)
+fin:FinancialDocument     rdfs:subClassOf iso15926:ArrangedIndividual .
+fin:DemandForPayment      rdfs:subClassOf fin:FinancialDocument .
+fin:ConfirmationOfPayment rdfs:subClassOf fin:FinancialDocument .
+fin:Quote                 rdfs:subClassOf fin:FinancialDocument .
+fin:Statement             rdfs:subClassOf fin:FinancialDocument .
+
+# Event branch — financial activities (subClassOf prov:Activity ⊑ iso15926:Activity)
+fin:Transaction  rdfs:subClassOf prov:Activity .
+fin:Payment      rdfs:subClassOf fin:Transaction .
+fin:Transfer     rdfs:subClassOf fin:Transaction .
+fin:Payout       rdfs:subClassOf fin:Transaction .
+```
+
+A specific Zahnrechnung answers both questions from the right branches:
+- Subject → `dg:isAbout iso15926:Activity` — the underlying payment/treatment.
+- Form    → `rdf:type fin:DemandForPayment` — the layout/document kind.
+
+If a domain ontology mixes the two — e.g., declares "Invoice" as both a form and an
+event under one class — both questions return the same answer and the distinction
+collapses. That's a *modelling* failure, not a pipeline failure.
+
+### Subject narrowing form (deferred)
+
+The natural follow-up question is whether the subject answer can pre-filter the
+form candidate set ("the document is about an Activity → consider only form
+classes structurally related to Activity"). This is a real optimization for
+projects with 100+ form classes, but requires a relevance-mapping mechanism
+between forms and subjects. Three honest options when the time comes:
+
+- Embedding affinity between form and subject `class_text`s.
+- Property analysis: a form is relevant to a subject if any of its declared
+  `rdfs:range`s reference the subject (or a transitive subclass).
+- LLM-judged once at ontology-add: "for each form class, what upper-ontology subject is
+  it most concerned with?" Tag as `dg:concernsSubject`.
+
+For current scales (small handcrafted ontologies), independent subject + form
+classification is sufficient. The cascade is future work; the embedding store
+is already in place to power option 1 when needed.
+
+### Coverage signals
+
+Per ingest, the default graph carries:
+
+```turtle
+<ext/<slug>>
+    dg:subjectConfidence  0.81 ;            # subject classification confidence
+    dg:typeConfidence     0.92 ;            # form classification confidence (if it ran)
+    dg:isAbout            iso15926:Activity, iso15926:Person .  # subject result
+```
+
+Reading them together: high `subjectConfidence` + form classification didn't
+run → "we know what it's about; you haven't loaded a form ontology yet". High
+`subjectConfidence` + low `typeConfidence` → "we know the general topic; no
+loaded form fits — the document is outside this project's domain coverage".
 
 ---
 
-## TTL files as precompiled sources
+## Extraction pipeline — a decision tree
 
-A `.ttl` source **skips LLM extraction entirely** — parsed and loaded into a named graph
-at ingest time. Same provenance and cascade semantics as PDF-derived graphs.
+The pipeline is a decision tree, not a flat sequence. Its structure follows
+the upper ontology's class hierarchy: each top-level class is a branch, and
+the document is "extracted" by walking the branches relevant to its
+form/subject and asking, per branch, what instances the document contains.
 
-Because Part 14 is OWL-native, hand-authored OWL TTL maps directly onto our model — no
-translation step is needed. Ingest:
+Three layers:
 
-1. Parse the TTL.
-2. Sanity-check: does it reuse `lis:` URIs correctly? Does anything collide with already-
-   defined URIs in other graphs?
-3. Write into `graphs/<slug>.ttl` and register in `sources.ttl`.
+1. **The tree's shape comes from the upper ontology.** Part 2 has ~14
+   top-level classes (Activity, Identification, WholePartTemplate, …) —
+   hence the existing 14-prompt classifier in `src/classify_part2/`.
+   Part 14 has ~12 (Activity, Aspect, Compound, Event, FunctionalObject,
+   InanimatePhysicalObject, InformationObject, Location, Object, …) —
+   `src/extract_part14/` will have ~12 prompts. Branches are *not*
+   hardcoded; they're a data-driven walk of `rdfs:subClassOf` from the
+   loaded upper ontology.
 
-This means:
-- The existing `data/financial_documents.ttl` can be ingested via `docgraph add` as a
-  bootstrap — becoming the first real test of the meta-ontology alignment.
-- Users can author ontology files by hand and add them the same way.
-- The system is symmetric: hand-written TTL and LLM-extracted TTL are both first-class.
+2. **Subject + form classification weight the branches.** They prune the tree
+   (skip irrelevant branches) and prime the surviving ones with form context
+   for richer prompts. An Invoice's
+   extraction visits the Activity / Object / InformationObject branches
+   with "this is an Invoice" as preamble; PhysicalObject and Location
+   are skipped. Form classification is a *speedup*, not a fallback —
+   for unknown forms the tree still walks all branches (the current
+   exhaustive 14-prompt behavior).
 
----
+3. **Templates are leaves; descent is document-bounded.** Once a branch
+   returns instances, template recognition tries to fold them into known
+   patterns. Anything that can't be folded becomes a typed reference;
+   bare names without descriptive content become stubs in
+   `_unresolved.ttl`. The walker stops a branch when no further evidence
+   is in the document (or when confidence/cost thresholds are crossed)
+   — it doesn't chase relationships beyond what the document supports.
 
-## Extraction pipeline (PDF / text sources)
+The decision tree replaces the flat "extract every aspect on every
+document" model. Cost scales with document content (~5 LLM calls for a
+1-page invoice; ~30 for a 200-page standard in the branches that matter),
+not with ontology size.
 
-```
-docgraph add invoice.pdf
-    │
-    ├─ [if .ttl / .n3 / .jsonld / .trig]
-    │   Parse → load into named graph
-    │   Done — no LLM
-    │
-    └─ [if .pdf / .txt / .md / ...]
-        │
-        ├─ Pass 0: PDF → Markdown (existing classifier.py)
-        │
-        ├─ Pass 1: concept extraction
-        │   "What are the main objects/concepts in this document?"
-        │   Returns: [{label, description, raw_context_snippet}, ...]
-        │
-        ├─ Pass 2: meta-classification per concept
-        │   For each concept:
-        │   - Which lis:* class does it map to?
-        │     (lis:InformationObject  — a concrete document/record instance, OR a new
-        │                                 OWL class subClassOf lis:InformationObject for
-        │                                 a document *type*
-        │      lis:Activity            — an event / process step
-        │      lis:Person, lis:Organization, lis:Location — actors and places
-        │      lis:PhysicalObject      — physical things
-        │      lis:Quality / Role / Function / Disposition — aspects
-        │      owl:ObjectProperty / owl:DatatypeProperty — a relation/attribute type)
-        │   - Is this an INSTANCE (rdf:type) or a TYPE (a new OWL class)?
-        │   - Does this document DEFINE it or REFERENCE it?
-        │   - If property: what is its modality (dg:Mandatory/Preferred/Optional/Prohibited)?
-        │   - If property: what are its rdfs:domain and rdfs:range?
-        │
-        ├─ Pass 3: resolution against existing graphs
-        │   DEFINE → mint URI, write to this document's named graph
-        │   REFERENCE → fuzzy-match against URIs in existing graphs
-        │             → if no match: add stub to graphs/_unresolved.ttl
-        │
-        └─ Pass 4: instance property extraction (for individuals only)
-            Use modality triples on the matched class's properties to guide extraction
-            Mandatory  → must find value
-            Optional   → attempt
-            Prohibited → skip
-            (This replaces the current agent.py extraction loop)
-```
+The full descent algorithm, per-branch policy data model, stopping
+conditions, and stub-vs-extract decision live in
+[`docs/architecture/extraction.md`](docs/architecture/extraction.md).
+
+### CLI mapping
+
+The three extraction commands map onto layers of the tree:
+
+| Command | Tree position | Cost | Cache |
+|---|---|---|---|
+| `docgraph convert` | format detection + file → markdown | High (vision LLM for PDF) | `cache/pdfmd/<hash>.md` |
+| `docgraph classify` | subject + form classification — picks branch weights | Low (~2 LLM calls) | `cache/classify/<slug>.json` |
+| `docgraph extract` | walks the weighted tree → fills templates / mints stubs | Variable (per-branch prompts; document-bounded) | `cache/extract/<slug>.ttl` |
+| `docgraph add` | the whole tree, end to end | High first time, low on rerun | (uses caches above) |
+
+Each command rebuilds only its own cache; downstream caches are
+invalidated automatically when their upstream changes. `--force` re-runs
+the named step regardless of cache state.
+
+The extraction graph is described as a `prov:Entity` in the default graph,
+generated by the LLM activities above. See
+[`docs/architecture/provenance.md`](docs/architecture/provenance.md) for
+the cascade story.
 
 ---
 
@@ -472,76 +586,87 @@ docgraph add invoice.pdf
 After init, `.docgraph/` contains only:
 
 ```
-meta.ttl    ← imports ISO 15926 Part 14 + declares dg: extensions
-              (dg:Modality, dg:Mandatory/Preferred/Optional/Prohibited, dg:modality,
-               dg:status, dg:Unresolved, dg:IngestionRecord, etc.)
-sources.ttl ← empty registry
-graphs/     ← contains only an empty _unresolved.ttl
-cache/      ← empty
+config.ttl              ← project metadata (pipeline, init date, version)
+sources.ttl             ← empty registry
+templates.ttl           ← empty user-template registry
+graphs/_unresolved.ttl  ← empty stub
+cache/pdfmd/            ← empty
+cache/templates/        ← empty
 ```
 
-No `financial_documents.ttl`. No domain classes. The graph is empty except for structure.
-When the combined graph is loaded, `meta.ttl`'s `owl:imports` brings in Part 14 and the
-~30-class hierarchy is available for classification.
+No copies of foundational ontologies. No domain classes. No `owl:imports` chain to maintain. Bundled foundationals stay in `vendor/ontologies/`; the loader reads them from there based on the pipeline declared in `config.ttl`. Bundled `dg.ttl` and `tpl.ttl` carry the docgraph and templating extension vocabularies (structural classes like `dg:Document`/`dg:Quote`/`dg:File`, modality individuals, the `tpl:Template`/`tpl:slot`/`tpl:lifted`/`tpl:lowered` machinery, etc.) — see [`docs/architecture/meta-ontology.md`](docs/architecture/meta-ontology.md) for the full inventory.
 
----
+`docgraph init --pipeline part2 | part14` selects the pipeline. Default is `part2` until `classify_part14` reaches feature parity (M3 in the parallel-pipelines plan); the default flips to `part14` then. Switching an existing project to a different pipeline requires re-ingesting sources, since per-source graphs are written in the chosen pipeline's idiom.
 
-## Future: triplestore migration
+### Future: triplestore migration
 
-Current plan uses **rdflib `Dataset`** with TriG/N-Quads format for named graphs, stored
-as files. This is readable, version-controllable, and testable on small corpora.
-
-When scale requires it, the file layout maps 1-to-1 to a triplestore's named graphs
-(Oxigraph, Apache Fuseki). Migration path: replace file I/O with SPARQL HTTP client,
-keep the same graph URI scheme.
+Current plan uses **rdflib `Dataset`** with TriG/N-Quads format. The file
+layout maps 1-to-1 to a triplestore's named graphs (Oxigraph, Apache Fuseki)
+when scale demands it.
 
 ---
 
 ## Open questions / next decisions
 
-1. **ISO 15926 Part 14 mapping** *(resolved)*: Part 14's OWL 2 DL profile is the upper
-   ontology. Key decisions:
-   - Use `lis:` prefix for `http://standards.iso.org/iso/15926/part14/` (slash, not hash).
-   - Document instances → `lis:InformationObject` (or a subclass).
-   - Document types → OWL classes with `rdfs:subClassOf lis:InformationObject`.
-   - Properties → `owl:ObjectProperty` / `owl:DatatypeProperty` with `rdfs:domain`/`range`.
-   - Modality (Mandatory/Preferred/Optional/Prohibited) is docgraph-specific
-     (`dg:Modality` enum) — Part 14 has no equivalent.
-   - Provenance is the named graph, not a per-triple `dg:definedBy`.
+1. **Merge conflicts**: Two documents declare the same URI as `owl:Class` with
+   different `rdfs:subClassOf` parents. Options: last-write-wins, explicit
+   conflict node (`dg:ConflictingDefinition`), or require user resolution.
 
-2. **Prototype order**: TTL ingest first (proves meta-ontology structure, no LLM risk) or
-   PDF role-detection first (proves the LLM pipeline)?
+2. **Templates: breadcrumb policy** *(closed 2026-05-07)*: Moot once storage
+   is the lifted form — the typed anchor (`<inst-uri> a iso:Foo`) is itself
+   the breadcrumb. The fold-back from lowered to lifted only matters for
+   foreign Part 2 data ingested without going through the template-emit path,
+   where `recognize` runs over the foreign cluster.
 
-3. **`docgraph remove`**: Show diff of what will cascade before confirming?
+3. **Templates: sub-template composition syntax**: A template's lowered
+   body should be able to invoke another template by name (so leaf
+   templates are the only places raw Part 2 appears, everything else
+   composes leaves). The earlier `tpl:Invocation / tpl:invokes / tpl:bind /
+   tpl:role / tpl:value` proposal was rejected as too verbose. Likely
+   replacement: embed a typed instance of the invoked template directly in
+   the lowered body, with slot bindings as plain properties — but the
+   exact shape (how slot URIs resolve, prefix conventions) is open.
+   Whatever form wins must be recursively expanded at template-load time,
+   with circular-invocation detection.
 
-4. **`docgraph status`**: Surface contents of `_unresolved.ttl` — "these concepts are
-   referenced but have no defining document".
+4. **Templates: versioning & replacement**: When a template definition
+   changes (slot added, lowered body restructured) and there are existing
+   expanded instances on disk, what's the migration story? Options: (a)
+   re-expand all affected sources from cached LLM outputs (requires keeping
+   LLM-emitted template-instance JSON, not just the expanded result); (b)
+   leave existing data alone, new instances use new shape (graph drift);
+   (c) require explicit `docgraph templates migrate <uri>` with diff preview.
+   Probably (c) for explicit breaking changes, (b) for additive ones.
 
-5. **Merge conflicts**: Two documents declare the same URI as `owl:Class` with different
-   `rdfs:subClassOf` parents. Options: last-write-wins, explicit conflict node
-   (`dg:ConflictingDefinition`), or require user resolution.
+5. **Templates: foreign-Part-2 recognition at ingest**: When ingesting a
+   TTL that already contains reified Part 2 clusters (not authored as
+   templates), should ingest try to recognize known templates and re-author
+   as instance-form, or leave the raw reified form? Recognition is cheap
+   (subgraph match) and gives a cleaner result; but it changes the source's
+   intent ("the source emitted X triples" becomes "the source emitted Y
+   template instances"). Probably leave-raw by default, with
+   `docgraph templates fold <source>` as an explicit pass.
 
-6. **Scope / temporal validity**: When a standard has a validity period or jurisdiction,
-   attach it to the *named graph* (registry entry in `sources.ttl`), not to each triple.
-   Confirm this is sufficient for the use cases on the table.
+6. **Subject classifier implementation**: The subject-typed filling step
+   needs a fragment-to-Part-2-subject classifier. Options: (a) rule-based on
+   extractor cues (table-row → likely Possession; verb-phrase → likely
+   Activity); (b) lightweight LLM pass (cheap model, single classification
+   call per fragment); (c) a recursive use of the template engine itself —
+   pattern-form classifier templates whose lifted side is a natural-language
+   descriptor and lowered side a `tpl:subject` annotation. Probably (a)+(b)
+   hybrid: rules where they're obvious, LLM fallback otherwise.
 
-7. **Existing `financial_documents.ttl`**: Ingest as a precompiled TTL source — since
-   Part 14 is OWL-native this is a straight load with no translation. First real test of
-   the meta-ontology alignment.
+7. **Pattern-index signature shape**: How deep should subgraph signatures go
+   (2-walks vs 3-walks vs bounded-by-reification-cluster)? Type-only or
+   predicate-aware? Promotion threshold `k`? Defaults: bounded by the
+   enclosing reified cluster (e.g., one full `Description` tuple),
+   predicate-aware, `k=3` across ≥2 sources. Tune once real data exists.
+   Risk of the deeper-walk setting: signatures explode combinatorially.
+   Risk of shallow: too many spurious matches.
 
----
-
-## Current codebase reference
-
-Key files before the redesign:
-
-| File | Role in current system |
-|---|---|
-| `src/ontology.py` | Loads `docgraph.ttl`, builds combined graph, extracts `DocumentClass` list |
-| `src/classifier.py` | PDF → Markdown (Pass 0) |
-| `src/agent.py` | Main extraction agent loop (classify + extract in one pass) |
-| `src/models.py` | `DocumentClass`, `ClassificationResult`, `DocumentHit` dataclasses |
-| `src/project.py` | `docgraph init` — creates `.docgraph/` layout |
-| `data/financial_documents.ttl` | Hardcoded domain ontology (to be replaced) |
-| `data/docgraph.ttl` | Project registry (to be redesigned around sources.ttl) |
-| `data/shapes.ttl` | Hand-authored SHACL shapes (to be derived from modality triples) |
+8. **Structural-template extraction scope**: Which document features count
+   as "structural repetition" worth lifting at state-0? Tables yes; numbered
+   lists yes; key-value blocks (forms) yes; prose paragraphs no. Edge cases:
+   nested tables, tables with merged cells, diagrams with consistent
+   sub-structure (org charts, P&IDs). Probably tackle markdown tables first,
+   then expand.

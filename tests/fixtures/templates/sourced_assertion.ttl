@@ -1,0 +1,36 @@
+# Instance-form template with a fully-reified Part 2 lowered body and a multi-
+# valued `references` slot. Mirrors the canonical example in ARCHITECTURE.md >
+# "Instance-form template — example".
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix var:      <urn:tpl-var/> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+
+dg:SourcedAssertion a tpl:Template ;
+    rdfs:label "Sourced assertion (quote describing things)" ;
+    tpl:definition "[doc] asserts via [quoteText] at [locator] that [references] is the case." ;
+    tpl:subject iso15926:Description ;
+    tpl:slot var:doc, var:quoteText, var:locator, var:references ;
+    tpl:lowered var:lowered .
+
+var:doc        tpl:range dg:Document .
+var:quoteText  tpl:range xsd:string .
+var:locator    tpl:range xsd:string .
+var:references tpl:range iso15926:Thing ;
+               tpl:maxCount 0 .
+
+GRAPH var:lowered {
+    var:quote a dg:Quote ;
+              dg:text    var:quoteText ;
+              dg:locator var:locator .
+
+    [ a iso15926:CompositionOfIndividual ;
+      iso15926:hasWhole var:doc ;
+      iso15926:hasPart  var:quote ] .
+
+    [ a iso15926:Description ;
+      iso15926:hasSign        var:quote ;
+      iso15926:hasRepresented var:references ] .
+}

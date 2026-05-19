@@ -9,7 +9,28 @@
       "Bash(PYTHONPATH=. .venv/bin/pytest:*)",
       "Bash(python3 -m pytest tests/test_find_entity.py -q)",
       "Bash(pip show:*)",
-      "Bash(git -C /home/dimonina/projects/docgraph mv docs/ARCHITECTURE.md ARCHITECTURE.md)"
+      "Bash(git -C /home/dimonina/projects/docgraph mv docs/ARCHITECTURE.md ARCHITECTURE.md)",
+      "Bash(xargs ls *)",
+      "Bash(pdfinfo \"/home/dimonina/projects/docgraph/docs/2003 - ISO 15926-22003 -- Industrial automation systems .pdf\")",
+      "Bash(pdftotext -layout \"docs/2003 - ISO 15926-22003 -- Industrial automation systems .pdf\" /tmp/iso15926-2.txt)",
+      "Read(//tmp/**)",
+      "WebFetch(domain:15926.blog)",
+      "WebFetch(domain:rds.posccaesar.org)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl -sL \"https://api.github.com/repos/GAIK-project/gaik-toolkit/contents/implementation_layer/src/gaik\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(f'{x[\\\\\"type\\\\\"]:5}  {x[\\\\\"name\\\\\"]}'\\) for x in d]\")",
+      "Bash(curl -sL \"https://api.github.com/repos/GAIK-project/gaik-toolkit/contents/implementation_layer/src/gaik/software_modules\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); [print\\(f'{x[\\\\\"type\\\\\"]:5} {x[\\\\\"name\\\\\"]}'\\) for x in d]\")",
+      "Bash(curl -sL \"https://api.github.com/repos/GAIK-project/gaik-toolkit/contents/implementation_layer/src/gaik/software_components\")",
+      "Bash(curl -sL \"https://api.github.com/repos/GAIK-project/gaik-toolkit/contents/implementation_layer/src/gaik/software_components/parsers\")",
+      "Bash(curl -sL \"https://api.github.com/repos/GAIK-project/gaik-toolkit/contents/implementation_layer/src/gaik/software_components/extractor\")",
+      "Bash(.venv/bin/pytest tests/test_extract_part14_mega_walker.py tests/test_extract_part14_root_walker.py tests/test_ext_ontology.py -q --no-header)",
+      "Bash(.venv/bin/pytest tests/ -q --no-header)",
+      "Bash(grep *)",
+      "Bash(.venv/bin/pytest tests/test_extract_part14_template_recognizer.py -v)",
+      "Bash(.venv/bin/pytest tests/test_extract_part14_template_recognizer.py -q)",
+      "Bash(.venv/bin/pytest tests/test_extract_part14_mega_walker.py -q)",
+      "Bash(.venv/bin/pytest tests/test_deltas.py -v)"
     ]
   }
 }

@@ -1,0 +1,231 @@
+@prefix dg:      <urn:docgraph:vocab:meta#> .
+@prefix prov:    <http://www.w3.org/ns/prov#> .
+@prefix sd:      <http://www.w3.org/ns/sparql-service-description#> .
+@prefix lis:     <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:docgraph:vocab:meta>  a owl:Ontology ;
+    rdfs:label   "DocGraph meta-ontology" ;
+    rdfs:comment "DocGraph extension vocabulary — independent of the active upper ontology (Part 2 or Part 14). Loaded by every pipeline." .
+
+# ── Project metadata ──────────────────────────────────────────────────────────
+# Header carried in .docgraph/config.ttl identifying the project, its pipeline
+# choice, and bookkeeping fields.
+dg:DocgraphProject  a owl:Class ;
+    rdfs:label "DocgraphProject" .
+
+dg:pipeline      a owl:ObjectProperty ;
+    rdfs:label  "pipeline" ;
+    rdfs:domain dg:DocgraphProject ;
+    rdfs:comment "Selects the upper ontology + classifier path. One of dg:Part2Pipeline, dg:Part14Pipeline." .
+
+dg:Pipeline      a owl:Class ;
+    rdfs:label "Pipeline" .
+
+dg:Part2Pipeline  a dg:Pipeline ;
+    rdfs:label "Part 2 pipeline" ;
+    rdfs:comment "Loads ISO 15926 Part 2 RDF; classifier path: src/classify_part2/." .
+
+dg:Part14Pipeline a dg:Pipeline ;
+    rdfs:label "Part 14 pipeline" ;
+    rdfs:comment "Loads ISO 15926 Part 14 OWL (LIS-14); classifier path: src/classify_part14/." .
+
+dg:createdAt    a owl:DatatypeProperty ; rdfs:label "createdAt" ; rdfs:range xsd:date .
+dg:version      a owl:DatatypeProperty ; rdfs:label "version"   ; rdfs:range xsd:string .
+
+# ── Modality (RFC 2119 / ISO drafting directives) ─────────────────────────────
+dg:Modality   a owl:Class ;
+    rdfs:label "Modality" .
+
+dg:Mandatory  a dg:Modality ; rdfs:label "Mandatory"  .  # MUST / SHALL
+dg:Preferred  a dg:Modality ; rdfs:label "Preferred"  .  # SHOULD
+dg:Optional   a dg:Modality ; rdfs:label "Optional"   .  # MAY
+dg:Prohibited a dg:Modality ; rdfs:label "Prohibited" .  # MUST NOT
+
+dg:modality   a owl:ObjectProperty ;
+    rdfs:label "modality" ;
+    rdfs:range  dg:Modality .
+
+# ── Document subject — what a source document is about ───────────────────────
+dg:isAbout    a owl:ObjectProperty ;
+    rdfs:label  "isAbout" ;
+    rdfs:range  owl:Class .
+
+# ── File metadata ─────────────────────────────────────────────────────────────
+# Identity / classification properties — used by sources.ttl IngestionRecord
+# (dg:filePath / dg:fileHash / dg:fileSize / dg:mimeType). The per-doc
+# recognize graph models the same fields as LIS-14 Quality + Datum chains
+# instead (see the Quality subclasses below).
+dg:filePath    a owl:DatatypeProperty ; rdfs:label "filePath" ; rdfs:range xsd:string  .
+dg:fileHash    a owl:DatatypeProperty ; rdfs:label "fileHash" ; rdfs:range xsd:string  .  # "sha256:..."
+dg:fileSize    a owl:DatatypeProperty ; rdfs:label "fileSize" ; rdfs:range xsd:integer .  # bytes
+dg:mimeType    a owl:DatatypeProperty ; rdfs:label "mimeType" ; rdfs:range xsd:string  .
+
+# ── Quality subclasses for file / document metadata (LIS-14 template) ──────
+# Each `lis:Quality` subclass below is what gets attached to the bearer
+# (a file's PhysicalObject, a document's InformationObject) via
+# `lis:hasPhysicalQuantity` (for scalar quantities) or `lis:hasQuality`
+# (for nominal qualities and InformationObjects), then quantified
+# through `lis:qualityQuantifiedAs` to a Datum.
+#
+# Scalar (numeric) qualities use `lis:ScalarQuantityDatum + lis:datumUOM`;
+# nominal (string) qualities use plain `lis:QuantityDatum` (no UoM).
+# The templates step folds each chain into one tpl:Invocation —
+# scalar ones match `lis14tpl:PhysicalObjectHasQuantity`, nominal ones
+# match `lis14tpl:ObjectHasNominalQuality`.
+#
+# All marked `dg:extractable false` — the walker never proposes instances
+# of these during extraction; they're emitted mechanically by the
+# recognize step.
+dg:FileSize   a owl:Class ; rdfs:label "FileSize" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Byte size of a file's content. Scalar; UoM is dg:Byte." .
+
+dg:PageCount  a owl:Class ; rdfs:label "PageCount" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Number of pages in a paginated document. Scalar; UoM is dg:Page. Attached to the InformationObject, not the file — pagination is intrinsic to the work." .
+
+dg:FilePath   a owl:Class ; rdfs:label "FilePath" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Project-relative filesystem path. Nominal." .
+
+dg:FileHash   a owl:Class ; rdfs:label "FileHash" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Content hash (e.g. 'sha256:<hex>'). Nominal." .
+
+dg:MimeType   a owl:Class ; rdfs:label "MimeType" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "RFC-6838 media type ('application/pdf', 'text/html', …). Nominal." .
+
+dg:CreationAgent a owl:Class ; rdfs:label "CreationAgent" ;
+    rdfs:subClassOf lis:Quality ; dg:extractable false ;
+    rdfs:comment "Name of the agent (person / software) that created the file — for PDFs, pdfinfo's Author or Producer. Nominal." .
+
+# Unit-of-measure individuals used by the scalar quantity chains.
+dg:Byte  a lis:UnitOfMeasure ; rdfs:label "Byte"  .
+dg:Page  a lis:UnitOfMeasure ; rdfs:label "Page"  .
+
+# ── Conversion / activity I/O (subproperties of PROV's used / generated) ──────
+dg:hasInput   a owl:ObjectProperty ;
+    rdfs:label  "hasInput" ;
+    rdfs:subPropertyOf prov:used .
+
+dg:hasOutput  a owl:ObjectProperty ;
+    rdfs:label  "hasOutput" ;
+    rdfs:subPropertyOf prov:generated .
+
+dg:firstSeenIn a owl:ObjectProperty ;
+    rdfs:label "firstSeenIn" .
+
+# ── Ingestion registry vocabulary (used in sources.ttl) ───────────────────────
+dg:IngestionRecord a owl:Class ;
+    rdfs:label "IngestionRecord" .
+
+dg:graphFile    a owl:DatatypeProperty ; rdfs:label "graphFile"    ; rdfs:range xsd:string .
+dg:addedAt      a owl:DatatypeProperty ; rdfs:label "addedAt"      ; rdfs:range xsd:dateTime .
+dg:detectedRole a owl:ObjectProperty   ; rdfs:label "detectedRole" .
+
+# Declares-axis (what kinds of vocabulary a source defines)
+dg:defines      a owl:ObjectProperty ; rdfs:label "defines" .
+dg:Classes      a owl:NamedIndividual ; rdfs:label "Classes" .
+dg:Properties   a owl:NamedIndividual ; rdfs:label "Properties" .
+dg:Individuals  a owl:NamedIndividual ; rdfs:label "Individuals" .
+
+# ── Software-agent metadata ───────────────────────────────────────────────────
+dg:provider     a owl:DatatypeProperty ; rdfs:label "provider" ; rdfs:range xsd:string .
+dg:modelId      a owl:DatatypeProperty ; rdfs:label "modelId"  ; rdfs:range xsd:string .
+
+# ── Extraction confidence + reason (attached to a prov:Activity) ──────────────
+dg:confidence   a owl:DatatypeProperty ; rdfs:label "confidence" ; rdfs:range xsd:decimal .
+dg:reason       a owl:DatatypeProperty ; rdfs:label "reason"     ; rdfs:range xsd:string  .
+
+# ── Type / form-classification signals (attached to the extraction graph) ─────
+dg:typeConfidence        a owl:DatatypeProperty ; rdfs:label "typeConfidence"        ; rdfs:range xsd:decimal .
+dg:typeCoverage          a owl:DatatypeProperty ; rdfs:label "typeCoverage"          ; rdfs:range xsd:decimal .
+dg:typeNearestSimilarity a owl:DatatypeProperty ; rdfs:label "typeNearestSimilarity" ; rdfs:range xsd:decimal .
+
+# ── Document outside the ontology's coverage (form scope below threshold) ─────
+dg:UncoveredDocument a owl:NamedIndividual ; rdfs:label "UncoveredDocument" .
+
+# ── Extractability marker ─────────────────────────────────────────────────────
+# Used by the walker (axioms.is_extractable) to opt classes/properties out of
+# extraction. Set to false on docgraph plumbing — these classes/properties exist
+# to record provenance and metadata, not to be extracted from document content.
+dg:extractable  a owl:DatatypeProperty ;
+    rdfs:label   "extractable" ;
+    rdfs:range   xsd:boolean ;
+    rdfs:comment "If false on a class, the walker doesn't extract instances of it. If false on a property, stage 2 doesn't ask for its value." .
+
+# ── Document-structure classes (file → document → chapter → quote) ────────────
+# rdfs:subClassOf assertions to the active upper ontology live in pipeline-
+# specific alignment files (Part 2 alignments in src/project.py's _META_TTL
+# template; Part 14 alignments in dg-part14-alignments.ttl).
+#
+# All marked dg:extractable false — they're docgraph plumbing, not domain
+# content the walker should look for in extracted documents.
+dg:Document     a owl:Class ; rdfs:label "Document"     ; dg:extractable false .
+dg:Chapter      a owl:Class ; rdfs:label "Chapter"      ; dg:extractable false .
+dg:Quote        a owl:Class ; rdfs:label "Quote"        ; dg:extractable false .
+dg:File         a owl:Class ; rdfs:label "File"         ; dg:extractable false .
+dg:PdfFile      a owl:Class ; rdfs:label "PdfFile"      ; rdfs:subClassOf dg:File ; dg:extractable false .
+dg:MarkdownFile a owl:Class ; rdfs:label "MarkdownFile" ; rdfs:subClassOf dg:File ; dg:extractable false .
+dg:HtmlFile     a owl:Class ; rdfs:label "HtmlFile"     ; rdfs:subClassOf dg:File ; dg:extractable false .
+
+# Project-metadata and ingestion-record classes — also plumbing.
+dg:DocgraphProject  dg:extractable false .
+dg:Pipeline         dg:extractable false .
+dg:Part14Pipeline   dg:extractable false .
+dg:Modality         dg:extractable false .
+dg:IngestionRecord  dg:extractable false .
+
+# Plumbing properties that shouldn't drive stage 2 LLM calls
+dg:filePath         dg:extractable false .
+dg:fileHash         dg:extractable false .
+dg:fileSize         dg:extractable false .
+dg:mimeType         dg:extractable false .
+dg:graphFile        dg:extractable false .
+dg:addedAt          dg:extractable false .
+dg:detectedRole     dg:extractable false .
+dg:provider         dg:extractable false .
+dg:modelId          dg:extractable false .
+dg:confidence       dg:extractable false .
+dg:reason           dg:extractable false .
+dg:typeConfidence   dg:extractable false .
+dg:typeCoverage     dg:extractable false .
+dg:typeNearestSimilarity dg:extractable false .
+dg:isAbout          dg:extractable false .
+dg:firstSeenIn      dg:extractable false .
+dg:hasInput         dg:extractable false .
+dg:hasOutput        dg:extractable false .
+dg:modality         dg:extractable false .
+dg:defines          dg:extractable false .
+dg:pipeline         dg:extractable false .
+dg:createdAt        dg:extractable false .
+dg:version          dg:extractable false .
+
+dg:text         a owl:DatatypeProperty ; rdfs:label "text"    ; rdfs:range xsd:string ; dg:extractable false .
+dg:locator      a owl:DatatypeProperty ; rdfs:label "locator" ; rdfs:range xsd:string ; dg:extractable false .
+
+# ── Versioned-graph deltas ────────────────────────────────────────────────────
+# Each pipeline step contributes a (added, removed) pair of named graphs to
+# one or more scopes (doc / project / RDL cache). Files live as `.trig`
+# under .docgraph/graphs/, with the per-graph metadata in the default graph.
+
+dg:Scope          a owl:Class ; rdfs:label "Scope" ; dg:extractable false ;
+    rdfs:comment "Identifier for a graph scope a step writes to: a doc, the project, or an RDL cache." .
+
+dg:GraphAddition  a owl:Class ; rdfs:label "GraphAddition" ; dg:extractable false ;
+    rdfs:subClassOf sd:NamedGraph , prov:Entity ;
+    rdfs:comment "A named graph holding triples ADDED by one pipeline step. Subclass of sd:NamedGraph (W3C SPARQL Service Description) for standards interop and prov:Entity so the graph's prov:wasGeneratedBy chain is well-typed." .
+
+dg:GraphRemoval   a owl:Class ; rdfs:label "GraphRemoval"  ; dg:extractable false ;
+    rdfs:subClassOf sd:NamedGraph , prov:Entity ;
+    rdfs:comment "A named graph holding triples REMOVED by one pipeline step. Same subclass alignment as dg:GraphAddition." .
+
+dg:scope        a owl:ObjectProperty   ; rdfs:label "scope"     ; rdfs:range dg:Scope    ; dg:extractable false .
+dg:step         a owl:DatatypeProperty ; rdfs:label "step"      ; rdfs:range xsd:string  ; dg:extractable false .
+dg:seq          a owl:DatatypeProperty ; rdfs:label "seq"       ; rdfs:range xsd:integer ; dg:extractable false .
+dg:parentSeq    a owl:DatatypeProperty ; rdfs:label "parentSeq" ; rdfs:range xsd:integer ; dg:extractable false .

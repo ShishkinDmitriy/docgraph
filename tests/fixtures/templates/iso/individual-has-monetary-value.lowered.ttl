@@ -1,0 +1,54 @@
+@prefix ex: <urn:docgraph:example:> .
+@prefix ns1: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix rdl: <http://data.15926.org/rdl/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-anon-_b0> a ns1:TemporalWholePart ;
+    ns1:hasPart <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u1> ;
+    ns1:hasWhole ex:V-101 .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-anon-_b1> a ns1:Classification ;
+    ns1:hasClassified <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u2> ;
+    ns1:hasClassifier rdl:RDS2220202 .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-anon-_b2> a ns1:Classification ;
+    ns1:hasClassified <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u4> ;
+    ns1:hasClassifier rdl:RDS2228349 .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-anon-_b3> a ns1:Identification ;
+    ns1:hasRepresented <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u5> ;
+    ns1:hasSign 1875.00 .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-anon-_b4> a ns1:Beginning ;
+    ns1:hasPart <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u6> ;
+    ns1:hasWhole <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u1> .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-anon-_b5> a ns1:Identification ;
+    ns1:hasRepresented <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u6> ;
+    ns1:hasSign <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u7> .
+
+rdl:RDS2220202 a ns1:ClassOfIndirectProperty .
+
+rdl:RDS2228349 a ns1:Scale .
+
+ex:V-101 a ns1:PossibleIndividual .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u2> a ns1:IndirectProperty ;
+    ns1:hasPossessor <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u1> ;
+    ns1:hasProperty <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u3> .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u4> a ns1:PropertyQuantification ;
+    ns1:hasInput <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u3> ;
+    ns1:hasResult <urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u5> .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u7> a ns1:RepresentationOfGregorianDateAndUtcTime ;
+    ns1:hasContent "2021-09-21T13:33:00+00:00"^^xsd:dateTime .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u3> a ns1:Property .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u5> a ns1:RealNumber .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u6> a ns1:PointInTime .
+
+<urn:tpl-instance/individual-has-monetary-value-afb2834597169394-u1> a ns1:PossibleIndividual .
+

@@ -1,0 +1,56 @@
+@prefix tpl:  <urn:docgraph:vocab:template#> .
+@prefix dg:   <urn:docgraph:vocab:meta#> .
+@prefix rdf:  <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+
+tpl:Template a owl:Class ;
+    rdfs:label "Template" ;
+    rdfs:comment "ISO 15926 Part 7-style lifted/lowered template." ;
+    dg:extractable false .                # plumbing — not a domain class
+
+tpl:Slot a owl:Class ;
+    rdfs:label "Slot" ;
+    dg:extractable false .
+
+tpl:slot a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:range  tpl:Slot ;
+    rdfs:comment "Links a template to one of its slot variables. The slot's URI is the variable in the lowered graph; the slot's local-name is the slot's name (used as the JSON binding key and the [name] placeholder in tpl:definition)." .
+
+tpl:range a rdf:Property ;
+    rdfs:domain tpl:Slot ;
+    rdfs:label  "slot range (class or datatype)" .
+
+tpl:minCount a owl:DatatypeProperty ;
+    rdfs:domain tpl:Slot ;
+    rdfs:label  "minimum cardinality (default 1)" .
+
+tpl:maxCount a owl:DatatypeProperty ;
+    rdfs:domain tpl:Slot ;
+    rdfs:comment "Maximum cardinality. 0 means unbounded. Default 1." .
+
+tpl:lifted a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "URI of the named graph holding the lifted form. Pattern-form templates only; instance-form auto-derives." .
+
+tpl:lowered a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "URI of the named graph holding the lowered (Part 2) form." .
+
+tpl:example a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "URI of the named graph holding a worked instantiation in lifted form. Documentation-only — not consumed by expansion or recognition." .
+
+tpl:subject a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "Upper-ontology class this template anchors on — used by the registry to look up applicable templates by class. For Part 2 templates this is the reified-relationship class (Activity, Possession, Description, …). For Part 14 templates it's the LIS-14 class whose extraction triggers the template (e.g., lis:ScalarQuantityDatum for the canonical UOM+value+type pattern)." .
+
+tpl:includes a owl:ObjectProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:range  tpl:Template ;
+    rdfs:comment "This template composes another template — borrowed from OTTR's template-composition idea. The included template's slot list, lifted graph, and natural-language definition are pulled into the prompt alongside this one's so the LLM sees the full structural pattern. Multiple inclusions allowed; cycles are an error." .
+
+tpl:definition a owl:DatatypeProperty ;
+    rdfs:domain tpl:Template ;
+    rdfs:comment "Natural-language sentence with [role] placeholders matching variable names in the lifted graph. LLM-facing summary." .

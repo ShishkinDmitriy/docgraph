@@ -1,0 +1,65 @@
+# POSC Caesar LIS-14 template LT_0001 — "QuantityDatum with type, UOM, value".
+# Source: https://rds.posccaesar.org/ontology/lis14/tpl/0.1/LT_0001
+#
+# Encodes the convention that a quantity-datum entity always carries three
+# things together: its optional more-specific type, its unit of measure, and
+# its numeric value. This is the canonical "co-extract these together" rule
+# the LLM keeps missing when it picks ScalarQuantityDatum without a UOM.
+#
+# Naming convention used here (matches Part 2 templates):
+#   tpl:lifted  — auto-derived template-invocation form (slot-by-slot)
+#   tpl:lowered — the actual LIS-14 triple pattern
+#
+# For Part 14 there is no Part-2-style "further lowering" — LIS-14 already
+# IS the modern modeling form, so the lowered graph is the LIS-14 pattern
+# itself.
+
+@prefix tpl:  <urn:docgraph:vocab:template#> .
+@prefix lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix lis14tpl: <urn:docgraph:vocab:lis14tpl#> .
+@prefix var:  <urn:tpl-var/> .
+@prefix ex:   <urn:docgraph:example:> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+lis14tpl:QuantityDatumWithUOMandValue a tpl:Template ;
+    rdfs:label   "QuantityDatum with UOM and value" ;
+    rdfs:comment "Canonical Part 14 pattern: a quantity-datum entity always carries its unit of measure and numeric value (and optionally a more-specific datum-type)." ;
+    rdfs:isDefinedBy <https://rds.posccaesar.org/ontology/lis14/tpl/0.1/LT_0001> ;
+    tpl:definition  "[datum] is a quantity datum of [value] in [uom] (specifically a [datumType])." ;
+    tpl:subject     lis:ScalarQuantityDatum ;
+    tpl:slot        var:datum, var:datumType, var:uom, var:value ;
+    tpl:lowered     var:lowered ;
+    tpl:example     var:example .
+
+var:datum rdfs:comment "The datum entity being asserted. Bind to the URI of the entity itself — the quantity-datum is the subject of the lowered graph." ;
+    tpl:range lis:ScalarQuantityDatum .
+
+var:datumType rdfs:comment "OPTIONAL. A more-specific subclass of lis:ScalarQuantityDatum, IF AND ONLY IF such a subclass is declared in the loaded ontology. LIS-14 itself only provides lis:QuantityDatum and lis:ScalarQuantityDatum; OMIT this slot unless a domain ontology layered on top of LIS-14 (e.g., a project-specific extension) declares a narrower subclass like ext:CurrencyDatum or ext:MassDatum. Do NOT invent class names — the LIS-14 spec mentions MassQuantityDatum in Annex E.1 only as an illustrative example of a USER-DEFINED subclass, not as a class that exists." ;
+    tpl:range owl:Class ;
+    tpl:minCount 0 .
+
+var:uom rdfs:comment "REQUIRED. The unit-of-measure individual that gives the value its meaning. Bind to an extracted lis:UnitOfMeasure entity (e.g., a currency, kilogram, percent). If no UnitOfMeasure entity exists yet for the unit appearing in the document, extract one — a datumValue without a datumUOM is ambiguous (115.84 what?)." ;
+    tpl:range lis:UnitOfMeasure .
+
+var:value rdfs:comment "REQUIRED. Numeric value in xsd:double lexical form. Use period as decimal separator regardless of source language (e.g., '115.84' for the German '115,84'). No thousands grouping. Preserve the source's precision." ;
+    tpl:range xsd:double .
+
+GRAPH var:lowered {
+    var:datum a lis:ScalarQuantityDatum ,
+                var:datumType ;
+              lis:datumUOM   var:uom ;
+              lis:datumValue var:value .
+}
+
+GRAPH var:example {
+    # The dental invoice total of EUR 115.84. The datumType slot is omitted
+    # here because LIS-14 doesn't ship a narrower-than-ScalarQuantityDatum
+    # class for monetary amounts. A project that defined `ext:CurrencyDatum
+    # rdfs:subClassOf lis:ScalarQuantityDatum` could bind datumType to it.
+    ex:invoice-total-115-84
+        a lis:ScalarQuantityDatum ;
+        lis:datumUOM   ex:eur ;
+        lis:datumValue "115.84"^^xsd:double .
+}

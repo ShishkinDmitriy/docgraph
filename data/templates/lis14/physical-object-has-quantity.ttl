@@ -1,0 +1,86 @@
+# POSC Caesar LIS-14 template LT_0003 — "PhysicalObject has Quantity".
+# Source: https://rds.posccaesar.org/ontology/lis14/tpl/0.1/LT_0003
+#
+# Full chain: a PhysicalObject has a Quality (lis:hasPhysicalQuantity), the
+# Quality is quantified as a QuantityDatum (lis:qualityQuantifiedAs), and
+# the Datum carries UOM + value + type (lis:datumUOM, lis:datumValue).
+#
+# Composes on top of LT_0002.
+
+@prefix tpl:  <urn:docgraph:vocab:template#> .
+@prefix lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix lis14tpl: <urn:docgraph:vocab:lis14tpl#> .
+@prefix var:  <urn:tpl-var/> .
+@prefix ex:   <urn:docgraph:example:> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+lis14tpl:PhysicalObjectHasQuantity a tpl:Template ;
+    rdfs:label   "PhysicalObject has Quantity" ;
+    rdfs:comment "A PhysicalObject possesses a Quality, the Quality is quantified by a QuantityDatum carrying UOM and value. The full Part 14 chain from a physical thing to its measured value." ;
+    rdfs:isDefinedBy <https://rds.posccaesar.org/ontology/lis14/tpl/0.1/LT_0003> ;
+    tpl:definition  "[object] has quality [quality] = [value] [uom]." ;
+    tpl:subject     lis:PhysicalObject ;
+    tpl:includes    lis14tpl:QualityQuantifiedAsDatum ;
+    tpl:slot        var:object,
+                    var:quality, var:qualityType,
+                    var:datum, var:datumType, var:uom, var:value ;
+    tpl:lowered     var:lowered ;
+    tpl:example     var:example .
+
+var:object rdfs:comment "The PhysicalObject (or one of its subclasses) that has the quality. Bind to the URI of the extracted PhysicalObject entity." ;
+    tpl:range lis:PhysicalObject .
+
+# Slots reused from LT_0002 / LT_0001 below.
+var:quality rdfs:comment "The Quality entity (filled per LT_0002)." ;
+    tpl:range lis:Quality .
+
+var:qualityType rdfs:comment "OPTIONAL. More-specific Quality subclass (per LT_0002)." ;
+    tpl:range owl:Class ;
+    tpl:minCount 0 .
+
+var:datum rdfs:comment "The QuantityDatum (filled per LT_0001)." ;
+    tpl:range lis:ScalarQuantityDatum .
+
+var:datumType rdfs:comment "OPTIONAL. More-specific datum type (per LT_0001)." ;
+    tpl:range owl:Class ;
+    tpl:minCount 0 .
+
+var:uom rdfs:comment "Unit of measure (per LT_0001)." ;
+    tpl:range lis:UnitOfMeasure .
+
+var:value rdfs:comment "Numeric value (per LT_0001)." ;
+    tpl:range xsd:double .
+
+GRAPH var:lowered {
+    # LT_0001 contribution:
+    var:datum a lis:ScalarQuantityDatum ,
+                var:datumType ;
+              lis:datumUOM   var:uom ;
+              lis:datumValue var:value .
+
+    # LT_0002 contribution:
+    var:quality a lis:Quality ,
+                  var:qualityType ;
+                lis:qualityQuantifiedAs var:datum .
+
+    # LT_0003's contribution:
+    var:object lis:hasPhysicalQuantity var:quality .
+}
+
+GRAPH var:example {
+    # The hammer "hbig" has a mass of 4.7 kg (LIS-14 spec §E.1 example).
+    ex:hbig
+        a lis:Hammer ;
+        lis:hasPhysicalQuantity ex:hbig-mass .
+    ex:hbig-mass
+        a lis:Quality ,
+          lis:Mass ;
+        lis:qualityQuantifiedAs ex:hbig-mass-datum .
+    ex:hbig-mass-datum
+        a lis:ScalarQuantityDatum ,
+          lis:MassQuantityDatum ;
+        lis:datumUOM   ex:kilogram ;
+        lis:datumValue "4.7"^^xsd:double .
+}

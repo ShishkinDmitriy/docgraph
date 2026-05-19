@@ -5,8 +5,9 @@ import logging
 import re
 
 from .llm import LLMClient
+from .log_panels import log_prompt, log_response
 from .models import ModelConfig
-from .prompts import MARKDOWN_PROMPT
+from .prompts import HTML_PROMPT, MARKDOWN_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ def pdf_to_markdown(
     prompt = MARKDOWN_PROMPT
     if note:
         prompt += f"\n\nNote from user: {note}"
+    meta = f"{model.model_id}  max_tokens=4096  (PDF binary content omitted)"
+    log_prompt("pdf_to_markdown", prompt, logger=logger, metadata=meta)
     response = client.create(
         model_id=model.model_id,
         max_tokens=4096,
@@ -71,7 +74,7 @@ def pdf_to_markdown(
         }],
     )
     raw = response.content[0].text
-    logger.debug("pdf_to_markdown | response:\n%s", raw)
+    log_response("pdf_to_markdown", raw, logger=logger, metadata=meta, as_json=True)
     data = _parse_json_response(raw)
     docs = data.get("documents", [])
     for doc in docs:
@@ -82,26 +85,47 @@ def pdf_to_markdown(
     return docs
 
 
-def markdown_content_block(docs: list[ExtractedDoc]) -> dict:
-    """
-    Build a prompt-cached text content block from one or more extracted documents.
-    Pass this to the classifier/extractor instead of the raw PDF block so that
-    follow-up calls reuse the cached text at ~10 % token cost.
-    """
-    parts = []
-    for i, doc in enumerate(docs, 1):
-        header = f"## Document {i}: {doc['title']}" if len(docs) > 1 else f"## {doc['title']}"
-        section = header
-        if doc["description"]:
-            section += f"\n\n> {doc['description']}"
-        section += f"\n\n{doc['markdown']}"
-        if doc["stamps"]:
-            section += f"\n\n*Stamps / annotations: {', '.join(doc['stamps'])}*"
-        parts.append(section)
+def pdf_to_html(
+    pdf_block: dict,
+    client: LLMClient,
+    model: ModelConfig,
+    note: str | None = None,
+) -> list[ExtractedDoc]:
+    """PDF → HTML conversion (canonical, immutable artifact).
 
-    text = "\n\n---\n\n".join(parts)
-    return {
-        "type": "text",
-        "text": text,
-        "cache_control": {"type": "ephemeral"},
-    }
+    Replaces / parallels `pdf_to_markdown`. The LLM produces semantic-free
+    layout HTML with `id="id-N"` attributes seeded on elements containing
+    referenceable atomic units (names, identifiers, dates, quantities,
+    addresses, contact info). See `docs/architecture/html-pipeline.md` and
+    `prompts.HTML_PROMPT` for the full conversion contract.
+
+    Returns a list of dicts, each with keys "title", "description", "html",
+    "stamps", "issues". Keys mirror `pdf_to_markdown` so downstream code
+    can choose either output by attribute name.
+    """
+    prompt = HTML_PROMPT
+    if note:
+        prompt += f"\n\nNote from user: {note}"
+    meta = f"{model.model_id}  max_tokens=8192  (PDF binary content omitted)"
+    log_prompt("pdf_to_html", prompt, logger=logger, metadata=meta)
+    response = client.create(
+        model_id=model.model_id,
+        max_tokens=8192,           # HTML is heavier than markdown; bump headroom
+        messages=[{
+            "role": "user",
+            "content": [pdf_block, {"type": "text", "text": prompt}],
+        }],
+    )
+    raw = response.content[0].text
+    log_response("pdf_to_html", raw, logger=logger, metadata=meta, as_json=True)
+    data = _parse_json_response(raw)
+    docs = data.get("documents", [])
+    for doc in docs:
+        doc.setdefault("stamps", [])
+        doc.setdefault("title", "Document")
+        doc.setdefault("description", "")
+        doc.setdefault("issues", [])
+        doc.setdefault("lang", "und")
+    return docs
+
+

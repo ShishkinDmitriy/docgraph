@@ -1,0 +1,74 @@
+# DocGraph template — "Object has nominal Quality."
+#
+# Sister to LT_0001 / LT_0002 / LT_0003 (the scalar-quantity chain): an
+# entity has a Quality whose Datum carries a NOMINAL (non-numeric)
+# value — a label, identifier, or hash — and therefore no UoM.
+#
+# Used by the recognize step to model file metadata (path, hash, mime
+# type, creator) as Quality + Datum chains so the resulting graph stays
+# in pure LIS-14 shape (everything is a Quality) and the templates step
+# folds each chain into one tpl:Invocation per quality. The scalar
+# `lis14tpl:PhysicalObjectHasQuantity` doesn't fit — it requires
+# ScalarQuantityDatum + UoM + numeric value.
+#
+# Naming convention matches the other LIS-14 templates:
+#   tpl:lifted  — auto-derived invocation form (slot-by-slot).
+#   tpl:lowered — the actual LIS-14 triple pattern.
+
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix lis:      <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix lis14tpl: <urn:docgraph:vocab:lis14tpl#> .
+@prefix var:      <urn:tpl-var/> .
+@prefix ex:       <urn:docgraph:example:> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:      <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+
+lis14tpl:ObjectHasNominalQuality a tpl:Template ;
+    rdfs:label   "Object has nominal Quality" ;
+    rdfs:comment "An entity has a Quality whose Datum carries a nominal (label/id/hash) value with no unit of measure. The non-numeric counterpart of `PhysicalObject has Quantity` — same Quality+Datum spine, but the Datum is a base `lis:QuantityDatum` (no UoM) and the value is a plain literal." ;
+    tpl:definition  "[object] has nominal quality [quality] = [value]." ;
+    tpl:subject     lis:Quality ;
+    tpl:slot        var:object,
+                    var:quality, var:qualityType,
+                    var:datum, var:value ;
+    tpl:lowered     var:lowered ;
+    tpl:example     var:example .
+
+var:object rdfs:comment "The entity that has the quality. Any LIS-14 class (PhysicalObject, InformationObject, …) — the chain attaches via the general `lis:hasQuality` so there is no domain restriction." .
+
+var:quality rdfs:comment "The Quality entity." ;
+    tpl:range lis:Quality .
+
+var:qualityType rdfs:comment "OPTIONAL. A more-specific Quality subclass (e.g., dg:FilePath, dg:FileHash). Omit when generic lis:Quality is enough." ;
+    tpl:range owl:Class ;
+    tpl:minCount 0 .
+
+var:datum rdfs:comment "The base `lis:QuantityDatum` carrying the nominal value. Distinct from `lis:ScalarQuantityDatum` precisely because there's no UoM to attach." ;
+    tpl:range lis:QuantityDatum .
+
+var:value rdfs:comment "REQUIRED. The nominal value — a plain literal (no datatype required)." .
+
+GRAPH var:lowered {
+    var:datum a lis:QuantityDatum ;
+              lis:datumValue var:value .
+
+    var:quality a lis:Quality ,
+                  var:qualityType ;
+                lis:qualityQuantifiedAs var:datum .
+
+    var:object lis:hasQuality var:quality .
+}
+
+GRAPH var:example {
+    # The PDF file's path, modelled as a nominal quality of the file.
+    ex:zahnrechnung2025 lis:hasQuality ex:zahnrechnung2025-path .
+    ex:zahnrechnung2025-path
+        a lis:Quality ,
+          dg:FilePath ;
+        lis:qualityQuantifiedAs ex:zahnrechnung2025-path-datum .
+    ex:zahnrechnung2025-path-datum
+        a lis:QuantityDatum ;
+        lis:datumValue "Zahnrechnung2025.pdf" .
+}

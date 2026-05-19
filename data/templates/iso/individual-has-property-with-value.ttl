@@ -1,0 +1,93 @@
+# 15926.blog template IN-PTYST-100 (IndividualHasPropertyWithValue).
+# Source: https://15926.blog/templates/IN-PTYST-100.xml
+# RDS ID: RD1BD01970ABB411384596BDF26BC2C32  (status UPDATED MAR2023)
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix iso:      <urn:docgraph:vocab:iso#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix var:      <urn:tpl-var/> .
+@prefix ex:       <urn:docgraph:example:> .
+@prefix rdl:      <http://data.15926.org/rdl/> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+
+iso:IndividualHasPropertyWithValue a tpl:Template ;
+    rdfs:label "Individual has property with value" ;
+    rdfs:comment "A PossibleIndividual possesses a directly measurable Property with a value and scale." ;
+    rdfs:isDefinedBy <https://15926.blog/templates/IN-PTYST-100.xml> ;
+    tpl:definition "[hasPropertyPossessor] has a [hasPropertyType] of [valPropertyValue] [hasScale] (effective [valEffectiveDate])." ;
+    tpl:subject iso15926:Property ;
+    tpl:lifted  var:lifted ;
+    tpl:lowered var:lowered ;
+    tpl:example var:example .
+
+var:hasPropertyPossessor rdfs:comment "The entity that possesses the property being measured — typically a physical object, equipment, material, or service-instance. NOT the event of measuring or recording the property; bind to the thing being measured, not the act of measurement." .
+
+var:hasPropertyType rdfs:comment "A specific kind of measurable property. Reference an RDL ID where available; otherwise mint a concrete ext:<slug> (e.g. ext:mass, ext:length, ext:temperature, ext:flow_rate, ext:pressure). Avoid generic labels like value, amount, or quantity that don't name what is being measured." .
+
+var:valPropertyValue rdfs:comment "The numeric value in xsd:decimal lexical form: period as decimal separator (e.g. '30.57' for the German '30,57'), no thousands grouping. Preserve the source's precision — don't add or trim trailing zeros, and don't normalise units." .
+
+var:hasScale rdfs:comment "The unit/scale the value is in. Reference an RDL ID where available; otherwise mint or reuse a per-document ext:<unit-slug> (e.g. ext:meter, ext:celsius, ext:bar)." .
+
+var:valEffectiveDate rdfs:comment "ISO 8601 date or datetime when the assertion becomes effective. Use the document's stated date for the fact; do not infer." .
+
+GRAPH var:lifted {
+    var:this a iso:IndividualHasPropertyWithValue ;
+             iso:hasPropertyPossessor var:hasPropertyPossessor ;
+             iso:hasPropertyType      var:hasPropertyType ;
+             iso:valPropertyValue     var:valPropertyValue ;
+             iso:hasScale             var:hasScale ;
+             iso:valEffectiveDate     var:valEffectiveDate .
+}
+
+GRAPH var:lowered {
+    var:hasPropertyPossessor a iso15926:PossibleIndividual .
+    var:hasPropertyType      a iso15926:ClassOfProperty .
+    var:hasScale             a iso15926:Scale .
+
+    var:u1 a iso15926:PossibleIndividual .
+    [ a iso15926:TemporalWholePart ;
+      iso15926:hasWhole var:hasPropertyPossessor ;
+      iso15926:hasPart  var:u1 ] .
+
+    var:u2 a iso15926:Property .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u1 ;
+      iso15926:hasClassifier var:u2 ] .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u2 ;
+      iso15926:hasClassifier var:hasPropertyType ] .
+
+    var:u3 a iso15926:PropertyQuantification ;
+           iso15926:hasInput  var:u2 ;
+           iso15926:hasResult var:u4 .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u3 ;
+      iso15926:hasClassifier var:hasScale ] .
+
+    var:u4 a iso15926:ArithmeticNumber .
+    [ a iso15926:Identification ;
+      iso15926:hasSign        var:valPropertyValue ;
+      iso15926:hasRepresented var:u4 ] .
+
+    var:u5 a iso15926:PointInTime .
+    [ a iso15926:Beginning ;
+      iso15926:hasWhole var:u1 ;
+      iso15926:hasPart  var:u5 ] .
+
+    var:u6 a iso15926:RepresentationOfGregorianDateAndUtcTime ;
+           iso15926:hasContent var:valEffectiveDate .
+    [ a iso15926:Identification ;
+      iso15926:hasSign        var:u6 ;
+      iso15926:hasRepresented var:u5 ] .
+}
+
+GRAPH var:example {
+    # Vessel V-101 has a mass of 30.57 Metric Ton
+    ex:property-V-101-mass-30-57-metric-ton
+        a iso:IndividualHasPropertyWithValue ;
+        iso:hasPropertyPossessor ex:V-101 ;
+        iso:hasPropertyType      rdl:RDS353339 ;       # MASS
+        iso:valPropertyValue     "30.57"^^xsd:decimal ;
+        iso:hasScale             rdl:RDS2229868 ;      # METRIC TON
+        iso:valEffectiveDate     "2021-07-27T10:19:00Z"^^xsd:dateTime .
+}

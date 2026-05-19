@@ -6,11 +6,13 @@
 @prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
+@prefix lis:  <http://standards.iso.org/iso/15926/part14/> .
 
 
-# ── FOAF class hierarchy (subset used here, avoids requiring --fetch-remote) ──
+# ── FOAF Agent hierarchy (subset used here, avoids requiring --fetch-remote) ──
+# Documents are rooted at lis:InformationObject (see fin:FinancialDocument);
+# foaf:Agent and its subclasses still root the actor side of the model.
 
-foaf:Document     a owl:Class .
 foaf:Agent        a owl:Class .
 foaf:Person       a owl:Class ; rdfs:subClassOf foaf:Agent .
 foaf:Organization a owl:Class ; rdfs:subClassOf foaf:Agent .
@@ -31,7 +33,7 @@ descriptions for LLM prompt generation when classifying PDF documents.""" .
 # ═══════════════════════════════════════════════════════════════════════════════
 
 fin:FinancialDocument a owl:Class ;
-    rdfs:subClassOf foaf:Document ;
+    rdfs:subClassOf lis:InformationObject ;
     rdfs:label "Financial Document" ;
     rdfs:comment """Abstract superclass for any document that records or
 requests the movement of money between parties. Subclasses differ by intent:

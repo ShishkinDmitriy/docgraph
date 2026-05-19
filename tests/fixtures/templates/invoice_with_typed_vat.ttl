@@ -1,0 +1,24 @@
+# Outer template that invokes tpl:StringValue inline to wrap the VAT literal
+# in a Part 2 representation cluster.  Demonstrates the bnode-as-invocation
+# syntax: `[ a tpl:StringValue ; tpl:literal var:value ]`.
+@prefix tpl:  <urn:docgraph:vocab:template#> .
+@prefix dom:  <urn:docgraph:vocab:financial#> .
+@prefix var:  <urn:tpl-var/> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+dom:InvoiceWithTypedVat a tpl:Template ;
+    rdfs:label "Invoice has VAT (literal wrapped via tpl:StringValue)" ;
+    tpl:definition "[invoice] has VAT identifier [value]." ;
+    tpl:slot var:invoice, var:value ;
+    tpl:lowered var:lowered .
+
+var:invoice tpl:range dom:Invoice .
+var:value   tpl:range xsd:string .
+
+GRAPH var:lowered {
+    var:invoice dom:hasVatNumber [
+        a tpl:StringValue ;
+        tpl:literal var:value
+    ] .
+}

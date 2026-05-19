@@ -1,0 +1,35 @@
+# Pattern-form bridge: PDF-to-Markdown conversion (PROV-O → Part 2).
+# Lifted: the two PROV triples that characterise a file-conversion activity.
+# Lowered: types of both file nodes + activity, two CompositionOfIndividual
+# tuples (one for the input PDF, one for the produced Markdown), making the
+# pattern specific enough to recognise only conversions, not arbitrary compositions.
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix dg:       <urn:docgraph:vocab:meta#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix prov:     <http://www.w3.org/ns/prov#> .
+@prefix var:      <urn:tpl-var/> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+
+dg:PdfConvertedToMarkdown a tpl:Template ;
+    rdfs:label "PDF converted to Markdown" ;
+    tpl:definition "[activity] converted [source] (PDF file) into [target] (Markdown file)." ;
+    tpl:subject iso15926:CompositionOfIndividual ;
+    tpl:lifted  var:lifted ;
+    tpl:lowered var:lowered .
+
+GRAPH var:lifted {
+    var:target   prov:wasGeneratedBy var:activity .
+    var:activity prov:used           var:source .
+}
+
+GRAPH var:lowered {
+    var:source   a dg:PdfFile .
+    var:target   a dg:MarkdownFile .
+    var:activity a iso15926:Activity .
+    [ a iso15926:CompositionOfIndividual ;
+      iso15926:hasWhole var:activity ;
+      iso15926:hasPart  var:source ] .
+    [ a iso15926:CompositionOfIndividual ;
+      iso15926:hasWhole var:activity ;
+      iso15926:hasPart  var:target ] .
+}

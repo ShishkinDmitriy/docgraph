@@ -1,213 +1,147 @@
 # docgraph
 
-Classify PDF documents and extract structured RDF data using an LLM.
+Build an ISO 15926 Part 14 knowledge graph from PDF documents using an LLM.
 
-The project is configured through a small ontology registry (`docgraph.ttl`) that declares what ontologies to load, which OWL class is the classification target, which models to use, and where to write results. Everything else — document categories, SHACL shapes, entity vocabularies — lives in plain Turtle files.
-
-## How it works
-
-1. **Load registry** — `.docgraph/docgraph.ttl` is discovered automatically and parsed. It lists local ontology files to merge and optional remote ontologies (FOAF, SKOS, PROV-O) to fetch.
-2. **Convert PDF to Markdown** — each PDF is rendered to Markdown via the vision model and cached in `.docgraph/cache/`.
-3. **Agent loop** — an LLM agent classifies the document, deduplicates entities against previously extracted results (via SPARQL), and extracts structured properties as JSON-LD.
-4. **Persist** — results are appended to `.docgraph/results.ttl` as RDF triples in the configured output namespace.
-5. **Validate** — the output graph is checked against SHACL shapes.
+The pipeline is a small task DAG. Each phase reads the doc graph state, does
+its work, and writes an additive delta (TriG) under `.docgraph/docs/<slug>/`.
+Re-runs are idempotent: every task has a dirty check, and only stale work runs.
 
 ## Setup
 
 ```
 pip install -e .
-export ANTHROPIC_API_KEY=sk-ant-...   # for Anthropic models
-export OPENAI_API_KEY=sk-...          # for OpenAI models
+export ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-This registers a `docgraph` command in your environment.
+This registers a `docgraph` command (also installed as `dg`).
 
 ## Usage
 
-### Initialise a project
+Everything is a task. The CLI dispatches by name:
 
 ```
-docgraph init [directory]
+docgraph <task> [args...]
+docgraph -f <task> [args...]    # force the task even if its dirty check is clean
+docgraph -d <task> [args...]    # verbose logging (LLM prompts + responses)
+docgraph help <task>            # show the task module docstring
 ```
 
-Creates a `.docgraph/` folder in `directory` (default: current working directory).  Analogous to `git init` — run this once at the root of any project that will process documents.
+`docgraph tasks` prints the registered DAG as a tree with one-line
+descriptions per task — the fastest way to discover what's available.
+
+### Common commands
 
 ```
-my-project/
-  .docgraph/
-    docgraph.ttl              # project registry — edit this
-    ontologies/
-      financial_documents.ttl
-      models.ttl
-      shapes.ttl
-    cache/                    # Markdown extracts cached here
-    results.ttl               # output graph written here
+docgraph init [DIR]              # create .docgraph/ (default: cwd)
+docgraph add FILE.pdf            # ingest a PDF (runs the full pipeline)
+docgraph status                  # list ingested sources
+docgraph snapshot TARGET [SEQ]   # write graph[.NNN].ttl from materialised deltas
+docgraph diagram TARGET          # render diagram[.NNN].puml + .svg
+docgraph view TARGET             # open annotated.html in browser
+docgraph history TARGET          # list the delta history
+docgraph diff TARGET SEQ_A SEQ_B # show triples added/removed between seqs
+docgraph coverage TARGET         # report which HTML units the graph cites
+docgraph consolidate             # promote ext: classes shared across ≥N docs
+docgraph enrich TARGET           # refine entity types via external RDL
+docgraph clean [DIR]             # wipe every ingested source from a project
 ```
 
-### Classify documents
+`TARGET` is either a slug (registered in `sources.ttl`) or a path to the
+original source file (resolved by content hash).
+
+Individual pipeline phases (`recognize`, `convert`, `extract`, `templates`,
+`align`, `register`, `snapshot`, `diagram`) can also be invoked directly:
 
 ```
-docgraph add <input.pdf|directory/>
+docgraph convert FILE.pdf        # run only up to convert (and its deps)
+docgraph -f extract FILE.pdf     # re-run extract even if its delta is current
 ```
 
-The CLI walks up the directory tree from the input path to find `.docgraph/docgraph.ttl` automatically — no `--docgraph` flag needed when working inside an initialised project.  Results and Markdown caches are written inside `.docgraph/` by default, keeping the working directory clean.
+## Task DAG
 
-Options for `add`:
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--docgraph` | auto-discovered | Override the registry path explicitly |
-| `--min-confidence` | `0.5` | Skip hits below this threshold |
-| `--force` / `-f` | off | Re-classify already-processed files (ignores skip-if-seen check) |
-| `--offline` | off | Skip fetching remote ontologies listed in docgraph.ttl |
-| `--note` | — | Free-text hint passed to the classifier |
-| `--debug` | off | Print full prompts and LLM responses |
-
-Results are appended to the path declared in `docgraph:results` (`.docgraph/results.ttl` for initialised projects, `classified/results.ttl` for the legacy layout).
-
-### Remove results
+`docgraph add` is the composite root that pulls in everything. Each task's
+deps are declared on its `@docgraph.task` decorator; `docgraph tasks` walks
+them to print:
 
 ```
-docgraph clean [directory]
+add — Ingest a PDF: run the full per-doc pipeline
+└── diagram — Render PlantUML diagram from the doc snapshot
+    └── snapshot — Materialize doc graph to graph[.NNN].ttl
+        ├── identity — Resolve per-doc identifiers (slug, URIs, hashes)
+        │   ├── resolve_project — Resolve the enclosing .docgraph/ project root
+        │   ├── resolve_slug — Resolve target arg to a registered doc slug
+        │   └── setup_llm — Configure the LLM client + model from env
+        └── register — Write the source entry into sources.ttl
+            └── align — Align doc-local ext classes to higher-scope canonicals
+                └── templates — Fold lowered patterns into template invocations
+                    └── extract — Extract entities + properties via mega-walker LLM
+                        └── load_html — Load converted.html intermediates into ctx
+                            └── convert — Convert PDF → HTML/Markdown via vision LLM
+                                └── recognize — Recognize PDF: type + file-metadata
 ```
 
-Deletes `results.ttl` and prompts for confirmation.  The Markdown cache and ontology files are left untouched.  Pass `-y` to skip the prompt.
-
-```
-docgraph clean -y
-```
+Plus several read-only meta tasks (`status`, `history`, `diff`, `view`,
+`coverage`, `tasks`) and project-wide tasks (`clean`, `consolidate`).
 
 ## Project layout
 
-After `docgraph init`:
-
 ```
 .docgraph/
-  docgraph.ttl             # project registry — start here
-  ontologies/
-    financial_documents.ttl  # OWL classes for fin: document types
-    shapes.ttl               # SHACL validation rules
-    models.ttl               # LLM model declarations
-  cache/                   # per-PDF Markdown extracts (gitignore this)
-  results.ttl              # extracted RDF output (gitignore this)
+  config.ttl                       # tiny header (creation date, version)
+  sources.ttl                      # registry of ingested sources
+  templates.ttl                    # user-authored template registrations
+  docs/<slug>/                     # one dir per ingested doc
+    delta.NNN.trig                 # versioned per-step deltas
+    graph.ttl                      # HEAD snapshot (written by `snapshot` task)
+    graph.NNN.ttl                  # historical snapshots (`snapshot SLUG N`)
+    diagram.{puml,svg,png}         # HEAD diagram
+    diagram.NNN.{puml,svg,png}     # historical diagrams
+    converted.html                 # canonical HTML view (vision LLM output)
+    converted.md                   # markdown projection for LLM prompts
+    annotated.html                 # entity-highlighted view (`view` task)
+  cache/                           # PDF→Markdown intermediate cache
+  embeddings.npz                   # ext-class embedding store (consolidate)
 ```
 
-Source layout:
+The deltas are the source of truth. `graph.ttl` is a materialised snapshot
+that any downstream tool (the diagram renderer, the annotated viewer) reads
+without re-walking deltas. Snapshots are regenerable any time.
+
+## Source layout
 
 ```
+main.py                            # CLI dispatcher (~90 lines)
 src/
-  agent.py               # Claude agent: classify → deduplicate → extract
-  ontology.py            # registry loader, JSONLD_CONTEXT, namespace utils
-  classifier.py          # PDF → Markdown content block
-  validator.py           # SHACL validation wrapper
-  results.py             # append/query results.ttl
-  markdown_io.py         # Markdown cache read/write
-  project.py             # .docgraph/ discovery and init
-  tool/                  # Claude tool implementations
-main.py                  # CLI entry point (commands: init, run)
+  tasks/                           # the task DAG
+    framework.py                   # Registry, @task / @dirty decorators, runner
+    _registry.py                   # the singleton `docgraph` registry
+    <task>.py                      # one module per task
+  extract_part14/                  # ISO 15926 Part 14 pipeline helpers
+    loader.py                      # builds the in-memory Dataset
+    structural.py                  # recognize + convert delta builders
+    mega_walker.py                 # entity + property + ext-class extraction
+    template_recognizer.py         # SPARQL template folding
+    align.py                       # scope-walking class deprecation
+    consolidate.py                 # cross-doc ext-class promotion
+    enrich.py                      # external RDL refinement
+  sources.py                       # sources.ttl I/O
+  deltas.py                        # delta read/write, materialize()
+  project.py                       # .docgraph/ layout helpers
+  html_io.py                       # PDF → HTML/Markdown via vision LLM
+  diagram.py                       # (gone — absorbed into tasks/diagram.py)
+  llm/                             # Anthropic client
+vendor/ontologies/                 # bundled foundationals (LIS-14, dg, prov, …)
+data/templates/                    # bundled template definitions
 ```
 
-The `data/` directory at the repo root contains the same ontology files used as defaults before `init` was introduced.  It is still loaded as a fallback when no `.docgraph/` project is found.
-
-## Configuring document classes
-
-Add an OWL class to one of the local ontology files (or a new one declared in `docgraph.ttl`). A class is picked up as a classification target when it:
-
-- is a transitive subclass of `docgraph:targetClass` (default: `foaf:Document`)
-- carries `skos:notation` (used as the category key)
-- carries `skos:definition` (shown to the model)
-
-```turtle
-fin:Invoice a owl:Class, skos:Concept ;
-    rdfs:subClassOf fin:DemandForPayment ;
-    skos:notation   "invoice" ;
-    skos:definition "A B2B demand for payment issued after goods or services were delivered." .
-```
-
-## Configuring models
-
-Models are declared in `models.ttl` and referenced from the registry.  Two roles are supported:
-
-| Property | Role | Required |
-|----------|------|----------|
-| `docgraph:model` | Agent extraction loop — classifies, deduplicates, extracts | yes |
-| `docgraph:visionModel` | PDF → Markdown conversion — needs vision/document support | no, falls back to `docgraph:model` |
-
-**Single model (Anthropic)** — the default; one model handles both tasks:
-
-```turtle
-docgraph:this
-    docgraph:model llm:claude-haiku-4-5 .
-```
-
-**Split models** — use Claude for vision, GPT-4o for the cheaper extraction loop:
-
-```turtle
-docgraph:this
-    docgraph:model       llm:gpt-4o ;
-    docgraph:visionModel llm:claude-haiku-4-5 .
-```
-
-The CLI reads `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` as needed based on the provider declared for each model.  If the Markdown cache is already populated (a previous run with `AnthropicClient`), the vision model is never called and only `OPENAI_API_KEY` is required.
-
-Available models out of the box (add more to `models.ttl` as needed):
-
-| ID | Provider |
-|----|----------|
-| `llm:claude-haiku-4-5` | Anthropic |
-| `llm:claude-sonnet-4-6` | Anthropic |
-| `llm:claude-opus-4-6` | Anthropic |
-| `llm:gpt-4o` | OpenAI |
-| `llm:gpt-4o-mini` | OpenAI |
-
-## Configuring the output namespace
-
-Edit `docgraph:results` in `data/docgraph.ttl`:
-
-```turtle
-docgraph:results a docgraph:Output ;
-    docgraph:prefix       "result" ;
-    docgraph:relativePath "classified/results.ttl" ;
-    docgraph:namespace    "http://example.org/result/" .
-```
-
-Minted entity URIs will use the declared namespace and prefix (e.g. `result:person_alice`).
-
-## Future plans
-
-**Named graphs as containers** — today all extracted triples land in a flat `results.ttl`. The plan is to make each extracted document a named graph (RDF dataset, TriG format), so a single file holds many documents with clean boundaries. This enables selective regeneration (drop one graph and re-extract without touching others), easier diffing, and provenance queries scoped to a single source document.
-
-Confidence and provenance attach to the named graph, not to individual entities. Classification confidence (how sure the LLM is this is an Invoice vs. a Quote) is one float on the graph. Entity resolution method (was `result:org_acme` found by taxId or by name?) is recorded in the graph's provenance activity — it describes the act of extraction, not the entity itself, so `result:org_acme` stays clean. When the same entity appears in multiple graphs with conflicting property values (e.g. a full address in graph A vs. a scan-truncated fragment in graph B), the merge step picks the value from the graph with the stronger resolution signal. Illegible values (`[UNCLEAR...]` markers from OCR) are treated as null at extraction time rather than stored as fragments — a missing value is more useful than a wrong one.
-
-**Results as a persistent RDF dataset** — currently `--force` deletes `results.ttl` and starts over. Instead, the results file should be loaded at startup as a proper RDF dataset and treated as persistent storage across runs. Each named graph is linked to its source input file, so `--force` on a specific PDF simply drops and replaces that graph rather than wiping everything. New extractions are merged in; unchanged documents are left untouched. This also means the dataset accumulates knowledge across many runs and can be queried incrementally without full re-extraction.
-
-**Ontology bundles and standard ontology profiles** — instead of listing individual ontology files in `docgraph.ttl`, a bundle would package a coherent set of classes, shapes, and namespace declarations together under a single identifier. Bundles could be versioned, shared, and installed independently — similar to how a package manager handles dependencies.
-
-Bundles also enable using standard ontologies (schema.org, P2P-O, DR-O) without sending their full content to the LLM. A bundle is a profile: it points at the standard ontology for URIs and semantic structure, then adds its own annotation overlay with LLM-facing metadata (`skos:notation`, `skos:definition`) and SHACL extraction shapes. The standard ontology stays untouched.
-
-Since standard ontologies use different properties for descriptions (`rdfs:comment` in schema.org, `skos:definition` elsewhere), the bundle would declare a configurable priority list for resolving the class description and label used in the classification prompt:
-
-```turtle
-ex:MyBundle a docgraph:Bundle ;
-    docgraph:descriptionProperties ( skos:definition skos:scopeNote rdfs:comment ) ;
-    docgraph:labelProperties       ( skos:prefLabel rdfs:label ) .
-```
-
-`skos:altLabel` (synonyms: "Bill", "Faktura", "Sales Invoice") would be included in the classification prompt as "also known as" hints, helping the LLM recognise terminology variants. `skos:hiddenLabel` (misspellings, abbreviations, locale-specific terms) would be passed as a separate silent-matching hint — present for recognition, not shown as canonical names.
-
-**Two-level classification** — as the number of document classes grows across domains (Finance, Medical, Legal, HR), sending the full class list to the LLM becomes impractical. Bundles map naturally to domains: the first classification pass picks the relevant bundle from a small stable list of domains; the second pass classifies within that bundle's classes. The LLM sees only the relevant subset at each step.
-
-**Context dimensions** — bundles can declare context dimensions relevant to their domain. The classification pipeline detects or infers those dimensions from the input and uses them to filter labels and select shape variants. What those dimensions are is entirely up to the bundle — language and jurisdiction for financial documents, geographic region or taxonomic family for natural history, time period for archival records, and so on.
-
-Language is a general-purpose dimension with built-in SKOS support: `skos:altLabel` and `skos:hiddenLabel` carry RDF language tags, so the classification prompt automatically shows only the labels relevant to the detected language. Other dimensions are domain-specific and declared by the bundle. A dimension can affect the classification prompt (filter which labels and definitions are shown), the extraction shapes (add required properties or format constraints), or both — and multiple dimensions can combine independently.
+`ARCHITECTURE.md` and `docs/architecture/` carry the design notes — read those
+when extending the task DAG or the Part 14 pipeline.
 
 ## Dependencies
 
-| Package | Role |
-|---------|------|
-| `anthropic` | Anthropic API client |
-| `openai` | OpenAI API client |
-| `rdflib` | RDF graph, SPARQL, Turtle serialisation |
-| `pyshacl` | SHACL validation |
-| `click` | CLI |
-| `rich` | Terminal output |
+| Package    | Role                                           |
+|------------|------------------------------------------------|
+| `anthropic` | LLM client (vision + extraction)              |
+| `rdflib`   | RDF graph, SPARQL, Turtle/TriG serialisation   |
+| `click`    | CLI                                            |
+| `rich`     | Terminal output (tables, trees, progress logs) |

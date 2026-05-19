@@ -1,0 +1,58 @@
+# Part 14 role pattern — "Role realized in an Activity, held by a player".
+#
+# A Role in LIS-14 is an Aspect: it depends on an Activity (where it is
+# realized) and on the participant entity (the player) who carries it.
+# The role pattern is the canonical 3-triple bundle that makes the role
+# fully connected. Without all three of {role-type, realizedIn, hasRole},
+# the role is an orphan — typed but not anchored to anything.
+#
+# Naming: tpl:lifted is the auto-derived invocation form; tpl:lowered is
+# the LIS-14 triple pattern itself.
+
+@prefix tpl:  <urn:docgraph:vocab:template#> .
+@prefix lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix lis14tpl: <urn:docgraph:vocab:lis14tpl#> .
+@prefix var:  <urn:tpl-var/> .
+@prefix ex:   <urn:docgraph:example:> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+lis14tpl:RoleRealizedInActivity a tpl:Template ;
+    rdfs:label   "Role realized in Activity" ;
+    rdfs:comment "Canonical Part 14 role pattern: a Role aspect is realized in a specific Activity and held by a player entity (the participant). All three connections must be present together — emit this template instead of bare lis:Role entities." ;
+    tpl:definition  "[role] is a [roleType] role realized in [activity] and held by [player]." ;
+    tpl:subject     lis:Role ;
+    tpl:slot        var:role, var:roleType, var:activity, var:player ;
+    tpl:lowered     var:lowered ;
+    tpl:example     var:example .
+
+var:role rdfs:comment "The Role entity itself. Bind to the URI of the role being asserted — the role IS the subject of the lowered pattern. Give the entity a meaningful rdfs:label such as 'patient' or 'practitioner' (the role's name as it appears in or is implied by the document)." ;
+    tpl:range lis:Role .
+
+var:roleType rdfs:comment "OPTIONAL. A more-specific subclass of lis:Role IF AND ONLY IF such a subclass is declared in the loaded ontology (LIS-14 or an ext: extension). Omit this slot when no narrower class exists — the rdf:type lis:Role from the role itself is sufficient." ;
+    tpl:range lis:Role ;
+    tpl:minCount 0 .
+
+var:activity rdfs:comment "REQUIRED. The Activity in which this role is realized. Bind to an extracted lis:Activity (or subclass) entity." ;
+    tpl:range lis:Activity .
+
+var:player rdfs:comment "REQUIRED. The entity that HOLDS this role — the participant in the activity who plays the role. Typically a Person or Organization, but can be any entity that participates." ;
+    tpl:range lis:Object .
+
+GRAPH var:lowered {
+    var:role     a              lis:Role ,
+                                var:roleType ;
+                 lis:realizedIn var:activity .
+    var:player   lis:hasRole    var:role .
+}
+
+GRAPH var:example {
+    # A patient role realized in a dental cleaning activity, held by the
+    # patient entity. The roleType slot is omitted because LIS-14 itself
+    # ships no Patient class — a project that defined
+    # `ext:Patient rdfs:subClassOf lis:Role` could bind roleType to it.
+    ex:role-patient-of-cleaning
+        a              lis:Role ;
+        rdfs:label     "patient" ;
+        lis:realizedIn ex:cleaning-2025-01-17 .
+    ex:dmitrii  lis:hasRole ex:role-patient-of-cleaning .
+}

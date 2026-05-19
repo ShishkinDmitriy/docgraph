@@ -1,0 +1,77 @@
+# POSC Caesar LIS-14 template LT_0002 — "Quality quantified as QuantityDatum".
+# Source: https://rds.posccaesar.org/ontology/lis14/tpl/0.1/LT_0002
+#
+# Composes on top of LT_0001 (QuantityDatum): a Quality entity is connected
+# to its quantification via lis:qualityQuantifiedAs. The Quality is the
+# inherent characteristic (the mass, the price), the Datum is the numeric
+# record of that characteristic.
+
+@prefix tpl:  <urn:docgraph:vocab:template#> .
+@prefix lis:  <http://rds.posccaesar.org/ontology/lis14/rdl/> .
+@prefix lis14tpl: <urn:docgraph:vocab:lis14tpl#> .
+@prefix var:  <urn:tpl-var/> .
+@prefix ex:   <urn:docgraph:example:> .
+@prefix xsd:  <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl:  <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+lis14tpl:QualityQuantifiedAsDatum a tpl:Template ;
+    rdfs:label   "Quality quantified as a QuantityDatum" ;
+    rdfs:comment "A Quality entity (a property an object HAS) is quantified by an associated QuantityDatum (the numeric record). The Datum slot is filled by the LT_0001 quantity-datum sub-pattern." ;
+    rdfs:isDefinedBy <https://rds.posccaesar.org/ontology/lis14/tpl/0.1/LT_0002> ;
+    tpl:definition  "[quality] is a [qualityType] quality, quantified as [datum] = [value] [uom]." ;
+    tpl:subject     lis:Quality ;
+    tpl:includes    lis14tpl:QuantityDatumWithUOMandValue ;
+    tpl:slot        var:quality, var:qualityType,
+                    var:datum, var:datumType, var:uom, var:value ;
+    tpl:lowered     var:lowered ;
+    tpl:example     var:example .
+
+var:quality rdfs:comment "The quality being asserted — typically lis:PhysicalQuantity or one of its subclasses (Mass, Length, MonetaryValue, …). Bind to the URI of the Quality entity itself." ;
+    tpl:range lis:Quality .
+
+var:qualityType rdfs:comment "OPTIONAL. A more-specific Quality subclass (e.g., lis:Mass, lis:Length) if the document warrants it. Omit when generic lis:Quality is enough." ;
+    tpl:range owl:Class ;
+    tpl:minCount 0 .
+
+# Slots reused from LT_0001 — same semantics. Descriptions intentionally
+# brief here; the full guidance lives on the LT_0001 vars (the loader and
+# prompt renderer will surface those).
+var:datum rdfs:comment "The QuantityDatum entity (filled per LT_0001)." ;
+    tpl:range lis:ScalarQuantityDatum .
+
+var:datumType rdfs:comment "OPTIONAL. More-specific datum type (per LT_0001)." ;
+    tpl:range owl:Class ;
+    tpl:minCount 0 .
+
+var:uom rdfs:comment "Unit of measure (per LT_0001)." ;
+    tpl:range lis:UnitOfMeasure .
+
+var:value rdfs:comment "Numeric value (per LT_0001)." ;
+    tpl:range xsd:double .
+
+GRAPH var:lowered {
+    # LT_0001 contribution (inlined for self-containment):
+    var:datum a lis:ScalarQuantityDatum ,
+                var:datumType ;
+              lis:datumUOM   var:uom ;
+              lis:datumValue var:value .
+
+    # LT_0002's contribution:
+    var:quality a lis:Quality ,
+                  var:qualityType ;
+                lis:qualityQuantifiedAs var:datum .
+}
+
+GRAPH var:example {
+    # The "monetary-value" quality of the invoice, quantified as EUR 115.84.
+    ex:invoice-monetary-value
+        a lis:Quality ,
+          lis:MonetaryValue ;
+        lis:qualityQuantifiedAs ex:invoice-total-115-84 .
+    ex:invoice-total-115-84
+        a lis:ScalarQuantityDatum ,
+          lis:MonetaryQuantityDatum ;
+        lis:datumUOM   ex:eur ;
+        lis:datumValue "115.84"^^xsd:double .
+}

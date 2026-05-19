@@ -1,0 +1,67 @@
+# 15926.blog template IN-CLSIF-100 (ClassificationOfIndividual).
+# Source: https://15926.blog/templates/IN-CLSIF-100.xml
+# RDS ID: R10363F25532145D8BD2D3CBDA5ABD93B  (status UPDATED MAR2023)
+@prefix tpl:      <urn:docgraph:vocab:template#> .
+@prefix iso:      <urn:docgraph:vocab:iso#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix var:      <urn:tpl-var/> .
+@prefix ex:       <urn:docgraph:example:> .
+@prefix rdl:      <http://data.15926.org/rdl/> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:     <http://www.w3.org/2000/01/rdf-schema#> .
+
+iso:ClassificationOfIndividual a tpl:Template ;
+    rdfs:label "Classification of individual" ;
+    rdfs:comment "A PossibleIndividual fulfils the criteria for membership of a ClassOfIndividual, with a temporal anchor." ;
+    rdfs:isDefinedBy <https://15926.blog/templates/IN-CLSIF-100.xml> ;
+    tpl:definition "[hasClassified] is classified as [hasClassifier] (effective [valEffectiveDate])." ;
+    tpl:subject iso15926:Classification ;
+    tpl:lifted  var:lifted ;
+    tpl:lowered var:lowered ;
+    tpl:example var:example .
+
+var:hasClassified rdfs:comment "The individual entity being classified. The classification is temporally anchored by valEffectiveDate — this template asserts the individual qualified as a member of the class as of that date. For static structural typing where membership is not time-bound (e.g. 'this file is a PDF'), prefer plain rdf:type instead of this template." .
+
+var:hasClassifier rdfs:comment "The class the individual is being classified as. Reference an RDL ID where available; otherwise mint a per-document ext:<slug> whose slug names the class concretely." .
+
+var:valEffectiveDate rdfs:comment "ISO 8601 date or datetime when the classification becomes effective. Use the document's stated date for the fact; do not infer." .
+
+GRAPH var:lifted {
+    var:this a iso:ClassificationOfIndividual ;
+             iso:hasClassified    var:hasClassified ;
+             iso:hasClassifier    var:hasClassifier ;
+             iso:valEffectiveDate var:valEffectiveDate .
+}
+
+GRAPH var:lowered {
+    var:hasClassified a iso15926:PossibleIndividual .
+    var:hasClassifier a iso15926:ClassOfIndividual .
+
+    var:u1 a iso15926:PossibleIndividual .
+    [ a iso15926:TemporalWholePart ;
+      iso15926:hasWhole var:hasClassified ;
+      iso15926:hasPart  var:u1 ] .
+    [ a iso15926:Classification ;
+      iso15926:hasClassified var:u1 ;
+      iso15926:hasClassifier var:hasClassifier ] .
+
+    var:u2 a iso15926:PointInTime .
+    [ a iso15926:Beginning ;
+      iso15926:hasWhole var:u1 ;
+      iso15926:hasPart  var:u2 ] .
+
+    var:u3 a iso15926:RepresentationOfGregorianDateAndUtcTime ;
+           iso15926:hasContent var:valEffectiveDate .
+    [ a iso15926:Identification ;
+      iso15926:hasSign        var:u3 ;
+      iso15926:hasRepresented var:u2 ] .
+}
+
+GRAPH var:example {
+    # EXAMPLE - Pump 21-P-101 is classified as CENTRIFUGAL PUMP.
+    ex:classification-21-P-101-as-centrifugal-pump
+        a iso:ClassificationOfIndividual ;
+        iso:hasClassified    ex:21-P-101 ;
+        iso:hasClassifier    rdl:RDS416834 ;     # CENTRIFUGAL PUMP
+        iso:valEffectiveDate "2021-07-18T13:59:00Z"^^xsd:dateTime .
+}

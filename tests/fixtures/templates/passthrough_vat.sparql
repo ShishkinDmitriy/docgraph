@@ -1,0 +1,5 @@
+PREFIX dom: <urn:docgraph:vocab:financial#>
+
+SELECT * WHERE {
+  ?invoice dom:hasVatNumber ?value .
+}
