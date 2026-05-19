@@ -41,11 +41,8 @@ from src.tasks._registry import docgraph
 AGENT_NS = Namespace("urn:docgraph:agent:")
 
 
-@docgraph.task("identity", deps=("resolve_project", "resolve_slug", "setup_llm"))
+@docgraph.task(deps=("resolve_project", "resolve_slug", "setup_llm"))
 def identity(ctx) -> None:
-    if "file_uri" in ctx:
-        return                              # already fully populated
-
     project_root = ctx["project_root"]
 
     if "slug" in ctx:
@@ -93,3 +90,8 @@ def identity(ctx) -> None:
     # configured model). Minted here so downstream tasks read
     # ctx["agent_uri"] without re-doing the slugify dance.
     ctx["agent_uri"] = URIRef(AGENT_NS[make_slug(ctx["model"].model_id)])
+
+
+@docgraph.dirty
+def identity_dirty(ctx) -> bool:
+    return "file_uri" not in ctx

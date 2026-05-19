@@ -19,7 +19,7 @@ from src.project import doc_dir
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("coverage", deps=("resolve_slug",))
+@docgraph.task(deps=("resolve_slug",))
 def coverage(ctx) -> None:
     project_root = ctx["project_root"]
     slug         = ctx["slug"]

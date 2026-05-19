@@ -37,7 +37,7 @@ def list_targets(project_root: Path) -> list[Path]:
     return targets
 
 
-@docgraph.task("clean", deps=("resolve_project",))
+@docgraph.task(deps=("resolve_project",))
 def clean(ctx) -> None:
     project_root = ctx["project_root"]
     console = ctx["console"]
@@ -61,7 +61,7 @@ def clean(ctx) -> None:
         console.print(f"  removed [dim]{EMBEDDINGS_FILENAME}[/dim]")
 
 
-@docgraph.dirty("clean")
+@docgraph.dirty
 def clean_dirty(ctx) -> bool:
     project_root = ctx["project_root"]
     if list_targets(project_root):

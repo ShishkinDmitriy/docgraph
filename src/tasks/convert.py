@@ -43,7 +43,7 @@ from src.tasks._helpers import (
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("convert", deps=("recognize",))
+@docgraph.task(deps=("recognize",))
 def convert(ctx) -> None:
     console = ctx["console"]
     convert_started = now()
@@ -121,7 +121,7 @@ def convert(ctx) -> None:
     ctx["document_description"] = document_description
 
 
-@docgraph.dirty("convert")
+@docgraph.dirty
 def convert_dirty(ctx) -> bool:
     if "path" not in ctx:
         return False                   # slug-based invocation — no file to convert from

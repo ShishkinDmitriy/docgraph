@@ -1,14 +1,14 @@
-"""load_html — init task: derive ctx intermediates from converted.html.
+"""load_html — derive ctx intermediates from converted.html.
 
-No dirty check, runs once per `run()` call. Lifts the implicit
-"convert populated ctx with full_markdown/id_to_class/etc." contract
-into an explicit declared dependency: every downstream task that
-needs those values has `load_html` as a (transitive) upstream dep.
+Lifts the implicit "convert populated ctx with full_markdown /
+id_to_class / etc." contract into an explicit declared dependency:
+every downstream task that needs those values has `load_html` as a
+(transitive) upstream dep.
 
-Early-returns when ctx is already populated (convert just ran), so
-it's free in the common case. When convert was clean this invocation,
-loads converted.html from disk + recomputes the markdown view,
-class maps, agent URI, etc.
+Dirty when full_markdown isn't in ctx AND HTML exists on disk to
+load. Skip silently when convert just populated everything (common
+add-pipeline case) or when there's no HTML at all (slug-based
+invocations like snapshot/diagram).
 """
 
 from __future__ import annotations
@@ -23,18 +23,9 @@ from src.project import converted_md_path
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("load_html", deps=("convert",))
-def load_html_task(ctx) -> None:
-    if "full_markdown" in ctx:
-        return                              # convert just populated it
-
+@docgraph.task(deps=("convert",))
+def load_html(ctx) -> None:
     docs_raw = _load_html_files(ctx["sd"])
-    if not docs_raw:
-        # No HTML on disk and convert didn't populate ctx — nothing to
-        # load. Downstream tasks that actually need full_markdown will
-        # fail informatively; tasks that don't (snapshot, diagram) skip
-        # this silently.
-        return
     primary = docs_raw[0]
     ctx["docs_raw"]             = docs_raw
     ctx["document_title"]       = primary.get("title", "(untitled)")
@@ -55,3 +46,10 @@ def load_html_task(ctx) -> None:
     ctx["html_file_path"] = html_files[0] if html_files else None
     ctx["md_file_path"]   = converted_md_path(ctx["project_root"], ctx["slug"])
     # agent_uri is set by identity (invariant per run).
+
+
+@docgraph.dirty
+def load_html_dirty(ctx) -> bool:
+    if "full_markdown" in ctx:
+        return False                        # convert just populated it
+    return bool(html_paths(ctx["sd"]))      # only run if HTML exists to load

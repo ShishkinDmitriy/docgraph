@@ -5,12 +5,9 @@ Foundational task for any per-doc CLI that addresses a doc by name
 typed: a slug (registered in sources.ttl) or a path to the source
 file (resolved by absolute path or by content hash for moved files).
 
-No dirty check — idempotent, runs at most once per `run()` call.
-Two early-exit cases:
-  - "slug" already in ctx — pre-populated by an upstream task
-    (e.g. identity, when running the add pipeline from a PDF).
-  - args empty — nothing to resolve; the slug will be set elsewhere
-    (e.g. by identity from ctx["path"]).
+Dirty check: clean if "slug" is already in ctx (pre-populated, or set
+by an upstream task like identity from a PDF) OR if there's no target
+arg to resolve (the add pipeline from a PDF — identity sets slug).
 
 ctx contract:
     args         — tuple of CLI positional args; args[0] is the target
@@ -27,16 +24,10 @@ from src.sources import compute_hash, list_sources
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("resolve_slug", deps=("resolve_project",))
+@docgraph.task(deps=("resolve_project",))
 def resolve_slug(ctx) -> None:
-    if "slug" in ctx:
-        return                              # pre-populated by CLI / upstream task
-    args = ctx.get("args", ())
-    if not args:
-        return                              # another task will set slug (e.g. identity)
-
     project_root = ctx["project_root"]
-    target = args[0]
+    target = ctx["args"][0]
     sources = list_sources(project_root)
     by_slug = {s["slug"]: s for s in sources}
 
@@ -65,3 +56,10 @@ def resolve_slug(ctx) -> None:
     raise click.UsageError(
         f"no source registered as {target!r} "
         f"(run `docgraph status` to list sources).")
+
+
+@docgraph.dirty
+def resolve_slug_dirty(ctx) -> bool:
+    if "slug" in ctx:
+        return False                        # pre-populated
+    return bool(ctx.get("args"))            # nothing to resolve without a target

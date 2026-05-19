@@ -19,7 +19,7 @@ from src.sources import existing_by_hash, register_source
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("register", deps=("align",))
+@docgraph.task(deps=("align",))
 def register(ctx) -> None:
     first_delta = delta_path(ctx["project_root"], doc_scope(ctx["slug"]), 1)
     register_source(
@@ -29,7 +29,7 @@ def register(ctx) -> None:
     )
 
 
-@docgraph.dirty("register")
+@docgraph.dirty
 def register_dirty(ctx) -> bool:
     reg = Graph()
     reg.parse(sources_path(ctx["project_root"]), format="turtle")

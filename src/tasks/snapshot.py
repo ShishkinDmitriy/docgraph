@@ -34,7 +34,7 @@ def _at_seq(ctx) -> int | None:
     return int(args[1]) if len(args) >= 2 else None
 
 
-@docgraph.task("snapshot", deps=("identity", "register"))
+@docgraph.task(deps=("identity", "register"))
 def snapshot(ctx) -> None:
     console = ctx["console"]
     at_seq = _at_seq(ctx)
@@ -50,7 +50,7 @@ def snapshot(ctx) -> None:
     console.print(f"  wrote   [dim]{out_path.name}[/dim] ({len(g)} triples)")
 
 
-@docgraph.dirty("snapshot")
+@docgraph.dirty
 def snapshot_dirty(ctx) -> bool:
     at_seq = _at_seq(ctx)
     out_path = graph_ttl_path(ctx["project_root"], ctx["slug"], at_seq=at_seq)

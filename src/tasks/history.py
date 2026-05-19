@@ -10,7 +10,7 @@ from src.deltas import doc_scope, list_deltas_for_scope, read_delta
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("history", deps=("resolve_slug",))
+@docgraph.task(deps=("resolve_slug",))
 def history(ctx) -> None:
     project_root = ctx["project_root"]
     slug         = ctx["slug"]

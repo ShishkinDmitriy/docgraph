@@ -23,7 +23,7 @@ from src.tasks._helpers import (
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("align", deps=("templates",))
+@docgraph.task(deps=("templates",))
 def align(ctx) -> None:
     # align_doc reads the materialized graph directly — no extracted
     # entity list needed.
@@ -35,7 +35,7 @@ def align(ctx) -> None:
         ctx["console"].print(f"  [dim]aligned {aligned} class(es)[/dim]")
 
 
-@docgraph.dirty("align")
+@docgraph.dirty
 def align_dirty(ctx) -> bool:
     if not has_delta_with_step(ctx, "extract"):
         return False

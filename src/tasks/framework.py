@@ -11,14 +11,14 @@ API:
 
     reg = Registry()
 
-    @reg.task("recognize")
+    @reg.task                              # task name defaults to fn.__name__
     def recognize(ctx): ...
-    @reg.dirty("recognize")
+    @reg.dirty                             # task name from fn.__name__ minus `_dirty`
     def recognize_dirty(ctx) -> bool: ...
 
-    @reg.task("convert", deps=("recognize",))
+    @reg.task(deps=("recognize",))
     def convert(ctx): ...
-    @reg.dirty("convert")
+    @reg.dirty
     def convert_dirty(ctx) -> bool: ...
 
     reg.run("convert", ctx)   # ensures recognize is current, then convert
@@ -68,6 +68,15 @@ class FixpointError(RuntimeError):
     signal, or two tasks chase each other's outputs forever."""
 
 
+_DIRTY_SUFFIX = "_dirty"
+
+
+def _strip_dirty_suffix(name: str) -> str:
+    """Trim a trailing `_dirty` so `@docgraph.dirty` can derive the task
+    name from the function name (`init_dirty` → task `init`)."""
+    return name[:-len(_DIRTY_SUFFIX)] if name.endswith(_DIRTY_SUFFIX) else name
+
+
 @dataclass
 class Task:
     name:     str
@@ -83,9 +92,13 @@ class Registry:
 
     # ── decorators ────────────────────────────────────────────────────
 
-    def task(self, name: str, *, deps: tuple[str, ...] = (),
-             iterate: bool = False) -> Callable[[TaskFn], TaskFn]:
-        """Register a function as a task.
+    def task(self, name_or_fn=None, *, deps: tuple[str, ...] = (),
+             iterate: bool = False):
+        """Register a function as a task. Three calling styles:
+
+            @docgraph.task                              # name = fn.__name__
+            @docgraph.task(deps=("identity",))          # name = fn.__name__
+            @docgraph.task("init", deps=("identity",))  # explicit override
 
         *iterate=True* opts a task into the fixpoint loop — it can be
         re-run within a single `run()` invocation if it's still dirty
@@ -97,22 +110,53 @@ class Registry:
         forever — internal iteration belongs in the task body, not
         in the framework, unless you explicitly opt in.
         """
+        # @docgraph.task — bare (first arg is the function itself).
+        if callable(name_or_fn):
+            return self._register_task(name_or_fn.__name__, name_or_fn,
+                                       deps=(), iterate=False)
+        explicit_name = name_or_fn                          # str | None
+
         def deco(fn: TaskFn) -> TaskFn:
-            if name in self.tasks:
-                raise ValueError(f"task {name!r} already registered")
-            self.tasks[name] = Task(name=name, fn=fn, deps=tuple(deps),
-                                    iterate=iterate)
-            return fn
+            return self._register_task(explicit_name or fn.__name__, fn,
+                                       deps=deps, iterate=iterate)
         return deco
 
-    def dirty(self, task_name: str) -> Callable[[DirtyFn], DirtyFn]:
+    def dirty(self, name_or_fn=None):
+        """Register a dirty-check function. Three calling styles:
+
+            @docgraph.dirty                  # task name = fn.__name__ minus `_dirty`
+            @docgraph.dirty()                # same
+            @docgraph.dirty("init")          # explicit override
+
+        The `_dirty` suffix convention keeps the function name
+        searchable while the registry uses the bare task name.
+        """
+        if callable(name_or_fn):
+            fn = name_or_fn
+            return self._register_dirty(_strip_dirty_suffix(fn.__name__), fn)
+        explicit_name = name_or_fn                          # str | None
+
         def deco(fn: DirtyFn) -> DirtyFn:
-            if task_name not in self.tasks:
-                raise ValueError(f"task {task_name!r} not registered; "
-                                 f"decorate @task before @dirty")
-            self.tasks[task_name].dirty_fn = fn
-            return fn
+            name = explicit_name or _strip_dirty_suffix(fn.__name__)
+            return self._register_dirty(name, fn)
         return deco
+
+    # ── internal: shared registration ─────────────────────────────────
+
+    def _register_task(self, name: str, fn: TaskFn, *,
+                        deps: tuple[str, ...], iterate: bool) -> TaskFn:
+        if name in self.tasks:
+            raise ValueError(f"task {name!r} already registered")
+        self.tasks[name] = Task(name=name, fn=fn, deps=tuple(deps),
+                                iterate=iterate)
+        return fn
+
+    def _register_dirty(self, task_name: str, fn: DirtyFn) -> DirtyFn:
+        if task_name not in self.tasks:
+            raise ValueError(f"task {task_name!r} not registered; "
+                             f"decorate @task before @dirty")
+        self.tasks[task_name].dirty_fn = fn
+        return fn
 
     # ── runner ────────────────────────────────────────────────────────
 

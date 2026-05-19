@@ -29,11 +29,8 @@ from src.sources import IngestError
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("resolve_project")
+@docgraph.task
 def resolve_project(ctx) -> None:
-    if "project_root" in ctx:
-        return                              # pre-populated
-
     args = ctx.get("args", ())
     candidate = Path(args[0]).resolve() if args else None
     if candidate is not None and candidate.exists():
@@ -48,3 +45,8 @@ def resolve_project(ctx) -> None:
         raise IngestError("not a docgraph project (run `docgraph init`)")
     ctx["project_root"] = project_root
     ctx["console"].print(f"Project root: [dim]{project_root}[/dim]")
+
+
+@docgraph.dirty
+def resolve_project_dirty(ctx) -> bool:
+    return "project_root" not in ctx

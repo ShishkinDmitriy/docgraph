@@ -54,7 +54,7 @@ def _at_seq(ctx) -> int | None:
     return int(args[1]) if len(args) >= 2 else None
 
 
-@docgraph.task("diagram", deps=("snapshot",))
+@docgraph.task(deps=("snapshot",))
 def diagram(ctx) -> None:
     console = ctx["console"]
     try:
@@ -70,7 +70,7 @@ def diagram(ctx) -> None:
         console.print(f"  [yellow]diagram failed[/yellow]: {exc}")
 
 
-@docgraph.dirty("diagram")
+@docgraph.dirty
 def diagram_dirty(ctx) -> bool:
     return not _diagram_is_current(
         ctx["project_root"], ctx["slug"],

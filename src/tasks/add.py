@@ -10,6 +10,6 @@ from __future__ import annotations
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("add", deps=("diagram",))
+@docgraph.task(deps=("diagram",))
 def add(ctx) -> None:
     pass

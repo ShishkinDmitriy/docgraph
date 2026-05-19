@@ -35,13 +35,16 @@ _DEFAULT_MODEL = ModelConfig(
 )
 
 
-@docgraph.task("setup_llm")
+@docgraph.task
 def setup_llm(ctx) -> None:
-    if "client" in ctx:
-        return                              # pre-populated
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     ctx["client"] = AnthropicClient(api_key=api_key) if api_key else None
     ctx["model"]  = _DEFAULT_MODEL
+
+
+@docgraph.dirty
+def setup_llm_dirty(ctx) -> bool:
+    return "client" not in ctx
 
 
 def require_client(ctx) -> AnthropicClient:

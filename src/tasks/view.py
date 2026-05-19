@@ -25,7 +25,7 @@ from src.project import annotated_html_path, doc_dir
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("view", deps=("resolve_slug",))
+@docgraph.task(deps=("resolve_slug",))
 def view(ctx) -> None:
     project_root = ctx["project_root"]
     slug         = ctx["slug"]

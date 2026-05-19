@@ -37,7 +37,7 @@ from src.tasks._registry import docgraph
 from src.extract_part14.template_recognizer import fold_templates_in_place
 
 
-@docgraph.task("templates", deps=("extract",))
+@docgraph.task(deps=("extract",))
 def templates(ctx) -> None:
     # ontology is set by extract when it runs; rebuild if firing
     # without extract.
@@ -64,7 +64,7 @@ def templates(ctx) -> None:
         print_delta_summary(console, seq, len(td.added), len(td.removed))
 
 
-@docgraph.dirty("templates")
+@docgraph.dirty
 def templates_dirty(ctx) -> bool:
     if "full_markdown" not in ctx:
         return False                    # no HTML loaded — can't fold templates

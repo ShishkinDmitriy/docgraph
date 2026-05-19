@@ -104,7 +104,7 @@ def _target_dir(ctx) -> Path:
     return Path(args[0] if args else ".").resolve()
 
 
-@docgraph.task("init")
+@docgraph.task
 def init(ctx) -> None:
     path = _target_dir(ctx)
     if not path.is_dir():
@@ -115,6 +115,6 @@ def init(ctx) -> None:
     )
 
 
-@docgraph.dirty("init")
+@docgraph.dirty
 def init_dirty(ctx) -> bool:
     return not (_target_dir(ctx) / DOCGRAPH_DIR).exists()

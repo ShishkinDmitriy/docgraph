@@ -54,7 +54,7 @@ def find_consolidation_candidates(
             if len(contribs) >= threshold]
 
 
-@docgraph.task("consolidate", deps=("resolve_project",))
+@docgraph.task(deps=("resolve_project",))
 def consolidate(ctx) -> None:
     console = ctx["console"]
     threshold = ctx.get("threshold", _DEFAULT_THRESHOLD)
@@ -66,7 +66,7 @@ def consolidate(ctx) -> None:
                       f"into project scope")
 
 
-@docgraph.dirty("consolidate")
+@docgraph.dirty
 def consolidate_dirty(ctx) -> bool:
     return bool(find_consolidation_candidates(
         ctx["project_root"],

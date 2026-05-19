@@ -11,7 +11,7 @@ from src.sources import list_sources
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("status", deps=("resolve_project",))
+@docgraph.task(deps=("resolve_project",))
 def status(ctx) -> None:
     project_root = ctx["project_root"]
     console = ctx["console"]

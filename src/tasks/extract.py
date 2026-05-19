@@ -33,7 +33,7 @@ from src.project import cache_dir
 from rdflib.namespace import RDF
 
 
-@docgraph.task("extract", deps=("load_html",))
+@docgraph.task(deps=("load_html",))
 def extract(ctx) -> None:
     console = ctx["console"]
     ds       = build_dataset(ctx["project_root"])
@@ -86,7 +86,7 @@ def extract(ctx) -> None:
         print_delta_summary(console, seq, len(g), 0)
 
 
-@docgraph.dirty("extract")
+@docgraph.dirty
 def extract_dirty(ctx) -> bool:
     if "full_markdown" not in ctx:
         return False                    # no HTML loaded — can't extract

@@ -21,7 +21,7 @@ from src.project import cache_dir
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("enrich", deps=("resolve_slug", "setup_llm"))
+@docgraph.task(deps=("resolve_slug", "setup_llm"))
 def enrich(ctx) -> None:
     project_root = ctx["project_root"]
     slug         = ctx["slug"]

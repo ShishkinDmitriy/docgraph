@@ -26,7 +26,7 @@ from src.tasks._registry import docgraph
 from src.pdfinfo import pdfinfo
 
 
-@docgraph.task("recognize", deps=("identity",))
+@docgraph.task(deps=("identity",))
 def recognize(ctx) -> None:
     console = ctx["console"]
     info = pdfinfo(ctx["path"])
@@ -52,7 +52,7 @@ def recognize(ctx) -> None:
     print_delta_summary(console, seq, len(g), 0)
 
 
-@docgraph.dirty("recognize")
+@docgraph.dirty
 def recognize_dirty(ctx) -> bool:
     if "path" not in ctx:
         return False                   # slug-based invocation — no file to recognize
