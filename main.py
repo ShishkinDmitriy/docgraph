@@ -104,20 +104,29 @@ def init(path: Path, force_tasks: tuple[str, ...]):
     error_types=(IngestError, FileExistsError, NotADirectoryError))
 
 
-@cli.command()
-@click.argument("path", type=click.Path(path_type=Path),
-                default=Path("."), required=False)
-def clean(path: Path):
-    """Remove every ingested source: wipe docs/<slug>/ and reset sources.ttl.
+def _add_project_task_command(name: str, *, help: str) -> None:
+    """Register `dg <name>` for a project-wide task: takes only an optional
+    PATH (default `.`) that the task uses to find the enclosing
+    `.docgraph/`. CLI invocation always forces the task — if you typed
+    the command you meant it."""
+    @cli.command(name=name, help=help)
+    @click.argument("path", type=click.Path(path_type=Path),
+                    default=Path("."), required=False)
+    def _cmd(path: Path):
+        _run_task(name, {
+            "path":    path.resolve(),
+            "console": console,
+        }, force_tasks=(name,))
+    return _cmd
 
-    Leaves config.ttl, templates.ttl, and bundled foundationals
-    untouched — the project itself stays initialised; only ingested
-    content is gone.
-    """
-    _run_task("clean", {
-        "path":    path.resolve(),
-        "console": console,
-    }, force_tasks=("clean",))
+
+_add_project_task_command(
+    "clean",
+    help="Remove every ingested source: wipe docs/<slug>/ and reset "
+         "sources.ttl. Leaves config.ttl, templates.ttl, and bundled "
+         "foundationals untouched — the project itself stays "
+         "initialised; only ingested content is gone.",
+)
 
 
 def _setup_logging(debug: bool) -> None:
@@ -631,48 +640,13 @@ def snapshot(target: str, at_seq: int | None):
     }, exclude=_DIAGRAM_UPSTREAM, force_tasks=("snapshot",))
 
 
-@cli.command()
-@click.option("--threshold", "threshold", type=int, default=2,
-              help="Minimum number of docs that must declare a class for it to "
-                   "consolidate to project scope (default 2).")
-@click.option("--dry-run", is_flag=True,
-              help="Show what would be consolidated without writing any deltas.")
-def consolidate(threshold: int, dry_run: bool):
-    """Consolidate equivalent ext: classes from per-doc graphs into the
-    project scope (the cross-doc lift of `add`'s local proposals).
-
-    Scans every doc-scope graph for ext-class declarations. Classes
-    declared in ≥threshold docs are merged into a canonical definition
-    at the project ext: namespace. Each contributing doc's scope gets a
-    `consolidate` delta that REMOVES the doc-local class declaration AND
-    rewrites instance triples to type as the new project URI.
-
-    Pure slug-collision aggregation today. The next iteration also
-    absorbs the embedding + LLM relation classifier for different-slug
-    semantic equivalents (see docs/architecture/rdl-scopes.md).
-    """
-    project_root = _find_project(Path.cwd())
-
-    if dry_run:
-        from src.tasks.consolidate import find_consolidation_candidates
-        candidates = find_consolidation_candidates(
-            project_root, threshold=threshold)
-        if not candidates:
-            console.print(f"[yellow]No ext class meets threshold ≥{threshold} docs.[/yellow]")
-            return
-        console.print(f"[bold]Would consolidate {len(candidates)} class(es)[/bold] "
-                      f"(threshold ≥{threshold} docs):\n")
-        for slug, contribs in candidates:
-            console.print(f"  ext:[bold]{slug}[/bold]   "
-                          f"{len(contribs)} contributors: {', '.join(contribs)}")
-        console.print()
-        return
-
-    _run_task("consolidate", {
-        "console":      console,
-        "project_root": project_root,
-        "threshold":    threshold,
-    }, force_tasks=("consolidate",))
+_add_project_task_command(
+    "consolidate",
+    help="Promote ext: classes that appear in ≥threshold (default 2) "
+         "docs into the project scope. Each contributing doc gets a "
+         "`consolidate` delta that removes the doc-local class and "
+         "rewrites instance triples to the new canonical URI.",
+)
 
 
 @cli.command()
