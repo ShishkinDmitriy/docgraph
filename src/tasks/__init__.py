@@ -47,6 +47,7 @@ from src.tasks._registry import docgraph
 # Project lifecycle.
 from src.tasks import init          # noqa: F401
 from src.tasks import clean         # noqa: F401
+from src.tasks import consolidate   # noqa: F401
 # Per-doc add pipeline (in topological order).
 from src.tasks import identity      # noqa: F401
 from src.tasks import recognize     # noqa: F401

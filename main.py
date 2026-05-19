@@ -651,43 +651,28 @@ def consolidate(threshold: int, dry_run: bool):
     absorbs the embedding + LLM relation classifier for different-slug
     semantic equivalents (see docs/architecture/rdl-scopes.md).
     """
-    from src.extract_part14.consolidate import walk_consolidate
-
     project_root = _find_project(Path.cwd())
 
     if dry_run:
-        from src.deltas import list_scopes, materialize, project_scope
-        from src.extract_part14.ext_ontology import extract_classes_from_graph
-        from collections import defaultdict
-        contributors_by_slug: dict[str, list[str]] = defaultdict(list)
-        project_state = materialize(project_root, project_scope())
-        already_promoted = set(extract_classes_from_graph(project_state).keys())
-        for scope in list_scopes(project_root):
-            if scope.kind != "doc" or not scope.name:
-                continue
-            per_doc_classes = extract_classes_from_graph(materialize(project_root, scope))
-            for slug in per_doc_classes:
-                if slug in already_promoted:
-                    continue
-                contributors_by_slug[slug].append(scope.name)
-        candidates = [(slug, contribs) for slug, contribs in contributors_by_slug.items()
-                       if len(contribs) >= threshold]
+        from src.tasks.consolidate import find_consolidation_candidates
+        candidates = find_consolidation_candidates(
+            project_root, threshold=threshold)
         if not candidates:
             console.print(f"[yellow]No ext class meets threshold ≥{threshold} docs.[/yellow]")
             return
         console.print(f"[bold]Would consolidate {len(candidates)} class(es)[/bold] "
                       f"(threshold ≥{threshold} docs):\n")
-        for slug, contribs in sorted(candidates):
+        for slug, contribs in candidates:
             console.print(f"  ext:[bold]{slug}[/bold]   "
                           f"{len(contribs)} contributors: {', '.join(contribs)}")
         console.print()
         return
 
-    console.print(f"[bold]consolidate[/bold]   (threshold ≥{threshold} docs)")
-    decisions = walk_consolidate(project_root, threshold=threshold, console=console)
-    if not decisions:
-        return
-    console.print(f"  → consolidated {len(decisions)} class(es) into project scope")
+    _run_task("consolidate", {
+        "console":      console,
+        "project_root": project_root,
+        "threshold":    threshold,
+    }, force_tasks=("consolidate",))
 
 
 @cli.command()
