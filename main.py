@@ -20,7 +20,6 @@ from src.project import (
     cache_dir,
     find_project_root,
     graphs_dir,
-    reset_sources,
 )
 
 # Hardcoded vision model for PDF→Markdown conversion. Make this configurable
@@ -106,58 +105,19 @@ def init(path: Path, force_tasks: tuple[str, ...]):
 
 
 @cli.command()
-@click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
-def clean(directory: Path | None, yes: bool):
-    """Remove every ingested source: wipe graphs/*.ttl and reset sources.ttl.
+@click.argument("path", type=click.Path(path_type=Path),
+                default=Path("."), required=False)
+def clean(path: Path):
+    """Remove every ingested source: wipe docs/<slug>/ and reset sources.ttl.
 
-    Leaves meta.ttl, lis-14.ttl, and the cache untouched. Use this to start the
-    graph over without re-running `docgraph init`.
+    Leaves config.ttl, templates.ttl, and bundled foundationals
+    untouched — the project itself stays initialised; only ingested
+    content is gone.
     """
-    project_root = find_project_root((directory or Path.cwd()).resolve())
-    if project_root is None:
-        console.print("[red]Error:[/red] not a docgraph project (run `docgraph init`).")
-        sys.exit(1)
-
-    # Per-doc dirs under docs/<slug>/ + legacy flat graphs/*.ttl files.
-    from src.project import DOCGRAPH_DIR, DOCS_SUBDIR
-    targets: list[Path] = []
-    docs_root = project_root / DOCGRAPH_DIR / DOCS_SUBDIR
-    if docs_root.is_dir():
-        targets.extend(sorted(p for p in docs_root.iterdir() if p.is_dir()))
-    legacy = graphs_dir(project_root)
-    if legacy.is_dir():
-        targets.extend(sorted(p for p in legacy.iterdir()
-                              if p.suffix in (".ttl", ".trig")))
-
-    if not targets:
-        console.print("[dim]Nothing to clean.[/dim]")
-        return
-
-    console.print(f"Will remove [bold]{len(targets)}[/bold] ingested graph(s):")
-    for p in targets:
-        console.print(f"  [dim]{p.relative_to(project_root)}[/dim]")
-
-    if not yes:
-        click.confirm("Proceed?", abort=True)
-
-    import shutil
-    for p in targets:
-        if p.is_dir():
-            shutil.rmtree(p)
-        else:
-            p.unlink()
-
-    reset_sources(project_root)
-
-    from src.embeddings import EMBEDDINGS_FILENAME
-    from src.project import DOCGRAPH_DIR
-    emb_path = project_root / DOCGRAPH_DIR / EMBEDDINGS_FILENAME
-    if emb_path.is_file():
-        emb_path.unlink()
-        console.print(f"  also removed [dim]{emb_path.relative_to(project_root)}[/dim]")
-
-    console.print(f"[green]Cleaned[/green] {len(targets)} graph(s) and reset sources.ttl")
+    _run_task("clean", {
+        "path":    path.resolve(),
+        "console": console,
+    }, force_tasks=("clean",))
 
 
 def _setup_logging(debug: bool) -> None:
