@@ -229,10 +229,9 @@ def write_delta(delta: StepDelta, path: Path) -> None:
     Without this propagation, rdflib emits fallback `ns1:`, `ns2:` …
     instead of the curated `lis:`, `ext:`, `ex:` etc.
 
-    Side effect: for doc scopes, refreshes `<scope-dir>/graph.ttl` to the
-    new HEAD state (materialized from all deltas including this one), so
-    consumers can always read the current snapshot without running
-    `docgraph snapshot`.
+    The doc-scope `graph.ttl` snapshot is refreshed by the `snapshot`
+    task (a dep of `diagram`), not here — write_delta is just a per-step
+    artifact emitter.
     """
     ds = Dataset()
     ds.bind("dg",   DG)
@@ -269,37 +268,6 @@ def write_delta(delta: StepDelta, path: Path) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     ds.serialize(destination=str(path), format="trig")
-
-    _refresh_head_snapshot(path, delta.scope)
-
-
-def _refresh_head_snapshot(delta_file_path: Path, scope: Scope) -> None:
-    """Recompute `<scope-dir>/graph.ttl` for doc scopes after a delta write.
-
-    Doc-scope only — project / rdl scopes don't carry a `graph.ttl`
-    convention (their per-scope materializations don't have a single
-    semantic "graph for this thing").
-    """
-    if scope.kind != "doc":
-        return
-    project_root = _infer_project_root(delta_file_path)
-    if project_root is None:
-        return
-    head = materialize(project_root, scope)
-    if len(head) == 0:
-        return
-    snapshot_path = delta_file_path.parent / "graph.ttl"
-    head.serialize(destination=str(snapshot_path), format="turtle")
-
-
-def _infer_project_root(path: Path) -> Path | None:
-    """Walk up `path` to the `.docgraph` directory; the project root is
-    its parent. Returns None if `.docgraph` is not on the path (test
-    setups or callers that don't follow the project layout)."""
-    for parent in path.parents:
-        if parent.name == ".docgraph":
-            return parent.parent
-    return None
 
 
 def _write_graph_meta(default_g: Graph, graph_uri: URIRef, kind: URIRef,

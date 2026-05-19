@@ -362,6 +362,13 @@ def _resolve_slug(project_root: Path, target: str) -> str:
     )
 
 
+# Upstream tasks the diagram standalone CLI must skip — they need ctx
+# fields (path, client, model) that aren't available outside the full
+# add pipeline. The diagram task itself only reads project_root + slug.
+_DIAGRAM_UPSTREAM = ("identity", "recognize", "convert", "load_html",
+                     "extract", "templates", "align", "register")
+
+
 @cli.command()
 @click.argument("target", required=False)
 @click.option("--all", "all_sources", is_flag=True,
@@ -400,15 +407,15 @@ def diagram(target: str | None, all_sources: bool, fmt: str, direction: str):
         console.print("[red]Error:[/red] specify a slug, a file path, or pass --all.")
         sys.exit(1)
 
-    from src.diagram import DiagramError, make_diagram
     for s in slugs:
         console.print(f"[bold]{s}[/bold]")
-        try:
-            make_diagram(project_root, s, console, render_format=fmt, direction=direction)
-        except DiagramError as exc:
-            console.print(f"  [red]error:[/red] {exc}")
-        except Exception as exc:
-            console.print(f"  [red]unexpected error:[/red] {exc}")
+        _run_task("diagram", {
+            "console":       console,
+            "project_root":  project_root,
+            "slug":          s,
+            "render_format": fmt,
+            "direction":     direction,
+        }, exclude=_DIAGRAM_UPSTREAM, force_tasks=("diagram",))
 
 
 @cli.command()
@@ -646,48 +653,22 @@ def diff(target: str, seq_a: int, seq_b: int):
 @click.argument("target", required=True)
 @click.option("--at", "at_seq", type=int, default=None,
               help="Materialize state at this seq (default: HEAD).")
-@click.option("--out", "out_path", type=click.Path(path_type=Path), default=None,
-              help="Output .ttl path (default: docs/<slug>/graph.ttl for HEAD, "
-                   "docs/<slug>/graph.NNN.ttl for --at).")
-@click.option("--no-diagram", is_flag=True,
-              help="Skip diagram rendering — just write the graph snapshot.")
-def snapshot(target: str, at_seq: int | None, out_path: Path | None, no_diagram: bool):
-    """Write a materialized snapshot (Turtle + diagram) of a doc's scope.
+def snapshot(target: str, at_seq: int | None):
+    """Write `docs/<slug>/graph[.NNN].ttl` from materialised deltas.
 
-    HEAD `graph.ttl` is auto-maintained on every `write_delta`, so the
-    no-arg form is mostly there to refresh the diagram alongside it. With
-    `--at <seq>`, writes the historical state after the step with that
-    seq to `docs/<slug>/graph.NNN.ttl` and `docs/<slug>/diagram.NNN.*`.
+    With `--at <seq>`, writes the historical state after step *seq*
+    to `docs/<slug>/graph.NNN.ttl`.
+
+    To refresh the diagram from the snapshot, run `dg diagram <slug>`.
     """
-    from src.deltas import doc_scope, materialize
-    from src.project import graph_ttl_path
-
     project_root = _find_project(Path.cwd())
     slug = _resolve_slug(project_root, target)
-    scope = doc_scope(slug)
-
-    g = materialize(project_root, scope, at_seq=at_seq)
-    if len(g) == 0:
-        console.print(f"[yellow]No triples to write[/yellow] for {slug}"
-                      f"{f' at seq={at_seq}' if at_seq is not None else ''}.")
-        return
-
-    if out_path is None:
-        out_path = graph_ttl_path(project_root, slug, at_seq=at_seq)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    g.serialize(destination=str(out_path), format="turtle")
-    console.print(f"  wrote   [dim]{out_path.relative_to(project_root)}[/dim] "
-                  f"({len(g)} triples)")
-
-    if no_diagram:
-        return
-    from src.diagram import DiagramError, make_diagram
-    try:
-        make_diagram(project_root, slug, console, at_seq=at_seq)
-    except DiagramError as exc:
-        console.print(f"  [yellow]diagram skipped[/yellow]: {exc}")
-    except Exception as exc:
-        console.print(f"  [yellow]diagram failed[/yellow]: {exc}")
+    _run_task("snapshot", {
+        "console":      console,
+        "project_root": project_root,
+        "slug":         slug,
+        "at_seq":       at_seq,
+    }, exclude=_DIAGRAM_UPSTREAM, force_tasks=("snapshot",))
 
 
 @cli.command()

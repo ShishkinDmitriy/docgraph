@@ -9,7 +9,7 @@ The add pipeline (one task per file in this package, names match the
 task names) drives PDF ingestion:
 
   identity → recognize → convert → load_html → extract → templates
-        → align → register → diagram → add
+        → align → register → snapshot → diagram → add
 
 `docgraph` (defined in `_registry.py` to avoid circular imports
 between this `__init__` and the per-task modules) holds them. The
@@ -55,6 +55,7 @@ from src.tasks import extract       # noqa: F401
 from src.tasks import templates     # noqa: F401
 from src.tasks import align         # noqa: F401
 from src.tasks import register      # noqa: F401
+from src.tasks import snapshot      # noqa: F401
 from src.tasks import diagram       # noqa: F401
 from src.tasks import add           # noqa: F401
 
