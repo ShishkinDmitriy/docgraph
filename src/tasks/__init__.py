@@ -48,6 +48,8 @@ from src.tasks._registry import docgraph
 from src.tasks import resolve_project   # noqa: F401
 from src.tasks import resolve_slug      # noqa: F401
 from src.tasks import setup_llm         # noqa: F401
+# Meta.
+from src.tasks import tasks             # noqa: F401
 # Project lifecycle.
 from src.tasks import init          # noqa: F401
 from src.tasks import clean         # noqa: F401

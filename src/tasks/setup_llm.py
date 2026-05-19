@@ -35,7 +35,7 @@ _DEFAULT_MODEL = ModelConfig(
 )
 
 
-@docgraph.task
+@docgraph.task(desc="Configure the LLM client + model from env")
 def setup_llm(ctx) -> None:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     ctx["client"] = AnthropicClient(api_key=api_key) if api_key else None

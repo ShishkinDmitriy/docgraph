@@ -26,7 +26,8 @@ from src.tasks._registry import docgraph
 from src.pdfinfo import pdfinfo
 
 
-@docgraph.task(deps=("identity",))
+@docgraph.task(desc="Recognize PDF: type + file-metadata quality chain",
+               deps=("identity",))
 def recognize(ctx) -> None:
     console = ctx["console"]
     info = pdfinfo(ctx["path"])

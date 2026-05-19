@@ -17,7 +17,7 @@ ctx["path"] as the PDF to ingest).
 
 ctx contract:
     args    — optional tuple of positional CLI args
-    console — for the "Project root: …" announcement
+    console — prints the resolved project root
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from src.sources import IngestError
 from src.tasks._registry import docgraph
 
 
-@docgraph.task
+@docgraph.task(desc="Resolve the enclosing .docgraph/ project root")
 def resolve_project(ctx) -> None:
     args = ctx.get("args", ())
     candidate = Path(args[0]).resolve() if args else None
@@ -44,7 +44,7 @@ def resolve_project(ctx) -> None:
     if project_root is None:
         raise IngestError("not a docgraph project (run `docgraph init`)")
     ctx["project_root"] = project_root
-    ctx["console"].print(f"Project root: [dim]{project_root}[/dim]")
+    ctx["console"].print(f"  [dim]{project_root}[/dim]")
 
 
 @docgraph.dirty

@@ -22,7 +22,8 @@ from src.deltas import doc_scope, materialize
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("resolve_slug",))
+@docgraph.task(desc="Show triple-level diff between two seqs of a doc", quiet=True,
+               deps=("resolve_slug",))
 def diff(ctx) -> None:
     args = ctx.get("args", ())
     if len(args) < 3:

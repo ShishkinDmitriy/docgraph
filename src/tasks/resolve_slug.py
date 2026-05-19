@@ -24,7 +24,8 @@ from src.sources import compute_hash, list_sources
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("resolve_project",))
+@docgraph.task(desc="Resolve target arg to a registered doc slug",
+               deps=("resolve_project",))
 def resolve_slug(ctx) -> None:
     project_root = ctx["project_root"]
     target = ctx["args"][0]
@@ -63,3 +64,13 @@ def resolve_slug_dirty(ctx) -> bool:
     if "slug" in ctx:
         return False                        # pre-populated
     return bool(ctx.get("args"))            # nothing to resolve without a target
+
+
+def require_slug(ctx, command: str) -> str:
+    """Consumer-task guard: fail with a clear usage error when there's no
+    target. Used by read-only per-doc tasks (history, view, coverage, diff)
+    whose body has nothing to do without a slug."""
+    if "slug" not in ctx:
+        raise click.UsageError(
+            f"docgraph {command} TARGET — pass a slug or path to an ingested source")
+    return ctx["slug"]

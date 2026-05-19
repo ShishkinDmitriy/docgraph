@@ -23,12 +23,14 @@ from src.deltas import doc_scope, materialize
 from src.html_io import html_paths
 from src.project import annotated_html_path, doc_dir
 from src.tasks._registry import docgraph
+from src.tasks.resolve_slug import require_slug
 
 
-@docgraph.task(deps=("resolve_slug",))
+@docgraph.task(desc="Open an annotated HTML view of the doc", quiet=True,
+               deps=("resolve_slug",))
 def view(ctx) -> None:
+    slug         = require_slug(ctx, "view")
     project_root = ctx["project_root"]
-    slug         = ctx["slug"]
     console      = ctx["console"]
     no_open      = ctx.get("no_open", False)
 

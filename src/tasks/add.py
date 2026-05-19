@@ -10,6 +10,7 @@ from __future__ import annotations
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("diagram",))
+@docgraph.task(desc="Ingest a PDF: run the full per-doc pipeline",
+               deps=("diagram",))
 def add(ctx) -> None:
     pass

@@ -23,7 +23,8 @@ from src.project import converted_md_path
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("convert",))
+@docgraph.task(desc="Load converted.html intermediates into ctx",
+               deps=("convert",))
 def load_html(ctx) -> None:
     docs_raw = _load_html_files(ctx["sd"])
     primary = docs_raw[0]

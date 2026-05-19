@@ -34,7 +34,8 @@ def _at_seq(ctx) -> int | None:
     return int(args[1]) if len(args) >= 2 else None
 
 
-@docgraph.task(deps=("identity", "register"))
+@docgraph.task(desc="Materialize doc graph to graph[.NNN].ttl",
+               deps=("identity", "register"))
 def snapshot(ctx) -> None:
     console = ctx["console"]
     at_seq = _at_seq(ctx)

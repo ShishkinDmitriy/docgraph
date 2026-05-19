@@ -33,7 +33,8 @@ from src.project import cache_dir
 from rdflib.namespace import RDF
 
 
-@docgraph.task(deps=("load_html",))
+@docgraph.task(desc="Extract entities + properties via mega-walker LLM",
+               deps=("load_html",))
 def extract(ctx) -> None:
     console = ctx["console"]
     ds       = build_dataset(ctx["project_root"])

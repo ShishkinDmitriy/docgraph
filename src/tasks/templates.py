@@ -37,7 +37,8 @@ from src.tasks._registry import docgraph
 from src.extract_part14.template_recognizer import fold_templates_in_place
 
 
-@docgraph.task(deps=("extract",))
+@docgraph.task(desc="Fold lowered patterns into template invocations",
+               deps=("extract",))
 def templates(ctx) -> None:
     # ontology is set by extract when it runs; rebuild if firing
     # without extract.

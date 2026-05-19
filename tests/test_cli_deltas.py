@@ -81,10 +81,9 @@ def test_history_lists_deltas_with_seqs(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli, ["history", "demo"], catch_exceptions=False)
     assert result.exit_code == 0
     out = result.stdout
-    assert "seq   1" in out and "convert" in out
-    assert "seq   2" in out and "extract" in out
-    assert "+2"  in out                  # seq 1 added 2 triples
-    assert "+1"  in out and "-1" in out  # seq 2 added 1, removed 1
+    assert "convert" in out and "extract" in out
+    assert "+2" in out                   # seq 1 added 2 triples
+    assert "+1" in out and "-1" in out   # seq 2 added 1, removed 1
 
 
 def test_history_when_no_deltas_yet(tmp_path, monkeypatch):

@@ -43,7 +43,8 @@ from src.tasks._helpers import (
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("recognize",))
+@docgraph.task(desc="Convert PDF → HTML/Markdown via vision LLM",
+               deps=("recognize",))
 def convert(ctx) -> None:
     console = ctx["console"]
     convert_started = now()

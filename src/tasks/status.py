@@ -11,7 +11,8 @@ from src.sources import list_sources
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("resolve_project",))
+@docgraph.task(desc="Show the project's ingested sources", quiet=True,
+               deps=("resolve_project",))
 def status(ctx) -> None:
     project_root = ctx["project_root"]
     console = ctx["console"]
@@ -20,12 +21,13 @@ def status(ctx) -> None:
     if not sources:
         return
 
-    table = Table(show_header=True, header_style="bold cyan")
+    table = Table(show_header=True, header_style="bold cyan", box=None,
+                  padding=(0, 2))
     table.add_column("Slug")
     table.add_column("Label")
-    table.add_column("Mime")
-    table.add_column("Size", justify="right")
-    table.add_column("Added")
+    table.add_column("Mime",  style="dim")
+    table.add_column("Size",  justify="right")
+    table.add_column("Added", style="dim")
     for s in sources:
         table.add_row(
             s["slug"], s["label"], s["mimeType"],

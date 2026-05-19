@@ -21,7 +21,8 @@ from src.project import cache_dir
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("resolve_slug", "setup_llm"))
+@docgraph.task(desc="Refine entity types via external RDL",
+               deps=("resolve_slug", "setup_llm"))
 def enrich(ctx) -> None:
     project_root = ctx["project_root"]
     slug         = ctx["slug"]
@@ -30,7 +31,6 @@ def enrich(ctx) -> None:
     rdl_cache_dir = cache_dir(project_root) / "rdl"
     rdl_resolvers = [RdlResolver(POSC_CAESAR, cache_dir=rdl_cache_dir)]
 
-    console.print(f"[bold]enrich[/bold] {slug}")
     try:
         added = enrich_source(
             project_root, slug, rdl_resolvers,

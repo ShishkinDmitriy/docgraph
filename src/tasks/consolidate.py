@@ -54,7 +54,8 @@ def find_consolidation_candidates(
             if len(contribs) >= threshold]
 
 
-@docgraph.task(deps=("resolve_project",))
+@docgraph.task(desc="Promote ext classes shared across ≥threshold docs",
+               deps=("resolve_project",))
 def consolidate(ctx) -> None:
     console = ctx["console"]
     threshold = ctx.get("threshold", _DEFAULT_THRESHOLD)

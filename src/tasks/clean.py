@@ -37,7 +37,8 @@ def list_targets(project_root: Path) -> list[Path]:
     return targets
 
 
-@docgraph.task(deps=("resolve_project",))
+@docgraph.task(desc="Wipe every ingested source from a project",
+               deps=("resolve_project",))
 def clean(ctx) -> None:
     project_root = ctx["project_root"]
     console = ctx["console"]

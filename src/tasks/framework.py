@@ -84,6 +84,8 @@ class Task:
     deps:     tuple[str, ...] = ()
     dirty_fn: DirtyFn | None  = None
     iterate:  bool            = False
+    desc:     str             = ""
+    quiet:    bool            = False
 
 
 class Registry:
@@ -93,12 +95,19 @@ class Registry:
     # ── decorators ────────────────────────────────────────────────────
 
     def task(self, name_or_fn=None, *, deps: tuple[str, ...] = (),
-             iterate: bool = False):
+             iterate: bool = False, desc: str = "", quiet: bool = False):
         """Register a function as a task. Three calling styles:
 
             @docgraph.task                              # name = fn.__name__
             @docgraph.task(deps=("identity",))          # name = fn.__name__
             @docgraph.task("init", deps=("identity",))  # explicit override
+
+        *desc* is a one-line summary shown by `dg tasks`.
+
+        *quiet=True* suppresses the framework's `bold(name)` lifecycle
+        header (both "running" and "skipped"). Use for read-only meta
+        tasks that print their own self-explanatory output (status,
+        history, diff, view, coverage, tasks).
 
         *iterate=True* opts a task into the fixpoint loop — it can be
         re-run within a single `run()` invocation if it's still dirty
@@ -113,12 +122,14 @@ class Registry:
         # @docgraph.task — bare (first arg is the function itself).
         if callable(name_or_fn):
             return self._register_task(name_or_fn.__name__, name_or_fn,
-                                       deps=(), iterate=False)
+                                       deps=(), iterate=False, desc="",
+                                       quiet=False)
         explicit_name = name_or_fn                          # str | None
 
         def deco(fn: TaskFn) -> TaskFn:
             return self._register_task(explicit_name or fn.__name__, fn,
-                                       deps=deps, iterate=iterate)
+                                       deps=deps, iterate=iterate,
+                                       desc=desc, quiet=quiet)
         return deco
 
     def dirty(self, name_or_fn=None):
@@ -144,11 +155,12 @@ class Registry:
     # ── internal: shared registration ─────────────────────────────────
 
     def _register_task(self, name: str, fn: TaskFn, *,
-                        deps: tuple[str, ...], iterate: bool) -> TaskFn:
+                        deps: tuple[str, ...], iterate: bool, desc: str,
+                        quiet: bool) -> TaskFn:
         if name in self.tasks:
             raise ValueError(f"task {name!r} already registered")
         self.tasks[name] = Task(name=name, fn=fn, deps=tuple(deps),
-                                iterate=iterate)
+                                iterate=iterate, desc=desc, quiet=quiet)
         return fn
 
     def _register_dirty(self, task_name: str, fn: DirtyFn) -> DirtyFn:
@@ -204,14 +216,14 @@ class Registry:
                 if name in force_set:
                     pass                          # forced → treat as dirty
                 elif t.dirty_fn is not None and not t.dirty_fn(ctx):
-                    if console is not None and name not in skip_printed:
+                    if console is not None and name not in skip_printed and not t.quiet:
                         console.print(
-                            f"[dim]{name}  (clean — skipped)[/dim]")
+                            f"[bold]{name}[/bold] [dim]skipped[/dim]")
                         skip_printed.add(name)
                     continue
                 # Lifecycle log — print the header from the framework so
                 # task bodies only log their own work, not "I'm starting".
-                if console is not None:
+                if console is not None and not t.quiet:
                     console.print(f"[bold]{name}[/bold]")
                 t.fn(ctx)
                 ran_once.add(name)

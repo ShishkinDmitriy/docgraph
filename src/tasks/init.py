@@ -104,7 +104,7 @@ def _target_dir(ctx) -> Path:
     return Path(args[0] if args else ".").resolve()
 
 
-@docgraph.task
+@docgraph.task(desc="Initialise a .docgraph/ project directory")
 def init(ctx) -> None:
     path = _target_dir(ctx)
     if not path.is_dir():

@@ -41,7 +41,8 @@ from src.tasks._registry import docgraph
 AGENT_NS = Namespace("urn:docgraph:agent:")
 
 
-@docgraph.task(deps=("resolve_project", "resolve_slug", "setup_llm"))
+@docgraph.task(desc="Resolve per-doc identifiers (slug, URIs, hashes)",
+               deps=("resolve_project", "resolve_slug", "setup_llm"))
 def identity(ctx) -> None:
     project_root = ctx["project_root"]
 

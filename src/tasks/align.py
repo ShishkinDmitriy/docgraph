@@ -23,7 +23,8 @@ from src.tasks._helpers import (
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("templates",))
+@docgraph.task(desc="Align doc-local ext classes to higher-scope canonicals",
+               deps=("templates",))
 def align(ctx) -> None:
     # align_doc reads the materialized graph directly — no extracted
     # entity list needed.

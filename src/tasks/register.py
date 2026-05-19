@@ -19,7 +19,8 @@ from src.sources import existing_by_hash, register_source
 from src.tasks._registry import docgraph
 
 
-@docgraph.task(deps=("align",))
+@docgraph.task(desc="Write the source entry into sources.ttl",
+               deps=("align",))
 def register(ctx) -> None:
     first_delta = delta_path(ctx["project_root"], doc_scope(ctx["slug"]), 1)
     register_source(

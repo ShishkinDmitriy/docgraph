@@ -54,7 +54,8 @@ def _at_seq(ctx) -> int | None:
     return int(args[1]) if len(args) >= 2 else None
 
 
-@docgraph.task(deps=("snapshot",))
+@docgraph.task(desc="Render PlantUML diagram from the doc snapshot",
+               deps=("snapshot",))
 def diagram(ctx) -> None:
     console = ctx["console"]
     try:

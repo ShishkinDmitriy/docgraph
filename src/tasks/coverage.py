@@ -17,12 +17,14 @@ from src.deltas import doc_scope, materialize
 from src.html_io import html_paths
 from src.project import doc_dir
 from src.tasks._registry import docgraph
+from src.tasks.resolve_slug import require_slug
 
 
-@docgraph.task(deps=("resolve_slug",))
+@docgraph.task(desc="Report which atomic HTML units the graph cites", quiet=True,
+               deps=("resolve_slug",))
 def coverage(ctx) -> None:
+    slug         = require_slug(ctx, "coverage")
     project_root = ctx["project_root"]
-    slug         = ctx["slug"]
     console      = ctx["console"]
 
     sd = doc_dir(project_root, slug)
