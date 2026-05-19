@@ -5,14 +5,18 @@ what triples got added/removed by the steps with seq in (seq_a, seq_b].
 Useful to see what a particular phase actually did without grepping
 individual delta files.
 
+CLI: `docgraph diff TARGET SEQ_A SEQ_B`
+
 ctx contract:
     project_root — required (via resolve_project)
     slug         — required (via resolve_slug)
-    seq_a, seq_b — required (start + end seq, inclusive of seq_b)
+    args         — args[1] = seq_a, args[2] = seq_b
     console      — required
 """
 
 from __future__ import annotations
+
+import click
 
 from src.deltas import doc_scope, materialize
 from src.tasks._registry import docgraph
@@ -20,10 +24,13 @@ from src.tasks._registry import docgraph
 
 @docgraph.task("diff", deps=("resolve_slug",))
 def diff(ctx) -> None:
+    args = ctx.get("args", ())
+    if len(args) < 3:
+        raise click.UsageError("usage: docgraph diff TARGET SEQ_A SEQ_B")
     project_root = ctx["project_root"]
     slug         = ctx["slug"]
-    seq_a        = ctx["seq_a"]
-    seq_b        = ctx["seq_b"]
+    seq_a        = int(args[1])
+    seq_b        = int(args[2])
     console      = ctx["console"]
     scope = doc_scope(slug)
 

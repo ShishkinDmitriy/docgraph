@@ -88,6 +88,8 @@ def extract(ctx) -> None:
 
 @docgraph.dirty("extract")
 def extract_dirty(ctx) -> bool:
+    if "full_markdown" not in ctx:
+        return False                    # no HTML loaded — can't extract
     state = doc_state(ctx)
     if (ctx["html_uri"], RDF.type, DG.HtmlFile) not in state:
         return False

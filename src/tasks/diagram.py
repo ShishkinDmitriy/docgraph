@@ -47,7 +47,14 @@ class DiagramError(Exception):
     pass
 
 
-@docgraph.task("diagram", deps=("resolve_slug", "snapshot"))
+def _at_seq(ctx) -> int | None:
+    if "at_seq" in ctx:
+        return ctx["at_seq"]
+    args = ctx.get("args", ())
+    return int(args[1]) if len(args) >= 2 else None
+
+
+@docgraph.task("diagram", deps=("snapshot",))
 def diagram(ctx) -> None:
     console = ctx["console"]
     try:
@@ -55,7 +62,7 @@ def diagram(ctx) -> None:
             ctx["project_root"], ctx["slug"], console,
             render_format = ctx.get("render_format", "svg"),
             direction     = ctx.get("direction", "LR"),
-            at_seq        = ctx.get("at_seq"),
+            at_seq        = _at_seq(ctx),
         )
     except DiagramError as exc:
         console.print(f"  [yellow]diagram skipped[/yellow]: {exc}")
@@ -67,7 +74,7 @@ def diagram(ctx) -> None:
 def diagram_dirty(ctx) -> bool:
     return not _diagram_is_current(
         ctx["project_root"], ctx["slug"],
-        at_seq = ctx.get("at_seq"),
+        at_seq = _at_seq(ctx),
         fmt    = ctx.get("render_format", "svg"),
     )
 

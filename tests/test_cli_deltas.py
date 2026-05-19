@@ -157,7 +157,7 @@ def test_snapshot_at_historical_seq(tmp_path, monkeypatch):
     project = _setup_project_with_doc(tmp_path)
     monkeypatch.chdir(project)
     result = CliRunner().invoke(
-        cli, ["snapshot", "demo", "--at", "1"], catch_exceptions=False)
+        cli, ["snapshot", "demo", "1"], catch_exceptions=False)
     assert result.exit_code == 0
     from src.project import graph_ttl_path
     out_file = graph_ttl_path(project, "demo", at_seq=1)

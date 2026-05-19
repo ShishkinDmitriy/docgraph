@@ -20,7 +20,6 @@ from src.html_io import (
     render_markdown_view,
 )
 from src.project import converted_md_path
-from src.sources import IngestError
 from src.tasks._registry import docgraph
 
 
@@ -31,9 +30,11 @@ def load_html_task(ctx) -> None:
 
     docs_raw = _load_html_files(ctx["sd"])
     if not docs_raw:
-        raise IngestError(
-            f"no converted HTML found for {ctx['slug']!r}; "
-            f"run `dg add ... -f convert` first")
+        # No HTML on disk and convert didn't populate ctx — nothing to
+        # load. Downstream tasks that actually need full_markdown will
+        # fail informatively; tasks that don't (snapshot, diagram) skip
+        # this silently.
+        return
     primary = docs_raw[0]
     ctx["docs_raw"]             = docs_raw
     ctx["document_title"]       = primary.get("title", "(untitled)")

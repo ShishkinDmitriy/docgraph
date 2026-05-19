@@ -54,6 +54,8 @@ def recognize(ctx) -> None:
 
 @docgraph.dirty("recognize")
 def recognize_dirty(ctx) -> bool:
+    if "path" not in ctx:
+        return False                   # slug-based invocation — no file to recognize
     latest = latest_delta_of_step(ctx, "recognize")
     if latest is None:
         return True

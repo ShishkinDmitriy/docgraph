@@ -52,7 +52,7 @@ def convert(ctx) -> None:
     drop_cache = "convert" in ctx.get("forced_tasks", set())
     docs_raw = load_or_extract_html(
         ctx["path"], force=drop_cache, client=ctx["client"],
-        model=ctx["model"], con=console, note=ctx["note"], html_dir=ctx["sd"],
+        model=ctx["model"], con=console, note=ctx.get("note"), html_dir=ctx["sd"],
     )
     convert_ended = now()
     if not docs_raw:
@@ -123,6 +123,8 @@ def convert(ctx) -> None:
 
 @docgraph.dirty("convert")
 def convert_dirty(ctx) -> bool:
+    if "path" not in ctx:
+        return False                   # slug-based invocation — no file to convert from
     latest = latest_delta_of_step(ctx, "convert")
     if latest is None:
         return True

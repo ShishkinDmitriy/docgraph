@@ -1,486 +1,86 @@
 #!/usr/bin/env python3
-"""DocGraph CLI."""
+"""docgraph — knowledge graph extraction from documents (ISO 15926 Part 14).
+
+Usage: docgraph <task> [args...]
+
+Each task interprets its own positional args (paths, slugs, seqs). Common shapes:
+
+    docgraph init [DIR]              — initialise a project (default: cwd)
+    docgraph add FILE                — ingest a PDF or TTL
+    docgraph status / clean          — project-wide, no args
+    docgraph diagram TARGET          — TARGET = slug or path
+    docgraph snapshot TARGET [SEQ]   — SEQ defaults to HEAD
+    docgraph diff TARGET SEQ_A SEQ_B
+    docgraph help <task>             — task module docstring
+
+`-f` forces the task (overrides its dirty check). `-d` enables verbose
+logging (LLM prompts and responses).
+"""
 
 import logging
-import os
 import sys
-from pathlib import Path
 
 import click
-from rdflib import URIRef
 from rich.console import Console
-from src.sources import IngestError, list_sources
-from src.ttl_ingest import TTL_SUFFIXES, ingest_ttl
-from src.llm.anthropic import AnthropicClient
-from src.models import ModelConfig
-from src.project import (
-    cache_dir,
-    find_project_root,
-    graphs_dir,
-)
 
-# Hardcoded vision model for PDF→Markdown conversion. Make this configurable
-# (config.ttl in the project, or a CLI flag) once we have more than one option.
-DEFAULT_VISION_MODEL = ModelConfig(
-    uri=URIRef("http://example.org/docgraph/agent/claude-haiku-4-5"),
-    model_id="claude-haiku-4-5",
-    label="Claude Haiku 4.5",
-    provider="anthropic",
-)
+from src.sources import IngestError
+from src.tasks import docgraph
 
 console = Console()
 
-# Sentinel for `-f` / `--force` used without a task argument: the
-# CLI body replaces it with the command's target task. So
-# `dg convert foo.pdf --force` ≡ `dg convert foo.pdf --force convert`.
-_FORCE_CURRENT = "_CURRENT_"
 
-
-def _expand_current(force_tasks: tuple[str, ...], target: str) -> tuple[str, ...]:
-    """Replace the _CURRENT_ sentinel (from `--force` without a value)
-    with the command's target task name."""
-    return tuple(target if f == _FORCE_CURRENT else f for f in force_tasks)
-
-
-def _force_option(target: str):
-    """Click decorator for the standard `-f`/`--force` option. With no
-    value, forces the command's target task."""
-    return click.option(
-        "-f", "--force", "force_tasks", multiple=True,
-        is_flag=False, flag_value=_FORCE_CURRENT, metavar="[TASK]",
-        help=("Force a task to run even if its dirty check says clean. "
-              f"With no value, forces this command's task (`-f` ≡ `-f {target}`). "
-              "Repeatable."),
-    )
-
-
-def _run_task(target: str, ctx: dict, *,
-              exclude: tuple[str, ...] = (),
-              force_tasks: tuple[str, ...] = (),
-              error_types: tuple[type, ...] = (IngestError, NotImplementedError),
-              ) -> None:
-    """Generic CLI → task-DAG runner.
-
-    Expands the `--force` _CURRENT_ sentinel against *target*, stuffs
-    `forced_tasks` into ctx, runs the task, catches user-facing errors,
-    and prints the doc slug if the pipeline produced one.
-    """
-    from src.tasks import docgraph
-    forced = set(_expand_current(force_tasks, target))
-    ctx["forced_tasks"] = forced
-    try:
-        docgraph.run(target, ctx, console=console,
-                     exclude=tuple(exclude), force=forced)
-    except error_types as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        sys.exit(1)
-    if "slug" in ctx:
-        console.print(f"[dim]doc:[/dim] [bold]{ctx['slug']}[/bold]")
-
-
-@click.group()
-def cli():
-    """Build a knowledge graph from documents using ISO 15926 Part 14."""
-
-
-@cli.command()
-@click.argument("path", type=click.Path(path_type=Path),
-                default=Path("."), required=False)
-@_force_option("init")
-def init(path: Path, force_tasks: tuple[str, ...]):
-    """Initialise a .docgraph/ project directory (analogous to git init).
-
-    Idempotent — if .docgraph/ already exists, the `init` task's dirty
-    check returns False and nothing happens. Use --force to reinit.
-    """
-    _run_task("init", {
-        "path":    path.resolve(),
-        "console": console,
-    },
-    force_tasks=force_tasks,
-    error_types=(IngestError, FileExistsError, NotADirectoryError))
-
-
-def _add_project_task_command(name: str, *, help: str) -> None:
-    """Register `dg <name>` for a project-wide task: takes only an optional
-    PATH (default `.`) that the task uses to find the enclosing
-    `.docgraph/`. CLI invocation always forces the task — if you typed
-    the command you meant it."""
-    @cli.command(name=name, help=help)
-    @click.argument("path", type=click.Path(path_type=Path),
-                    default=Path("."), required=False)
-    def _cmd(path: Path):
-        _run_task(name, {
-            "path":    path.resolve(),
-            "console": console,
-        }, force_tasks=(name,))
-    return _cmd
-
-
-_add_project_task_command(
-    "clean",
-    help="Remove every ingested source: wipe docs/<slug>/ and reset "
-         "sources.ttl. Leaves config.ttl, templates.ttl, and bundled "
-         "foundationals untouched — the project itself stays "
-         "initialised; only ingested content is gone.",
-)
-_add_project_task_command(
-    "status",
-    help="Show the project's ingested sources.",
-)
-
-
-def _add_doc_readonly_command(name: str, *, help: str) -> None:
-    """Register `dg <name> TARGET` for a read-only per-doc task.
-    TARGET is a slug (registered in sources.ttl) or a path to the
-    original source file; the task's `resolve_slug` dep does the lookup."""
-    @cli.command(name=name, help=help)
-    @click.argument("target", required=True)
-    def _cmd(target: str):
-        _run_task(name, {
-            "target":  target,
-            "console": console,
-            "path":    Path("."),
-        }, force_tasks=(name,))
-    return _cmd
-
-
-_add_doc_readonly_command(
-    "history",
-    help="List the version history of a doc's graph deltas. "
-         "Pass either a slug or a path to the source.",
-)
-_add_doc_readonly_command(
-    "coverage",
-    help="Report which atomic HTML units are cited in the graph. "
-         "Pass either a slug or a path to the source.",
-)
-
-
-def _setup_logging(debug: bool) -> None:
+def _enable_debug() -> None:
     logging.basicConfig(level=logging.INFO, format="%(name)s | %(message)s")
+    logging.getLogger("src").setLevel(logging.DEBUG)
     logging.getLogger("anthropic").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
-    if debug:
-        logging.getLogger("src").setLevel(logging.DEBUG)
 
 
-def _find_project(source: Path) -> Path:
-    project_root = find_project_root(source.parent) or find_project_root(Path.cwd())
-    if project_root is None:
-        console.print("[red]Error:[/red] not a docgraph project (run `docgraph init`).")
-        sys.exit(1)
-    console.print(f"Project root: [dim]{project_root}[/dim]")
-    return project_root
+@click.command(context_settings={
+    "ignore_unknown_options": True,
+    "help_option_names":      ["-h", "--help"],
+})
+@click.argument("task_name", required=False)
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+@click.option("-f", "--force", is_flag=True,
+              help="Force the task (override its dirty check).")
+@click.option("-d", "--debug", is_flag=True,
+              help="Verbose logging (LLM prompts and responses).")
+def cli(task_name: str | None, args: tuple, force: bool, debug: bool):
+    """docgraph <task> [args...]"""
+    if task_name is None:
+        click.echo(cli.get_help(click.get_current_context()))
+        click.echo("\nTasks: " + ", ".join(sorted(docgraph.tasks)))
+        sys.exit(0)
 
-
-def _anthropic_client():
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        console.print("[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.")
-        sys.exit(1)
-    return AnthropicClient(api_key=api_key)
-
-
-# ── Per-doc task CLI commands (auto-generated) ────────────────────────
-#
-# `dg <task> <pdf>` runs the named task and its dependencies via the
-# task registry. All commands share the same flag set (--note, -x, -f,
-# --debug) so a user who knows one knows them all.
-#
-# The CLI stuffs `ctx["path"]` and configuration into ctx; identity
-# resolves the project root and validates the input itself.
-
-_DOC_TASK_TARGETS = (
-    "recognize", "convert", "extract", "templates", "align",
-    # diagram is hand-written (accepts slug-or-path, has --all flag).
-)
-
-
-def _add_doc_task_command(target_name: str) -> None:
-    """Register `dg <target_name>` as a CLI command that runs the named
-    task (and its deps) via the task registry."""
-    @cli.command(name=target_name,
-                 help=f"Run the '{target_name}' task and its dependencies "
-                      f"for a PDF source. Idempotent — only dirty tasks "
-                      f"actually do work.")
-    @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
-    @click.option("--note", type=str, default=None,
-                  help="Free-text hint passed to the converter LLM.")
-    @click.option("-x", "--exclude", multiple=True, metavar="TASK",
-                  help="Skip this task. Repeatable.")
-    @_force_option(target_name)
-    @click.option("--debug", is_flag=True,
-                  help="Log every LLM prompt and response.")
-    def _cmd(input_path, note, exclude, force_tasks, debug):
-        _setup_logging(debug)
-        _run_task(target_name, {
-            "path":    input_path.resolve(),
-            "console": console,
-            "client":  _anthropic_client(),
-            "model":   DEFAULT_VISION_MODEL,
-            "note":    note,
-        }, exclude=exclude, force_tasks=force_tasks)
-    return _cmd
-
-
-for _name in _DOC_TASK_TARGETS:
-    _add_doc_task_command(_name)
-
-
-@cli.command()
-@click.argument("target", required=False, default=None)
-@click.option("--all", "all_sources", is_flag=True,
-              help="Enrich every registered source.")
-@click.option("--debug", is_flag=True, help="Log every LLM prompt and response.")
-def enrich(target: str | None, all_sources: bool, debug: bool):
-    """Refine entity types via external RDL and extract any newly-unlocked
-    properties.
-
-    Operates on already-extracted Part 14 graphs (built by `docgraph add` or
-    `docgraph extract`). Idempotent — re-running adds nothing new if every
-    refinement has already been applied.
-
-    Currently uses Wikidata as the RDL POC; layered RDL configuration
-    (per-source declarations + multi-RDL federation) lands later.
-    """
-    _setup_logging(debug)
-    project_root = _find_project(Path.cwd())
-
-    if target is None and not all_sources:
-        console.print("[red]Error:[/red] specify a slug or pass --all.")
-        sys.exit(1)
-
-    from src.extract_part14.enrich import enrich_source
-    from src.extract_part14.rdl import POSC_CAESAR, RdlResolver
-
-    # POSC Caesar — Part 14-aligned RDL.
-    rdl_cache_dir = cache_dir(project_root) / "rdl"
-    rdl_resolvers = [RdlResolver(POSC_CAESAR, cache_dir=rdl_cache_dir)]
-
-    client = _anthropic_client()
-
-    targets: list[str]
-    if all_sources:
-        # Pick up every source that has an extract layer to enrich
-        targets = sorted(
-            p.name[: -len(".extract.ttl")]
-            for p in graphs_dir(project_root).glob("*.extract.ttl")
-        )
-    else:
-        targets = [_resolve_slug(project_root, target)]
-
-    total = 0
-    for slug in targets:
-        console.print(f"[bold]enrich[/bold] {slug}")
-        try:
-            added = enrich_source(
-                project_root, slug, rdl_resolvers,
-                client=client, model=DEFAULT_VISION_MODEL,
-                console=console,
-            )
-            total += added
-        except FileNotFoundError as exc:
-            console.print(f"  [yellow]skip[/yellow]: {exc}")
-    console.print(f"\n[green]Done[/green] — {total} new triple(s) across {len(targets)} source(s).")
-
-
-@cli.command()
-@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
-@click.option("--note", type=str, default=None,
-              help="Free-text hint passed to the converter LLM.")
-@click.option("-x", "--exclude", multiple=True, metavar="TASK",
-              help="Skip this task. Repeatable.")
-@_force_option("add")
-@click.option("--debug", is_flag=True,
-              help="Log every LLM prompt and response.")
-def add(input_path: Path, note: str | None,
-        exclude: tuple[str, ...], force_tasks: tuple[str, ...], debug: bool):
-    """Ingest a source into the project graph (full pipeline).
-
-    Same shape as `dg recognize` / `dg convert` / `dg extract` / etc.
-    — it just targets the `add` composite task, which depends on
-    every other per-doc task. Idempotent re-runs no-op cleanly.
-
-    Special-cases TTL inputs (.ttl/.n3): symlinks them into
-    `.docgraph/graphs/` and registers in sources.ttl. No task DAG
-    involved — TTL is its own one-shot pipeline.
-    """
-    _setup_logging(debug)
-    source = input_path.resolve()
-
-    if source.suffix.lower() in TTL_SUFFIXES:
-        try:
-            ingest_ttl(source, _find_project(source), console,
-                       force=bool(force_tasks))
-        except (IngestError, NotImplementedError) as exc:
-            console.print(f"[red]Error:[/red] {exc}")
-            sys.exit(1)
+    if task_name == "help":
+        target = args[0] if args else None
+        if target and target in docgraph.tasks:
+            click.echo((docgraph.tasks[target].fn.__doc__ or "(no docstring)").strip())
+        else:
+            click.echo("Usage: docgraph help <task>")
+            click.echo("Tasks: " + ", ".join(sorted(docgraph.tasks)))
         return
 
-    _run_task("add", {
-        "path":    source,
-        "console": console,
-        "client":  _anthropic_client(),
-        "model":   DEFAULT_VISION_MODEL,
-        "note":    note,
-    }, exclude=exclude, force_tasks=force_tasks)
-
-
-def _resolve_slug(project_root: Path, target: str) -> str:
-    """Resolve *target* to a slug. If *target* is an existing file, look it up
-    in sources.ttl by absolute path, then by content hash; otherwise treat it
-    as a literal slug and verify it's registered.
-    """
-    sources = list_sources(project_root)
-    by_slug = {s["slug"]: s for s in sources}
-
-    p = Path(target)
-    if p.exists() and p.is_file():
-        absolute = str(p.resolve())
-        for s in sources:
-            if s["sourcePath"] == absolute:
-                return s["slug"]
-        # Path didn't match — try hash for moved/renamed files.
-        from src.sources import compute_hash
-        file_hash = compute_hash(p.resolve())
-        for s in sources:
-            if s["fileHash"] == file_hash:
-                return s["slug"]
-        raise click.UsageError(
-            f"{p} is not registered in this project (run `docgraph status` to list sources)."
-        )
-
-    # Not a file — treat as slug.
-    if target in by_slug:
-        return target
-    raise click.UsageError(
-        f"no source registered as {target!r} (run `docgraph status` to list sources)."
-    )
-
-
-# Upstream tasks the diagram standalone CLI must skip — they need ctx
-# fields (path, client, model) that aren't available outside the full
-# add pipeline. The diagram task itself only reads project_root + slug.
-_DIAGRAM_UPSTREAM = ("identity", "recognize", "convert", "load_html",
-                     "extract", "templates", "align", "register")
-
-
-@cli.command()
-@click.argument("target", required=False)
-@click.option("--all", "all_sources", is_flag=True,
-              help="Generate diagrams for every source in the project.")
-@click.option("--format", "fmt", type=click.Choice(["svg", "png"]), default="svg",
-              show_default=True, help="Render format (best-effort via plantuml.com).")
-@click.option("--direction", type=click.Choice(["LR", "TB"]), default="LR",
-              show_default=True, help="Diagram layout direction (left-to-right or top-to-bottom).")
-def diagram(target: str | None, all_sources: bool, fmt: str, direction: str):
-    """Generate a PlantUML diagram from a source's extraction named graph.
-
-    TARGET may be either a slug (e.g. `zahnrechnung-2025`) or a path to the
-    original source file (e.g. `~/Documents/Zahnrechnung2025.pdf`); paths are
-    resolved against the project's sources.ttl.
-
-    Pipeline:
-      docs/<slug>/delta.*.trig  →  docs/<slug>/diagram.puml  →  diagram.svg
-
-    The .puml is always written. Rendering is best-effort over the public
-    PlantUML server; if the network call fails the .puml is still on disk.
-    """
-    if all_sources:
-        project_root = _find_project(Path.cwd())
-        targets = [s["slug"] for s in list_sources(project_root)]
-    elif target:
-        targets = [target]
-    else:
-        console.print("[red]Error:[/red] specify a slug, a file path, or pass --all.")
+    if task_name not in docgraph.tasks:
+        console.print(f"[red]Error:[/red] unknown task {task_name!r}")
+        console.print(f"Available: {', '.join(sorted(docgraph.tasks))}")
         sys.exit(1)
 
-    for t in targets:
-        console.print(f"[bold]{t}[/bold]")
-        _run_task("diagram", {
-            "console":       console,
-            "target":        t,
-            "path":          Path("."),
-            "render_format": fmt,
-            "direction":     direction,
-        }, exclude=_DIAGRAM_UPSTREAM, force_tasks=("diagram",))
+    if debug:
+        _enable_debug()
 
-
-
-
-@cli.command()
-@click.argument("target", required=True)
-@click.option("--no-open", is_flag=True,
-              help="Generate the annotated HTML but don't open it in a browser.")
-def view(target: str, no_open: bool):
-    """Open an annotated HTML view of the document showing extracted entities.
-
-    Generates `.docgraph/docs/<slug>/annotated.html` from the canonical HTML +
-    extract graph: every cited element gets a green highlight + entity
-    label badge; uncovered atomic units stay outlined dashed-red. Hover any
-    cited element to see its URI / types / label; the floating sidebar
-    lists all entities with click-to-jump.
-    """
-    _run_task("view", {
-        "target":  target,
-        "console": console,
-        "path":    Path("."),
-        "no_open": no_open,
-    }, force_tasks=("view",))
-
-
-# ── Delta-history CLI (versioned named graphs) ────────────────────────────
-
-
-@cli.command()
-@click.argument("target", required=True)
-@click.argument("seq_a", type=int, required=True)
-@click.argument("seq_b", type=int, required=True)
-def diff(target: str, seq_a: int, seq_b: int):
-    """Show the composed (added, removed) diff between two seqs of a doc.
-
-    `materialize(at_seq=seq_b)` minus `materialize(at_seq=seq_a)` —
-    i.e. what triples got added/removed by the steps with seq in (seq_a, seq_b].
-    Useful to see "what did the dedup phase actually do" or "what did seqs
-    2..3 contribute" without grepping individual delta files.
-    """
-    _run_task("diff", {
-        "target":  target,
-        "console": console,
-        "path":    Path("."),
-        "seq_a":   seq_a,
-        "seq_b":   seq_b,
-    }, force_tasks=("diff",))
-
-
-@cli.command()
-@click.argument("target", required=True)
-@click.option("--at", "at_seq", type=int, default=None,
-              help="Materialize state at this seq (default: HEAD).")
-def snapshot(target: str, at_seq: int | None):
-    """Write `docs/<slug>/graph[.NNN].ttl` from materialised deltas.
-
-    With `--at <seq>`, writes the historical state after step *seq*
-    to `docs/<slug>/graph.NNN.ttl`.
-
-    To refresh the diagram from the snapshot, run `dg diagram <slug>`.
-    """
-    _run_task("snapshot", {
-        "console": console,
-        "target":  target,
-        "path":    Path("."),
-        "at_seq":  at_seq,
-    }, exclude=_DIAGRAM_UPSTREAM, force_tasks=("snapshot",))
-
-
-_add_project_task_command(
-    "consolidate",
-    help="Promote ext: classes that appear in ≥threshold (default 2) "
-         "docs into the project scope. Each contributing doc gets a "
-         "`consolidate` delta that removes the doc-local class and "
-         "rewrites instance triples to the new canonical URI.",
-)
+    forced = {task_name} if force else set()
+    try:
+        docgraph.run(task_name, {
+            "console":      console,
+            "args":         args,
+            "forced_tasks": forced,
+        }, console=console, force=forced)
+    except (IngestError, NotImplementedError,
+            FileExistsError, NotADirectoryError, click.UsageError) as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

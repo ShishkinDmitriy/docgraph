@@ -98,9 +98,15 @@ def init_project(
     )
 
 
+def _target_dir(ctx) -> Path:
+    """CLI args[0] (default cwd) — the directory to initialise."""
+    args = ctx.get("args", ())
+    return Path(args[0] if args else ".").resolve()
+
+
 @docgraph.task("init")
 def init(ctx) -> None:
-    path = ctx["path"]
+    path = _target_dir(ctx)
     if not path.is_dir():
         raise NotADirectoryError(f"{path} is not a directory")
     init_project(
@@ -111,4 +117,4 @@ def init(ctx) -> None:
 
 @docgraph.dirty("init")
 def init_dirty(ctx) -> bool:
-    return not (ctx["path"] / DOCGRAPH_DIR).exists()
+    return not (_target_dir(ctx) / DOCGRAPH_DIR).exists()

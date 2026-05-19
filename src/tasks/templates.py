@@ -66,6 +66,8 @@ def templates(ctx) -> None:
 
 @docgraph.dirty("templates")
 def templates_dirty(ctx) -> bool:
+    if "full_markdown" not in ctx:
+        return False                    # no HTML loaded — can't fold templates
     if not has_delta_with_step(ctx, "extract"):
         return False
     return (not has_delta_with_step(ctx, "templates")
