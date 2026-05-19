@@ -23,7 +23,7 @@ from src.tasks._registry import docgraph
 def register(ctx) -> None:
     first_delta = delta_path(ctx["project_root"], doc_scope(ctx["slug"]), 1)
     register_source(
-        ctx["project_root"], ctx["slug"], ctx["source"], first_delta,
+        ctx["project_root"], ctx["slug"], ctx["path"], first_delta,
         file_hash=ctx["file_hash"], file_size=ctx["file_size"],
         mime_type="application/pdf",
     )

@@ -27,7 +27,6 @@ from src.extract_part14.walker import DG, LIS, OA, EvidenceSelector, ExtractedEn
 from src.llm import TextBlock
 from src.models import ModelConfig
 from src.project import (
-    PIPELINE_PART14,
     cache_dir,
     graphs_dir,
     init_project,
@@ -77,7 +76,7 @@ def part14_project(tmp_path):
     """A real part14 project with one ingested-style graph file containing
     a couple of entities (constructed by hand — no LLM in setup)."""
     from rich.console import Console
-    init_project(tmp_path, Console(quiet=True), pipeline=PIPELINE_PART14)
+    init_project(tmp_path, Console(quiet=True))
 
     base_ns = Namespace("http://example.org/source/sample/")
     md_uri  = URIRef("http://example.org/source/sample/md")

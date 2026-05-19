@@ -1,13 +1,17 @@
 """ISO 15926 Part 14 extraction pipeline.
 
 This package implements the active extraction pipeline as a decision-tree
-walk over the LIS-14 upper ontology (vendor/ontologies/LIS-14.ttl).
-It's currently the only pipeline in `src/project.py:PIPELINES`; the
-dispatcher in `main.py:_ingest_pdf_dispatched` keeps a slot open for a
-future upper-ontology choice.
+walk over the LIS-14 upper ontology (vendor/ontologies/LIS-14.ttl). A
+future Part 15 / domain-specific pipeline can slot in as a sibling
+package and register its own tasks against
+`src/tasks/_registry.py:docgraph`.
+
+The orchestration lives in `src/tasks/` — each per-doc task (identity,
+recognize, convert, extract, templates, align, register, diagram) is a
+standalone module decorated against the project-wide registry. This
+package provides the Part 14-specific helpers those tasks call into.
 
 Layout:
-  pipeline.py   — top-level extract_pdf_part14() entry point
   loader.py     — builds the in-memory Dataset from vendor/ontologies/ +
                   .docgraph/ (per ARCHITECTURE.md § Storage layout)
   structural.py — recognize + convert delta builders

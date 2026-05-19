@@ -18,7 +18,6 @@ from main import cli
 from src.deltas import StepDelta, delta_path, doc_scope, write_delta
 from src.sources import SOURCE_NS, register_source
 from src.project import (
-    PIPELINE_PART14,
     graphs_dir,
     init_project,
     sources_path,
@@ -33,7 +32,7 @@ def _setup_project_with_doc(tmp_path: Path, slug: str = "demo") -> Path:
     _resolve_slug succeeds, then write two doc-scope delta files."""
     project = tmp_path / "proj"
     project.mkdir()
-    init_project(project, Console(quiet=True), pipeline=PIPELINE_PART14)
+    init_project(project, Console(quiet=True))
 
     # Register a fake source so the slug resolves through sources.ttl.
     fake_file = project / "fake.pdf"
@@ -91,7 +90,7 @@ def test_history_lists_deltas_with_seqs(tmp_path, monkeypatch):
 def test_history_when_no_deltas_yet(tmp_path, monkeypatch):
     project = tmp_path / "proj"
     project.mkdir()
-    init_project(project, Console(quiet=True), pipeline=PIPELINE_PART14)
+    init_project(project, Console(quiet=True))
     # Register a slug without any delta files
     fake_file = project / "x.pdf"; fake_file.write_bytes(b"")
     from src.deltas import scope_dir

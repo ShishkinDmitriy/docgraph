@@ -13,7 +13,7 @@ from rdflib import URIRef
 
 from src.extract_part14 import axioms
 from src.extract_part14.loader import build_dataset, union_view
-from src.project import init_project, PIPELINE_PART14
+from src.project import init_project
 
 
 LIS = "http://rds.posccaesar.org/ontology/lis14/rdl/"
@@ -24,7 +24,7 @@ def ontology(tmp_path_factory):
     """A union-view of a fresh part14 project's loaded ontologies."""
     project_dir = tmp_path_factory.mktemp("part14-axioms")
     from rich.console import Console
-    init_project(project_dir, Console(quiet=True), pipeline=PIPELINE_PART14)
+    init_project(project_dir, Console(quiet=True))
     ds = build_dataset(project_dir)
     return union_view(ds)
 

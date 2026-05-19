@@ -29,12 +29,12 @@ from src.pdfinfo import pdfinfo
 @docgraph.task("recognize", deps=("identity",))
 def recognize(ctx) -> None:
     console = ctx["console"]
-    info = pdfinfo(ctx["source"])
+    info = pdfinfo(ctx["path"])
     if info:
         console.print(f"  pdfinfo: [dim]{info.get('Pages', '?')} page(s), "
                       f"{info.get('Title') or '(no title)'}[/dim]")
     g = build_recognize_graph(
-        file_path    = ctx["source"],
+        file_path    = ctx["path"],
         file_uri     = ctx["file_uri"],
         doc_uri      = ctx["doc_uri"],
         project_root = ctx["project_root"],

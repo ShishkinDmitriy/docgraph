@@ -28,7 +28,7 @@ from src.extract_part14.template_recognizer import (
 from src.extract_part14.walker import ExtractedEntity, LIS
 from src.llm import TextBlock
 from src.models import ModelConfig
-from src.project import init_project, PIPELINE_PART14
+from src.project import init_project
 
 
 EX  = Namespace("http://example.org/src/test/")
@@ -230,7 +230,7 @@ class _BatchedMockLLM:
 def ontology(tmp_path_factory):
     project_dir = tmp_path_factory.mktemp("recognizer-ontology")
     from rich.console import Console
-    init_project(project_dir, Console(quiet=True), pipeline=PIPELINE_PART14)
+    init_project(project_dir, Console(quiet=True))
     ds = build_dataset(project_dir)
     return union_view(ds)
 

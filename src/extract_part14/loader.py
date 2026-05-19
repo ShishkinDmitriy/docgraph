@@ -17,11 +17,9 @@ from src.deltas import (
     materialize,
 )
 from src.project import (
-    PIPELINE_PART14,
     config_path,
     ext_ontology_path,
     graphs_dir,
-    read_pipeline,
     sources_path,
 )
 
@@ -64,13 +62,6 @@ def build_dataset(project_root: Path) -> Dataset:
         isn't yet deltized.
       - sources.ttl + config.ttl + ext.ttl as appropriate.
     """
-    pipeline = read_pipeline(project_root)
-    if pipeline != PIPELINE_PART14:
-        raise LoaderError(
-            f"build_dataset is for part14 projects, but {project_root} "
-            f"declares pipeline={pipeline!r}. Use the part2 loader path."
-        )
-
     ds = Dataset()
 
     # 1. Bundled foundationals — one named graph each.

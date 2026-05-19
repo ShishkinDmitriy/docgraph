@@ -1,8 +1,11 @@
-"""identity — init task: resolve all per-doc identifiers from source.
+"""identity — init task: validate input and resolve all per-doc identifiers.
 
-Always runs (no dirty check), exactly once per `run()` call. Every
-downstream task depends on the ctx fields this populates:
+Always runs (no dirty check), exactly once per `run()` call. Reads
+ctx["path"] (the user-supplied PDF), validates it, finds the
+enclosing `.docgraph/` project, and populates ctx fields that every
+downstream task depends on:
 
+  project_root                                             — enclosing project
   slug, file_uri, doc_uri, html_uri, md_uri, base_ns, sd  — doc identity
   file_hash, file_size                                     — file identity
   agent_uri                                                — LLM agent URI
@@ -15,11 +18,20 @@ stem.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from rdflib import Graph, Namespace, URIRef
 
-from src.project import DOCGRAPH_DIR, DOCS_SUBDIR, doc_dir, sources_path
+from src.project import (
+    DOCGRAPH_DIR,
+    DOCS_SUBDIR,
+    doc_dir,
+    find_project_root,
+    sources_path,
+)
 from src.sources import (
     SOURCE_NS,
+    IngestError,
     compute_hash,
     existing_by_hash,
     make_slug,
@@ -34,21 +46,34 @@ AGENT_NS = Namespace("urn:docgraph:agent:")
 def identity(ctx) -> None:
     if "slug" in ctx:
         return                              # idempotent (rare re-call)
-    source = ctx["source"]
-    ctx["file_hash"] = compute_hash(source)
-    ctx["file_size"] = source.stat().st_size
+
+    path = ctx["path"].resolve()
+    if not path.is_file():
+        raise IngestError(f"{path} is not a file")
+    if path.suffix.lower() != ".pdf":
+        raise IngestError(f"{path.suffix} is not a PDF")
+    ctx["path"] = path
+
+    project_root = find_project_root(path.parent) or find_project_root(Path.cwd())
+    if project_root is None:
+        raise IngestError("not a docgraph project (run `docgraph init`)")
+    ctx["project_root"] = project_root
+    ctx["console"].print(f"Project root: [dim]{project_root}[/dim]")
+
+    ctx["file_hash"] = compute_hash(path)
+    ctx["file_size"] = path.stat().st_size
 
     reg = Graph()
-    reg.parse(sources_path(ctx["project_root"]), format="turtle")
+    reg.parse(sources_path(project_root), format="turtle")
     existing = existing_by_hash(reg, ctx["file_hash"])
 
-    docs_root = ctx["project_root"] / DOCGRAPH_DIR / DOCS_SUBDIR
+    docs_root = project_root / DOCGRAPH_DIR / DOCS_SUBDIR
     docs_root.mkdir(parents=True, exist_ok=True)
 
     if existing is not None:
         ctx["slug"] = str(existing).rsplit(":", 1)[-1].rsplit("/", 1)[-1]
     else:
-        ctx["slug"] = unique_slug(make_slug(source.stem), docs_root)
+        ctx["slug"] = unique_slug(make_slug(path.stem), docs_root)
 
     base_ns         = Namespace(f"{SOURCE_NS}{ctx['slug']}/")
     ctx["base_ns"]  = base_ns
@@ -56,7 +81,7 @@ def identity(ctx) -> None:
     ctx["doc_uri"]  = URIRef(base_ns["doc"])
     ctx["html_uri"] = URIRef(base_ns["html"])
     ctx["md_uri"]   = URIRef(base_ns["md"])
-    ctx["sd"]       = doc_dir(ctx["project_root"], ctx["slug"])
+    ctx["sd"]       = doc_dir(project_root, ctx["slug"])
     ctx["sd"].mkdir(parents=True, exist_ok=True)
 
     # Agent URI is invariant for the whole run (depends only on the

@@ -51,7 +51,7 @@ def convert(ctx) -> None:
     # otherwise reuse the cache and just rewrite the convert delta.
     drop_cache = "convert" in ctx.get("forced_tasks", set())
     docs_raw = load_or_extract_html(
-        ctx["source"], force=drop_cache, client=ctx["client"],
+        ctx["path"], force=drop_cache, client=ctx["client"],
         model=ctx["model"], con=console, note=ctx["note"], html_dir=ctx["sd"],
     )
     convert_ended = now()

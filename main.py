@@ -17,14 +17,9 @@ from src.llm.anthropic import AnthropicClient
 from src.html_io import load_or_extract_html
 from src.models import ModelConfig
 from src.project import (
-    DEFAULT_PIPELINE,
-    PIPELINE_PART14,
-    PIPELINES,
     cache_dir,
     find_project_root,
     graphs_dir,
-    init_project,
-    read_pipeline,
     reset_sources,
 )
 
@@ -39,6 +34,53 @@ DEFAULT_VISION_MODEL = ModelConfig(
 
 console = Console()
 
+# Sentinel for `-f` / `--force` used without a task argument: the
+# CLI body replaces it with the command's target task. So
+# `dg convert foo.pdf --force` ≡ `dg convert foo.pdf --force convert`.
+_FORCE_CURRENT = "_CURRENT_"
+
+
+def _expand_current(force_tasks: tuple[str, ...], target: str) -> tuple[str, ...]:
+    """Replace the _CURRENT_ sentinel (from `--force` without a value)
+    with the command's target task name."""
+    return tuple(target if f == _FORCE_CURRENT else f for f in force_tasks)
+
+
+def _force_option(target: str):
+    """Click decorator for the standard `-f`/`--force` option. With no
+    value, forces the command's target task."""
+    return click.option(
+        "-f", "--force", "force_tasks", multiple=True,
+        is_flag=False, flag_value=_FORCE_CURRENT, metavar="[TASK]",
+        help=("Force a task to run even if its dirty check says clean. "
+              f"With no value, forces this command's task (`-f` ≡ `-f {target}`). "
+              "Repeatable."),
+    )
+
+
+def _run_task(target: str, ctx: dict, *,
+              exclude: tuple[str, ...] = (),
+              force_tasks: tuple[str, ...] = (),
+              error_types: tuple[type, ...] = (IngestError, NotImplementedError),
+              ) -> None:
+    """Generic CLI → task-DAG runner.
+
+    Expands the `--force` _CURRENT_ sentinel against *target*, stuffs
+    `forced_tasks` into ctx, runs the task, catches user-facing errors,
+    and prints the doc slug if the pipeline produced one.
+    """
+    from src.tasks import docgraph
+    forced = set(_expand_current(force_tasks, target))
+    ctx["forced_tasks"] = forced
+    try:
+        docgraph.run(target, ctx, console=console,
+                     exclude=tuple(exclude), force=forced)
+    except error_types as exc:
+        console.print(f"[red]Error:[/red] {exc}")
+        sys.exit(1)
+    if "slug" in ctx:
+        console.print(f"[dim]doc:[/dim] [bold]{ctx['slug']}[/bold]")
+
 
 @click.group()
 def cli():
@@ -46,24 +88,21 @@ def cli():
 
 
 @cli.command()
-@click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
-@click.option("--force", "-f", is_flag=True, help="Reinitialise even if .docgraph/ already exists.")
-@click.option("--pipeline", type=click.Choice(PIPELINES), default=DEFAULT_PIPELINE,
-              show_default=True,
-              help="Upper-ontology pipeline. Currently only 'part14' (ISO 15926 "
-                   "Part 14 / LIS-14) is supported; the option remains as the "
-                   "extension point for a future Part 15 / domain pipeline.")
-def init(directory: Path | None, force: bool, pipeline: str):
-    """Initialise a .docgraph/ project directory (analogous to git init)."""
-    target = (directory or Path.cwd()).resolve()
-    if not target.is_dir():
-        console.print(f"[red]Error:[/red] {target} is not a directory.")
-        sys.exit(1)
-    try:
-        init_project(target, console, force=force, pipeline=pipeline)
-    except FileExistsError as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        sys.exit(1)
+@click.argument("path", type=click.Path(path_type=Path),
+                default=Path("."), required=False)
+@_force_option("init")
+def init(path: Path, force_tasks: tuple[str, ...]):
+    """Initialise a .docgraph/ project directory (analogous to git init).
+
+    Idempotent — if .docgraph/ already exists, the `init` task's dirty
+    check returns False and nothing happens. Use --force to reinit.
+    """
+    _run_task("init", {
+        "path":    path.resolve(),
+        "console": console,
+    },
+    force_tasks=force_tasks,
+    error_types=(IngestError, FileExistsError, NotADirectoryError))
 
 
 @cli.command()
@@ -146,25 +185,14 @@ def _anthropic_client():
     return AnthropicClient(api_key=api_key)
 
 
-def _ingest_pdf_dispatched(project_root: Path, source: Path, **kwargs):
-    """Route to the pipeline configured for this project.
-
-    Currently only Part 14 is wired up; the dispatcher shape is preserved
-    so a future upper-ontology pipeline can slot in via `read_pipeline()`.
-    """
-    pipeline = read_pipeline(project_root)
-    if pipeline == PIPELINE_PART14:
-        from src.extract_part14.pipeline import extract_pdf_part14
-        return extract_pdf_part14(source, project_root, console, **kwargs)
-    raise ValueError(f"unknown pipeline {pipeline!r}; no PDF dispatcher available")
-
-
 # ── Per-doc task CLI commands (auto-generated) ────────────────────────
 #
 # `dg <task> <pdf>` runs the named task and its dependencies via the
-# add registry. All commands share the same flag set (--note, -x, -f,
-# --debug) so a user who knows one knows them all. The framework's
-# dirty checks decide what (if anything) actually runs.
+# task registry. All commands share the same flag set (--note, -x, -f,
+# --debug) so a user who knows one knows them all.
+#
+# The CLI stuffs `ctx["path"]` and configuration into ctx; identity
+# resolves the project root and validates the input itself.
 
 _DOC_TASK_TARGETS = (
     "recognize", "convert", "extract", "templates", "align",
@@ -172,36 +200,9 @@ _DOC_TASK_TARGETS = (
 )
 
 
-def _run_doc_task(target: str, input_path: Path, note: str | None,
-                   exclude: tuple[str, ...], force_tasks: tuple[str, ...],
-                   debug: bool) -> None:
-    """Shared body for every per-doc task CLI command."""
-    _setup_logging(debug)
-    source = input_path.resolve()
-    project_root = _find_project(source)
-    if source.suffix.lower() != ".pdf":
-        console.print(
-            f"[red]Error:[/red] {source.suffix!r} is not supported for "
-            f"`dg {target}`. Only PDF inputs route through the task DAG; "
-            f"use `dg add <file.ttl>` for TTL sources."
-        )
-        sys.exit(2)
-    try:
-        slug = _ingest_pdf_dispatched(
-            project_root, source,
-            client=_anthropic_client(), model=DEFAULT_VISION_MODEL,
-            note=note, target=target,
-            exclude=tuple(exclude), force=tuple(force_tasks),
-        )
-        console.print(f"[dim]doc:[/dim] [bold]{slug}[/bold]")
-    except (IngestError, NotImplementedError) as exc:
-        console.print(f"[red]Error:[/red] {exc}")
-        sys.exit(1)
-
-
 def _add_doc_task_command(target_name: str) -> None:
     """Register `dg <target_name>` as a CLI command that runs the named
-    task (and its deps) via the add registry."""
+    task (and its deps) via the task registry."""
     @cli.command(name=target_name,
                  help=f"Run the '{target_name}' task and its dependencies "
                       f"for a PDF source. Idempotent — only dirty tasks "
@@ -211,12 +212,18 @@ def _add_doc_task_command(target_name: str) -> None:
                   help="Free-text hint passed to the converter LLM.")
     @click.option("-x", "--exclude", multiple=True, metavar="TASK",
                   help="Skip this task. Repeatable.")
-    @click.option("-f", "--force", "force_tasks", multiple=True, metavar="TASK",
-                  help="Force this task to run even if clean. Repeatable.")
+    @_force_option(target_name)
     @click.option("--debug", is_flag=True,
                   help="Log every LLM prompt and response.")
     def _cmd(input_path, note, exclude, force_tasks, debug):
-        _run_doc_task(target_name, input_path, note, exclude, force_tasks, debug)
+        _setup_logging(debug)
+        _run_task(target_name, {
+            "path":    input_path.resolve(),
+            "console": console,
+            "client":  _anthropic_client(),
+            "model":   DEFAULT_VISION_MODEL,
+            "note":    note,
+        }, exclude=exclude, force_tasks=force_tasks)
     return _cmd
 
 
@@ -242,12 +249,6 @@ def enrich(target: str | None, all_sources: bool, debug: bool):
     """
     _setup_logging(debug)
     project_root = _find_project(Path.cwd())
-
-    pipeline = read_pipeline(project_root)
-    if pipeline != PIPELINE_PART14:
-        console.print(f"[red]Error:[/red] enrich is only available for "
-                      f"part14 projects (this project's pipeline is {pipeline!r}).")
-        sys.exit(1)
 
     if target is None and not all_sources:
         console.print("[red]Error:[/red] specify a slug or pass --all.")
@@ -293,8 +294,7 @@ def enrich(target: str | None, all_sources: bool, debug: bool):
               help="Free-text hint passed to the converter LLM.")
 @click.option("-x", "--exclude", multiple=True, metavar="TASK",
               help="Skip this task. Repeatable.")
-@click.option("-f", "--force", "force_tasks", multiple=True, metavar="TASK",
-              help="Force this task to run even if clean. Repeatable.")
+@_force_option("add")
 @click.option("--debug", is_flag=True,
               help="Log every LLM prompt and response.")
 def add(input_path: Path, note: str | None,
@@ -311,18 +311,23 @@ def add(input_path: Path, note: str | None,
     """
     _setup_logging(debug)
     source = input_path.resolve()
-    project_root = _find_project(source)
 
     if source.suffix.lower() in TTL_SUFFIXES:
         try:
-            ingest_ttl(source, project_root, console,
+            ingest_ttl(source, _find_project(source), console,
                        force=bool(force_tasks))
         except (IngestError, NotImplementedError) as exc:
             console.print(f"[red]Error:[/red] {exc}")
             sys.exit(1)
         return
 
-    _run_doc_task("add", input_path, note, exclude, force_tasks, debug)
+    _run_task("add", {
+        "path":    source,
+        "console": console,
+        "client":  _anthropic_client(),
+        "model":   DEFAULT_VISION_MODEL,
+        "note":    note,
+    }, exclude=exclude, force_tasks=force_tasks)
 
 
 def _resolve_slug(project_root: Path, target: str) -> str:

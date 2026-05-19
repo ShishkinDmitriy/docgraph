@@ -42,8 +42,11 @@ from src.tasks._registry import docgraph
 
 # Trigger task registration by importing each task module. Order
 # doesn't matter for correctness (the framework toposorts from
-# deps), but listing in pipeline order makes the package directory
-# listing read like the DAG.
+# deps); the grouping below is purely for readability.
+#
+# Project lifecycle.
+from src.tasks import init          # noqa: F401
+# Per-doc add pipeline (in topological order).
 from src.tasks import identity      # noqa: F401
 from src.tasks import recognize     # noqa: F401
 from src.tasks import convert       # noqa: F401

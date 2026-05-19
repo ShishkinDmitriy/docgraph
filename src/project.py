@@ -49,16 +49,6 @@ ANNOTATED_HTML_FILENAME          = "annotated.html"   # derived viewer artifact
 GRAPH_TTL_FILENAME               = "graph.ttl"        # HEAD-state snapshot (Turtle)
 DIAGRAM_BASENAME                 = "diagram"          # diagram.{puml,svg,png}
 
-# Pipeline registry — currently Part 14 only. The dispatcher shape stays
-# (one entry per upper-ontology choice) so a future Part 15 / domain-specific
-# pipeline can slot in by adding a constant + a branch in
-# main.py:_ingest_pdf_dispatched.
-PIPELINE_PART14  = "part14"
-PIPELINES        = (PIPELINE_PART14,)
-DEFAULT_PIPELINE = PIPELINE_PART14
-
-# Files that may be left over from the pre-Part-2 layout. Removed during migration.
-
 
 def find_project_root(start: Path | None = None) -> Path | None:
     """Walk up from *start* (default: cwd) looking for a directory that contains
@@ -90,9 +80,9 @@ def cache_dir(project_root: Path) -> Path:
 
 
 def graphs_dir(project_root: Path) -> Path:
-    """Legacy `.docgraph/graphs/` — used by the Part 2 pipeline and the
-    (dormant) Part 14 enrich step that still writes flat .ttl files.
-    New Part 14 code uses `doc_dir(slug)` per the per-scope layout."""
+    """Legacy `.docgraph/graphs/` — used by the (dormant) enrich step
+    that still writes flat .ttl files. Current code uses `doc_dir(slug)`
+    per the per-scope layout."""
     return project_root / DOCGRAPH_DIR / GRAPHS_SUBDIR
 
 
@@ -202,15 +192,14 @@ _SOURCES_TTL = """\
 # dg:IngestionRecord (admin) and iso15926:WholeLifeIndividual (the file itself).
 """
 
-# Minimal per-project header for the part14 pipeline. No copies of foundational
-# ontologies — the loader reads them from vendor/ontologies/ at startup based on
-# the dg:pipeline value below. See ARCHITECTURE.md § Storage layout.
-_CONFIG_TTL_PART14 = """\
+# Minimal per-project header. No copies of foundational ontologies —
+# the loader reads them from vendor/ontologies/ at startup.
+# See ARCHITECTURE.md § Storage layout.
+_CONFIG_TTL = """\
 @prefix dg:  <urn:docgraph:vocab:meta#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 
 <> a dg:DocgraphProject ;
-    dg:pipeline   dg:Part14Pipeline ;
     dg:createdAt  "{created_at}"^^xsd:date ;
     dg:version    "0.1.0" .
 """
@@ -223,7 +212,7 @@ _TEMPLATES_REGISTRY_TTL = """\
 # file in the project repo (typically under data/templates/<custom>/).
 # Bundled templates (data/templates/iso14/, data/templates/bridges/) and the
 # core tpl: vocabulary are not registered here — the loader picks them up
-# automatically based on the project's pipeline.
+# automatically.
 """
 
 
@@ -237,20 +226,11 @@ def init_project(
     console: Console,
     *,
     force: bool = False,
-    pipeline: str = DEFAULT_PIPELINE,
 ) -> None:
     """Create the ``.docgraph/`` directory inside *target*.
 
-    *pipeline* picks the upper-ontology pipeline. Currently only "part14"
-    is supported; the parameter remains so a future pipeline can slot in
-    without changing the call sites.
-
     Raises ``FileExistsError`` if ``.docgraph/`` already exists and *force* is False.
-    Raises ``ValueError`` for an unknown pipeline.
     """
-    if pipeline not in PIPELINES:
-        raise ValueError(f"unknown pipeline {pipeline!r}; expected one of {PIPELINES}")
-
     dg_dir   = target / DOCGRAPH_DIR
     docs_dir = dg_dir / DOCS_SUBDIR
     c_dir    = dg_dir / CACHE_SUBDIR
@@ -263,13 +243,13 @@ def init_project(
     dg_dir.mkdir(parents=True)
     docs_dir.mkdir()
     c_dir.mkdir()
-    console.print(f"  created [dim]{dg_dir}[/dim] (pipeline: [bold]{pipeline}[/bold])")
+    console.print(f"  created [dim]{dg_dir}[/dim]")
 
-    # part14: tiny config.ttl + empty templates registry. The loader reads
+    # Tiny config.ttl + empty templates registry. The loader reads
     # foundationals from vendor/ontologies/ at startup.
     from datetime import date
     (dg_dir / CONFIG_FILENAME).write_text(
-        _CONFIG_TTL_PART14.format(created_at=date.today().isoformat())
+        _CONFIG_TTL.format(created_at=date.today().isoformat())
     )
     console.print(f"  wrote   [dim]{CONFIG_FILENAME}[/dim]")
     (dg_dir / "templates.ttl").write_text(_TEMPLATES_REGISTRY_TTL)
@@ -282,24 +262,3 @@ def init_project(
         f"\n[green]Initialised docgraph project in[/green] [bold]{target}[/bold]\n"
         f"Add a source with [dim]docgraph add <file>[/dim]."
     )
-
-
-def read_pipeline(project_root: Path) -> str:
-    """Return the project's pipeline. Currently only "part14".
-
-    Reads `dg:pipeline` from config.ttl when present; defaults to part14
-    otherwise. Raises FileNotFoundError if config.ttl is missing.
-    """
-    cfg = config_path(project_root)
-    if not cfg.is_file():
-        raise FileNotFoundError(
-            f"{CONFIG_FILENAME} not found in {project_root / DOCGRAPH_DIR}; "
-            "project is not properly initialised (run `docgraph init`)."
-        )
-    # The pipeline registry currently only knows about part14, but
-    # `dg:pipeline` is still read so a future config can pin a different
-    # one explicitly.
-    text = cfg.read_text(encoding="utf-8")
-    if "Part14Pipeline" in text:
-        return PIPELINE_PART14
-    return PIPELINE_PART14

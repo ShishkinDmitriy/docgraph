@@ -33,7 +33,7 @@ from src.extract_part14.mega_walker import (
 from src.extract_part14.walker import DG, LIS
 from src.llm import TextBlock
 from src.models import ModelConfig
-from src.project import init_project, PIPELINE_PART14
+from src.project import init_project
 
 
 # ── Mock infra ─────────────────────────────────────────────────────────────
@@ -61,7 +61,7 @@ class MegaMockLLM:
 def ontology(tmp_path_factory):
     project_dir = tmp_path_factory.mktemp("mega-walker-ontology")
     from rich.console import Console
-    init_project(project_dir, Console(quiet=True), pipeline=PIPELINE_PART14)
+    init_project(project_dir, Console(quiet=True))
     ds = build_dataset(project_dir)
     return union_view(ds)
 
