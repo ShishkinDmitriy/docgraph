@@ -3,7 +3,7 @@
 Validates the input PDF and hands off to the task DAG in
 ``pipeline_tasks.py`` (recognize → convert → extract → templates →
 align → register → diagram → add). Each phase is a standalone
-``@add_registry.task`` with its own ``@dirty`` predicate. The
+``@docgraph.task`` with its own ``@dirty`` predicate. The
 recognize task owns identity resolution: it computes the source
 hash, looks up an existing slug in sources.ttl (or mints a fresh
 one), and populates ctx for all downstream tasks.
@@ -63,7 +63,7 @@ def extract_pdf_part14(
     # resolution — it computes the source hash, looks up an existing
     # slug in sources.ttl (or mints a fresh one), and populates ctx
     # with slug/URIs/doc-dir for all downstream tasks.
-    from src.tasks import add_registry
+    from src.tasks import docgraph
     forced_tasks = set(force)
     ctx = {
         "project_root":  project_root,
@@ -74,7 +74,7 @@ def extract_pdf_part14(
         "note":          note,
         "forced_tasks":  forced_tasks,
     }
-    add_registry.run(target, ctx, console=console,
+    docgraph.run(target, ctx, console=console,
                      exclude=exclude, force=forced_tasks)
     return ctx["slug"]
 

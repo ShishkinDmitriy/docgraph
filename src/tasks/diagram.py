@@ -12,10 +12,10 @@ artifacts, not part of the RDF model.
 
 from __future__ import annotations
 
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 
 
-@add_registry.task("diagram", deps=("register",))
+@docgraph.task("diagram", deps=("register",))
 def diagram(ctx) -> None:
     from src.diagram import DiagramError, make_diagram
     console = ctx["console"]
@@ -27,7 +27,7 @@ def diagram(ctx) -> None:
         console.print(f"  [yellow]diagram failed[/yellow]: {exc}")
 
 
-@add_registry.dirty("diagram")
+@docgraph.dirty("diagram")
 def diagram_dirty(ctx) -> bool:
     from src.diagram import diagram_is_current
     return not diagram_is_current(ctx["project_root"], ctx["slug"])

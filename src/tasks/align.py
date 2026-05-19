@@ -20,10 +20,10 @@ from src.tasks._helpers import (
     is_stale_wrt,
     now,
 )
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 
 
-@add_registry.task("align", deps=("templates",))
+@docgraph.task("align", deps=("templates",))
 def align(ctx) -> None:
     # align_doc reads the materialized graph directly — no extracted
     # entity list needed.
@@ -35,7 +35,7 @@ def align(ctx) -> None:
         ctx["console"].print(f"  [dim]aligned {aligned} class(es)[/dim]")
 
 
-@add_registry.dirty("align")
+@docgraph.dirty("align")
 def align_dirty(ctx) -> bool:
     if not has_delta_with_step(ctx, "extract"):
         return False

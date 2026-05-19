@@ -21,10 +21,10 @@ from src.html_io import (
 )
 from src.project import converted_md_path
 from src.sources import IngestError
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 
 
-@add_registry.task("load_html", deps=("convert",))
+@docgraph.task("load_html", deps=("convert",))
 def load_html_task(ctx) -> None:
     if "full_markdown" in ctx:
         return                              # convert just populated it

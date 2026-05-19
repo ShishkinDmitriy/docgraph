@@ -11,17 +11,17 @@ task names) drives PDF ingestion:
   identity → recognize → convert → load_html → extract → templates
         → align → register → diagram → add
 
-`add_registry` (defined in `_registry.py` to avoid circular imports
+`docgraph` (defined in `_registry.py` to avoid circular imports
 between this `__init__` and the per-task modules) holds them. The
-imports below trigger each task's `@add_registry.task(…)` /
-`@add_registry.dirty(…)` decorators so the registry is fully
+imports below trigger each task's `@docgraph.task(…)` /
+`@docgraph.dirty(…)` decorators so the registry is fully
 populated when external callers reach this point.
 
 External callers:
 
     from src.tasks import Registry             # build a custom pipeline
-    from src.tasks import add_registry         # use the add pipeline
-    add_registry.run("add", ctx, console=...)
+    from src.tasks import docgraph         # use the add pipeline
+    docgraph.run("add", ctx, console=...)
 
 Shared task helpers (delta inspection, per-step logging) live in
 `_helpers.py`. Anything used by only one task lives in that task's
@@ -38,7 +38,7 @@ from src.tasks.framework import (
     Task,
     TaskFn,
 )
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 
 # Trigger task registration by importing each task module. Order
 # doesn't matter for correctness (the framework toposorts from
@@ -57,5 +57,5 @@ from src.tasks import add           # noqa: F401
 
 __all__ = [
     "Ctx", "DirtyFn", "FixpointError", "Registry", "Task", "TaskFn",
-    "add_registry",
+    "docgraph",
 ]

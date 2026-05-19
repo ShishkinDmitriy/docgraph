@@ -33,11 +33,11 @@ from src.tasks._helpers import (
     now,
     print_delta_summary,
 )
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 from src.extract_part14.template_recognizer import fold_templates_in_place
 
 
-@add_registry.task("templates", deps=("extract",))
+@docgraph.task("templates", deps=("extract",))
 def templates(ctx) -> None:
     # ontology is set by extract when it runs; rebuild if firing
     # without extract.
@@ -64,7 +64,7 @@ def templates(ctx) -> None:
         print_delta_summary(console, seq, len(td.added), len(td.removed))
 
 
-@add_registry.dirty("templates")
+@docgraph.dirty("templates")
 def templates_dirty(ctx) -> bool:
     if not has_delta_with_step(ctx, "extract"):
         return False

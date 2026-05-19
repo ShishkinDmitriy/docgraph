@@ -25,12 +25,12 @@ from src.sources import (
     make_slug,
     unique_slug,
 )
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 
 AGENT_NS = Namespace("urn:docgraph:agent:")
 
 
-@add_registry.task("identity")
+@docgraph.task("identity")
 def identity(ctx) -> None:
     if "slug" in ctx:
         return                              # idempotent (rare re-call)

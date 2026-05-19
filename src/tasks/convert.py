@@ -40,10 +40,10 @@ from src.tasks._helpers import (
     now,
     print_delta_summary,
 )
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 
 
-@add_registry.task("convert", deps=("recognize",))
+@docgraph.task("convert", deps=("recognize",))
 def convert(ctx) -> None:
     console = ctx["console"]
     convert_started = now()
@@ -121,7 +121,7 @@ def convert(ctx) -> None:
     ctx["document_description"] = document_description
 
 
-@add_registry.dirty("convert")
+@docgraph.dirty("convert")
 def convert_dirty(ctx) -> bool:
     latest = latest_delta_of_step(ctx, "convert")
     if latest is None:

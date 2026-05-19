@@ -28,12 +28,12 @@ from src.tasks._helpers import (
     now,
     print_delta_summary,
 )
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 from src.project import cache_dir
 from rdflib.namespace import RDF
 
 
-@add_registry.task("extract", deps=("load_html",))
+@docgraph.task("extract", deps=("load_html",))
 def extract(ctx) -> None:
     console = ctx["console"]
     ds       = build_dataset(ctx["project_root"])
@@ -86,7 +86,7 @@ def extract(ctx) -> None:
         print_delta_summary(console, seq, len(g), 0)
 
 
-@add_registry.dirty("extract")
+@docgraph.dirty("extract")
 def extract_dirty(ctx) -> bool:
     state = doc_state(ctx)
     if (ctx["html_uri"], RDF.type, DG.HtmlFile) not in state:

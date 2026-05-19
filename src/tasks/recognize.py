@@ -22,11 +22,11 @@ from src.tasks._helpers import (
     now,
     print_delta_summary,
 )
-from src.tasks._registry import add_registry
+from src.tasks._registry import docgraph
 from src.pdfinfo import pdfinfo
 
 
-@add_registry.task("recognize", deps=("identity",))
+@docgraph.task("recognize", deps=("identity",))
 def recognize(ctx) -> None:
     console = ctx["console"]
     info = pdfinfo(ctx["source"])
@@ -52,7 +52,7 @@ def recognize(ctx) -> None:
     print_delta_summary(console, seq, len(g), 0)
 
 
-@add_registry.dirty("recognize")
+@docgraph.dirty("recognize")
 def recognize_dirty(ctx) -> bool:
     latest = latest_delta_of_step(ctx, "recognize")
     if latest is None:
