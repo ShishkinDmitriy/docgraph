@@ -26,7 +26,7 @@ from src.extract_part14.walker import (
 )
 from src.llm import TextBlock
 from src.models import ModelConfig
-from src.project import init_project
+from src.tasks.init import init_project
 
 
 # ── Mock infrastructure ────────────────────────────────────────────────────

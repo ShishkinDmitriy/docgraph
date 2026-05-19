@@ -28,7 +28,7 @@ from src.extract_part14.template_recognizer import (
 from src.extract_part14.walker import ExtractedEntity, LIS
 from src.llm import TextBlock
 from src.models import ModelConfig
-from src.project import init_project
+from src.tasks.init import init_project
 
 
 EX  = Namespace("http://example.org/src/test/")

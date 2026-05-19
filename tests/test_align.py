@@ -29,7 +29,7 @@ from src.extract_part14.ext_ontology import (
     ExtClass,
     class_definitions_graph,
 )
-from src.project import init_project
+from src.tasks.init import init_project
 
 DCTERMS = Namespace("http://purl.org/dc/terms/")
 DEPRECATED = Literal(True, datatype=XSD.boolean)

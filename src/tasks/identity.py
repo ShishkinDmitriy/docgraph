@@ -1,11 +1,11 @@
 """identity — init task: validate input and resolve all per-doc identifiers.
 
 Always runs (no dirty check), exactly once per `run()` call. Reads
-ctx["path"] (the user-supplied PDF), validates it, finds the
-enclosing `.docgraph/` project, and populates ctx fields that every
-downstream task depends on:
+ctx["path"] (the user-supplied PDF; already resolved by the
+resolve_project dep) and ctx["project_root"] (also set by
+resolve_project), validates the PDF, and populates ctx fields that
+every downstream task depends on:
 
-  project_root                                             — enclosing project
   slug, file_uri, doc_uri, html_uri, md_uri, base_ns, sd  — doc identity
   file_hash, file_size                                     — file identity
   agent_uri                                                — LLM agent URI
@@ -18,17 +18,9 @@ stem.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from rdflib import Graph, Namespace, URIRef
 
-from src.project import (
-    DOCGRAPH_DIR,
-    DOCS_SUBDIR,
-    doc_dir,
-    find_project_root,
-    sources_path,
-)
+from src.project import DOCGRAPH_DIR, DOCS_SUBDIR, doc_dir, sources_path
 from src.sources import (
     SOURCE_NS,
     IngestError,
@@ -42,23 +34,18 @@ from src.tasks._registry import docgraph
 AGENT_NS = Namespace("urn:docgraph:agent:")
 
 
-@docgraph.task("identity")
+@docgraph.task("identity", deps=("resolve_project",))
 def identity(ctx) -> None:
     if "slug" in ctx:
         return                              # idempotent (rare re-call)
 
-    path = ctx["path"].resolve()
+    path = ctx["path"]                      # already resolved by resolve_project
     if not path.is_file():
         raise IngestError(f"{path} is not a file")
     if path.suffix.lower() != ".pdf":
         raise IngestError(f"{path.suffix} is not a PDF")
-    ctx["path"] = path
 
-    project_root = find_project_root(path.parent) or find_project_root(Path.cwd())
-    if project_root is None:
-        raise IngestError("not a docgraph project (run `docgraph init`)")
-    ctx["project_root"] = project_root
-    ctx["console"].print(f"Project root: [dim]{project_root}[/dim]")
+    project_root = ctx["project_root"]
 
     ctx["file_hash"] = compute_hash(path)
     ctx["file_size"] = path.stat().st_size

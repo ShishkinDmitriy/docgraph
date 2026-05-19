@@ -13,7 +13,7 @@ from rdflib import URIRef
 
 from src.extract_part14 import axioms
 from src.extract_part14.loader import build_dataset, union_view
-from src.project import init_project
+from src.tasks.init import init_project
 
 
 LIS = "http://rds.posccaesar.org/ontology/lis14/rdl/"

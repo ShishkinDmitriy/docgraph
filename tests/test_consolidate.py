@@ -247,7 +247,7 @@ def _init_project(tmp_path: Path) -> Path:
     """Initialise a minimal Part 14 project so the loader can build a
     dataset that includes LIS-14 + dg as upstream graphs."""
     from rich.console import Console
-    from src.project import init_project
+    from src.tasks.init import init_project
     init_project(tmp_path, Console(quiet=True))
     return tmp_path
 

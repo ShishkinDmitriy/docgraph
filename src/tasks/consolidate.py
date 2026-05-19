@@ -9,9 +9,9 @@ class and rewrites instance triples to the new canonical URI.
 See docs/architecture/rdl-scopes.md for the operation model.
 
 ctx contract:
-    path      — directory whose enclosing `.docgraph/` is the target
-    console   — rich console for user-facing output
-    threshold — optional (default 2)
+    project_root — required (set by resolve_project dep)
+    console      — rich console for user-facing output
+    threshold    — optional (default 2)
 
 Dirty check: clean iff no non-promoted ext-class meets the threshold.
 """
@@ -24,18 +24,9 @@ from pathlib import Path
 from src.deltas import list_scopes, materialize, project_scope
 from src.extract_part14.consolidate import walk_consolidate
 from src.extract_part14.ext_ontology import extract_classes_from_graph
-from src.project import find_project_root
-from src.sources import IngestError
 from src.tasks._registry import docgraph
 
 _DEFAULT_THRESHOLD = 2
-
-
-def _resolve_project(ctx) -> Path:
-    project_root = find_project_root(ctx["path"].resolve())
-    if project_root is None:
-        raise IngestError("not a docgraph project (run `docgraph init`)")
-    return project_root
 
 
 def find_consolidation_candidates(
@@ -63,13 +54,13 @@ def find_consolidation_candidates(
             if len(contribs) >= threshold]
 
 
-@docgraph.task("consolidate")
+@docgraph.task("consolidate", deps=("resolve_project",))
 def consolidate(ctx) -> None:
     console = ctx["console"]
     threshold = ctx.get("threshold", _DEFAULT_THRESHOLD)
     console.print(f"  threshold ≥{threshold} docs")
     decisions = walk_consolidate(
-        _resolve_project(ctx), threshold=threshold, console=console)
+        ctx["project_root"], threshold=threshold, console=console)
     if decisions:
         console.print(f"  → consolidated {len(decisions)} class(es) "
                       f"into project scope")
@@ -78,6 +69,6 @@ def consolidate(ctx) -> None:
 @docgraph.dirty("consolidate")
 def consolidate_dirty(ctx) -> bool:
     return bool(find_consolidation_candidates(
-        _resolve_project(ctx),
+        ctx["project_root"],
         threshold=ctx.get("threshold", _DEFAULT_THRESHOLD),
     ))

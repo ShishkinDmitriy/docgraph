@@ -19,9 +19,9 @@ from src.deltas import StepDelta, delta_path, doc_scope, write_delta
 from src.sources import SOURCE_NS, register_source
 from src.project import (
     graphs_dir,
-    init_project,
     sources_path,
 )
+from src.tasks.init import init_project
 
 
 EX = Namespace("http://example.org/src/cli-test/")

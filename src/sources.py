@@ -8,7 +8,9 @@ This module owns:
   - The `IngestError` exception (any ingestion-time error).
   - Slug + hash utilities shared across pipelines.
   - sources.ttl read/write (`register_source`, `existing_by_hash`,
-    `list_sources`, `remove_source`).
+    `list_sources`, `remove_source`, `reset_sources`).
+  - The empty-file template (`SOURCES_TTL_HEADER`) consumed by both
+    `init` (fresh project) and `clean` (wipe ingested content).
 
 Not in this module: the per-source pipelines themselves — PDFs go
 through `src/tasks/`, TTLs through `src/ttl_ingest.py`.
@@ -29,6 +31,24 @@ from src.project import sources_path
 DG       = Namespace("urn:docgraph:vocab:meta#")
 ISO15926 = Namespace("http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#")
 SOURCE_NS = Namespace("urn:docgraph:source:")
+
+
+# Empty sources.ttl: just the prefix preamble. Written by `init` (new
+# project) and `clean` (wipe ingested content) — both want a registry
+# with no entries.
+SOURCES_TTL_HEADER = """\
+@prefix dg:       <urn:docgraph:vocab:meta#> .
+@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+
+# Registry of ingested sources. Each record is dual-typed as
+# dg:IngestionRecord (admin) and iso15926:WholeLifeIndividual (the file itself).
+"""
+
+
+def reset_sources(project_root: Path) -> None:
+    """Overwrite sources.ttl with an empty registry (header only)."""
+    sources_path(project_root).write_text(SOURCES_TTL_HEADER)
 
 
 class IngestError(Exception):

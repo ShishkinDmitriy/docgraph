@@ -29,8 +29,8 @@ from src.models import ModelConfig
 from src.project import (
     cache_dir,
     graphs_dir,
-    init_project,
 )
+from src.tasks.init import init_project
 
 
 # ── Mock infrastructure ────────────────────────────────────────────────────

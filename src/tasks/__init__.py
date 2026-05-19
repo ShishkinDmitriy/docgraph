@@ -44,6 +44,8 @@ from src.tasks._registry import docgraph
 # doesn't matter for correctness (the framework toposorts from
 # deps); the grouping below is purely for readability.
 #
+# Foundational.
+from src.tasks import resolve_project   # noqa: F401
 # Project lifecycle.
 from src.tasks import init          # noqa: F401
 from src.tasks import clean         # noqa: F401

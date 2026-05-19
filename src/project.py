@@ -20,10 +20,7 @@ Layout (per ARCHITECTURE.md):
       cache/                           — PDF→Markdown intermediate cache
 """
 
-import shutil
 from pathlib import Path
-
-from rich.console import Console
 
 DOCGRAPH_DIR                     = ".docgraph"
 CONFIG_FILENAME                  = "config.ttl"          # project header
@@ -183,82 +180,3 @@ def embeddings_path(project_root: Path) -> Path:
     return project_root / DOCGRAPH_DIR / "embeddings.npz"
 
 
-_SOURCES_TTL = """\
-@prefix dg:       <urn:docgraph:vocab:meta#> .
-@prefix iso15926: <http://rds.posccaesar.org/2008/02/OWL/ISO-15926-2_2003#> .
-@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
-
-# Registry of ingested sources. Each record is dual-typed as
-# dg:IngestionRecord (admin) and iso15926:WholeLifeIndividual (the file itself).
-"""
-
-# Minimal per-project header. No copies of foundational ontologies —
-# the loader reads them from vendor/ontologies/ at startup.
-# See ARCHITECTURE.md § Storage layout.
-_CONFIG_TTL = """\
-@prefix dg:  <urn:docgraph:vocab:meta#> .
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-
-<> a dg:DocgraphProject ;
-    dg:createdAt  "{created_at}"^^xsd:date ;
-    dg:version    "0.1.0" .
-"""
-
-_TEMPLATES_REGISTRY_TTL = """\
-@prefix dg:  <urn:docgraph:vocab:meta#> .
-
-# Registry of user-authored templates loaded by this project.
-# Each entry: a dg:TemplateRegistration with dg:templatePath pointing at a TTL
-# file in the project repo (typically under data/templates/<custom>/).
-# Bundled templates (data/templates/iso14/, data/templates/bridges/) and the
-# core tpl: vocabulary are not registered here — the loader picks them up
-# automatically.
-"""
-
-
-def reset_sources(project_root: Path) -> None:
-    """Overwrite sources.ttl with an empty registry (header only)."""
-    sources_path(project_root).write_text(_SOURCES_TTL)
-
-
-def init_project(
-    target: Path,
-    console: Console,
-    *,
-    force: bool = False,
-) -> None:
-    """Create the ``.docgraph/`` directory inside *target*.
-
-    Raises ``FileExistsError`` if ``.docgraph/`` already exists and *force* is False.
-    """
-    dg_dir   = target / DOCGRAPH_DIR
-    docs_dir = dg_dir / DOCS_SUBDIR
-    c_dir    = dg_dir / CACHE_SUBDIR
-
-    if dg_dir.exists() and not force:
-        raise FileExistsError(f"{dg_dir} already exists. Use --force to reinitialise.")
-    if dg_dir.exists() and force:
-        shutil.rmtree(dg_dir)
-
-    dg_dir.mkdir(parents=True)
-    docs_dir.mkdir()
-    c_dir.mkdir()
-    console.print(f"  created [dim]{dg_dir}[/dim]")
-
-    # Tiny config.ttl + empty templates registry. The loader reads
-    # foundationals from vendor/ontologies/ at startup.
-    from datetime import date
-    (dg_dir / CONFIG_FILENAME).write_text(
-        _CONFIG_TTL.format(created_at=date.today().isoformat())
-    )
-    console.print(f"  wrote   [dim]{CONFIG_FILENAME}[/dim]")
-    (dg_dir / "templates.ttl").write_text(_TEMPLATES_REGISTRY_TTL)
-    console.print(f"  wrote   [dim]templates.ttl[/dim]")
-
-    (dg_dir / SOURCES_FILENAME).write_text(_SOURCES_TTL)
-    console.print(f"  wrote   [dim]{SOURCES_FILENAME}[/dim]")
-
-    console.print(
-        f"\n[green]Initialised docgraph project in[/green] [bold]{target}[/bold]\n"
-        f"Add a source with [dim]docgraph add <file>[/dim]."
-    )

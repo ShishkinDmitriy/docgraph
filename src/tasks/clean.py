@@ -6,13 +6,9 @@ resets sources.ttl to empty. Leaves config.ttl, templates.ttl, and
 foundational ontologies untouched — the project itself stays
 initialised; only the ingested content is gone.
 
-The CLI prompts for confirmation before invoking this task (or pass
-`-y` to skip). Once `_run_task("clean", ...)` is called, the removal
-is unconditional.
-
 ctx contract:
-    path    — directory whose enclosing `.docgraph/` is the target
-    console — rich console for user-facing output
+    project_root — required (set by resolve_project dep)
+    console      — rich console for user-facing output
 """
 
 from __future__ import annotations
@@ -20,22 +16,9 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from src.project import (
-    DOCGRAPH_DIR,
-    DOCS_SUBDIR,
-    find_project_root,
-    graphs_dir,
-    reset_sources,
-)
-from src.sources import IngestError
+from src.project import DOCGRAPH_DIR, DOCS_SUBDIR, graphs_dir
+from src.sources import reset_sources
 from src.tasks._registry import docgraph
-
-
-def _resolve_project(ctx) -> Path:
-    project_root = find_project_root(ctx["path"].resolve())
-    if project_root is None:
-        raise IngestError("not a docgraph project (run `docgraph init`)")
-    return project_root
 
 
 def list_targets(project_root: Path) -> list[Path]:
@@ -54,9 +37,9 @@ def list_targets(project_root: Path) -> list[Path]:
     return targets
 
 
-@docgraph.task("clean")
+@docgraph.task("clean", deps=("resolve_project",))
 def clean(ctx) -> None:
-    project_root = _resolve_project(ctx)
+    project_root = ctx["project_root"]
     console = ctx["console"]
 
     targets = list_targets(project_root)
@@ -80,7 +63,7 @@ def clean(ctx) -> None:
 
 @docgraph.dirty("clean")
 def clean_dirty(ctx) -> bool:
-    project_root = _resolve_project(ctx)
+    project_root = ctx["project_root"]
     if list_targets(project_root):
         return True
     from src.embeddings import EMBEDDINGS_FILENAME
