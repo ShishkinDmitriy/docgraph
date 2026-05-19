@@ -47,7 +47,7 @@ class DiagramError(Exception):
     pass
 
 
-@docgraph.task("diagram", deps=("snapshot",))
+@docgraph.task("diagram", deps=("resolve_slug", "snapshot"))
 def diagram(ctx) -> None:
     console = ctx["console"]
     try:

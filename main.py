@@ -9,12 +9,9 @@ from pathlib import Path
 import click
 from rdflib import URIRef
 from rich.console import Console
-from rich.table import Table
-
 from src.sources import IngestError, list_sources
 from src.ttl_ingest import TTL_SUFFIXES, ingest_ttl
 from src.llm.anthropic import AnthropicClient
-from src.html_io import load_or_extract_html
 from src.models import ModelConfig
 from src.project import (
     cache_dir,
@@ -126,6 +123,37 @@ _add_project_task_command(
          "sources.ttl. Leaves config.ttl, templates.ttl, and bundled "
          "foundationals untouched — the project itself stays "
          "initialised; only ingested content is gone.",
+)
+_add_project_task_command(
+    "status",
+    help="Show the project's ingested sources.",
+)
+
+
+def _add_doc_readonly_command(name: str, *, help: str) -> None:
+    """Register `dg <name> TARGET` for a read-only per-doc task.
+    TARGET is a slug (registered in sources.ttl) or a path to the
+    original source file; the task's `resolve_slug` dep does the lookup."""
+    @cli.command(name=name, help=help)
+    @click.argument("target", required=True)
+    def _cmd(target: str):
+        _run_task(name, {
+            "target":  target,
+            "console": console,
+            "path":    Path("."),
+        }, force_tasks=(name,))
+    return _cmd
+
+
+_add_doc_readonly_command(
+    "history",
+    help="List the version history of a doc's graph deltas. "
+         "Pass either a slug or a path to the source.",
+)
+_add_doc_readonly_command(
+    "coverage",
+    help="Report which atomic HTML units are cited in the graph. "
+         "Pass either a slug or a path to the source.",
 )
 
 
@@ -359,122 +387,26 @@ def diagram(target: str | None, all_sources: bool, fmt: str, direction: str):
     The .puml is always written. Rendering is best-effort over the public
     PlantUML server; if the network call fails the .puml is still on disk.
     """
-    project_root = find_project_root(Path.cwd())
-    if project_root is None:
-        console.print("[red]Error:[/red] not a docgraph project (run `docgraph init`).")
-        sys.exit(1)
-
     if all_sources:
-        slugs = [s["slug"] for s in list_sources(project_root)]
+        project_root = _find_project(Path.cwd())
+        targets = [s["slug"] for s in list_sources(project_root)]
     elif target:
-        try:
-            slugs = [_resolve_slug(project_root, target)]
-        except click.UsageError as exc:
-            console.print(f"[red]Error:[/red] {exc.message}")
-            sys.exit(1)
+        targets = [target]
     else:
         console.print("[red]Error:[/red] specify a slug, a file path, or pass --all.")
         sys.exit(1)
 
-    for s in slugs:
-        console.print(f"[bold]{s}[/bold]")
+    for t in targets:
+        console.print(f"[bold]{t}[/bold]")
         _run_task("diagram", {
             "console":       console,
-            "project_root":  project_root,
-            "slug":          s,
+            "target":        t,
+            "path":          Path("."),
             "render_format": fmt,
             "direction":     direction,
         }, exclude=_DIAGRAM_UPSTREAM, force_tasks=("diagram",))
 
 
-@cli.command()
-@click.argument("target", required=True)
-def coverage(target: str):
-    """Report which atomic units of the source HTML are cited in the graph.
-
-    For each element with `id="id-N"` in the canonical HTML, check whether
-    any graph triple cites `<doc#id-N>` directly OR cites a `<doc#class-N>`
-    fragment that covers it. The report shows total coverage, lists
-    uncovered units (so you can see what the extractor missed), and breaks
-    down by data-note section when those are present.
-
-    Pass either a slug (registered in sources.ttl) or a path to the source.
-    """
-    from src.coverage import coverage_for_files
-
-    project_root = _find_project(Path.cwd())
-    slug = _resolve_slug(project_root, target)
-
-    # HTML lives inside the per-doc dir as `docs/<slug>/converted.html`
-    # (single-doc PDFs) or `docs/<slug>/converted.<part>.html` (multi-doc).
-    from src.html_io import html_paths
-    from src.project import doc_dir as _doc_dir
-    from src.deltas import doc_scope, materialize
-    sd = _doc_dir(project_root, slug)
-    found = html_paths(sd) if sd.exists() else []
-    html_path: Path | None = found[0] if found else None
-
-    # Materialize the extract graph from the doc-scope deltas to a temp
-    # file the coverage analyser can read.
-    import tempfile
-    g = materialize(project_root, doc_scope(slug))
-    if html_path is None or len(g) == 0:
-        console.print(f"[red]Error:[/red] {slug!r} not found (HTML or graph missing).")
-        sys.exit(1)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".ttl", delete=False) as tf:
-        graph_path = Path(tf.name)
-    g.serialize(destination=str(graph_path), format="turtle")
-
-    report = coverage_for_files(html_path, graph_path)
-
-    # Headline
-    console.print(f"\n[bold]Coverage[/bold]  {slug}")
-    console.print(f"  HTML:  [dim]{html_path.relative_to(project_root)}[/dim]")
-    console.print(f"  Graph: [dim]{graph_path.relative_to(project_root)}[/dim]\n")
-
-    if report.total == 0:
-        console.print("  [yellow]No atomic units found in HTML.[/yellow]")
-        return
-
-    pct_color = "green" if report.percent >= 80 else ("yellow" if report.percent >= 50 else "red")
-    console.print(
-        f"  Atomic units cited: "
-        f"[bold]{report.covered}[/bold] / [bold]{report.total}[/bold]  "
-        f"[{pct_color}]({report.percent:.0f}%)[/{pct_color}]"
-    )
-    n_class_cites = sum(1 for c in report.citations if c.startswith("class-"))
-    n_id_cites    = sum(1 for c in report.citations if c.startswith("id-"))
-    console.print(
-        f"  Citation fragments: [bold]{n_id_cites}[/bold] id-N, "
-        f"[bold]{n_class_cites}[/bold] class-N\n"
-    )
-
-    # Uncovered list
-    uncovered = report.uncovered
-    if uncovered:
-        from rich.markup import escape as _esc
-        console.print(f"[bold]Uncovered atomic units[/bold]  ({len(uncovered)})")
-        for u in uncovered:
-            section = f"  [dim]({_esc(u.section)})[/dim]" if u.section else ""
-            text = _esc(u.text) if u.text else "[dim](empty)[/dim]"
-            cls = f"  [dim].{u.css_class}[/dim]" if u.css_class else ""
-            console.print(f"  #[bold]{u.id_}[/bold] <{u.tag}> {text}{cls}{section}")
-        console.print()
-
-    # Per-section breakdown
-    sections: dict[str | None, list[int]] = {}   # section → [covered, total]
-    for u in report.units:
-        sec_bucket = sections.setdefault(u.section, [0, 0])
-        sec_bucket[1] += 1
-        if u.id_ in report.covered_ids:
-            sec_bucket[0] += 1
-    if any(s for s in sections if s):
-        from rich.markup import escape as _esc
-        console.print("[bold]By section[/bold]")
-        for sec, (cov, tot) in sorted(sections.items(), key=lambda kv: (kv[0] or "")):
-            label = _esc(sec) if sec else "[dim](no enclosing data-note)[/dim]"
-            color = "green" if cov == tot else ("yellow" if cov > 0 else "red")
-            console.print(f"  [{color}]{cov}/{tot}[/{color}]  {label}")
 
 
 @cli.command()
@@ -484,92 +416,21 @@ def coverage(target: str):
 def view(target: str, no_open: bool):
     """Open an annotated HTML view of the document showing extracted entities.
 
-    Generates `.docgraph/annotated/<slug>.html` from the canonical HTML +
+    Generates `.docgraph/docs/<slug>/annotated.html` from the canonical HTML +
     extract graph: every cited element gets a green highlight + entity
     label badge; uncovered atomic units stay outlined dashed-red. Hover any
     cited element to see its URI / types / label; the floating sidebar
     lists all entities with click-to-jump.
-
-    The annotated view is fully derived — regenerable any time, never the
-    source of truth. Pass --no-open to skip the browser launch.
     """
-    from src.annotated_view import render_annotated_view
-
-    project_root = _find_project(Path.cwd())
-    slug = _resolve_slug(project_root, target)
-
-    from src.project import (
-        annotated_html_path as _ann_path,
-        doc_dir as _doc_dir,
-    )
-    from src.html_io import html_paths
-    from src.deltas import doc_scope, materialize
-    sd = _doc_dir(project_root, slug)
-    found = html_paths(sd) if sd.exists() else []
-    html_path: Path | None = found[0] if found else None
-
-    import tempfile
-    g = materialize(project_root, doc_scope(slug))
-    if html_path is None or len(g) == 0:
-        console.print(f"[red]Error:[/red] {slug!r} not found (HTML or graph missing).")
-        sys.exit(1)
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".ttl", delete=False) as tf:
-        graph_path = Path(tf.name)
-    g.serialize(destination=str(graph_path), format="turtle")
-
-    out_path = _ann_path(project_root, slug)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    annotated = render_annotated_view(html_path, graph_path, title=slug)
-    out_path.write_text(annotated, encoding="utf-8")
-    console.print(f"  wrote   [dim]{out_path.relative_to(project_root)}[/dim]")
-
-    if not no_open:
-        import webbrowser
-        webbrowser.open(out_path.as_uri())
+    _run_task("view", {
+        "target":  target,
+        "console": console,
+        "path":    Path("."),
+        "no_open": no_open,
+    }, force_tasks=("view",))
 
 
 # ── Delta-history CLI (versioned named graphs) ────────────────────────────
-
-
-@cli.command()
-@click.argument("target", required=True)
-def history(target: str):
-    """List the version history of a doc's graph deltas.
-
-    For every `<scope-prefix>.NNN.trig` delta file in the doc's scope,
-    prints: seq, step, +N/-M triple counts, agent (if recorded), timestamp.
-    Pass either a slug (registered in sources.ttl) or a path to the source.
-    """
-    from src.deltas import doc_scope, list_deltas_for_scope, read_delta
-
-    project_root = _find_project(Path.cwd())
-    slug = _resolve_slug(project_root, target)
-
-    paths = list_deltas_for_scope(project_root, doc_scope(slug))
-    if not paths:
-        from src.deltas import scope_dir
-        sd = scope_dir(project_root, doc_scope(slug))
-        console.print(f"[yellow]No delta files for[/yellow] [bold]{slug}[/bold].")
-        console.print(f"  (Looked under {sd.relative_to(project_root)}/delta.NNN.trig)")
-        return
-
-    console.print(f"\n[bold]History[/bold]  {slug}\n")
-    for path in paths:
-        try:
-            delta = read_delta(path)
-        except ValueError as exc:
-            console.print(f"  [red]seq=? — {path.name}: {exc}[/red]")
-            continue
-        added_n   = len(delta.added)
-        removed_n = len(delta.removed)
-        added_str   = f"[green]+{added_n}[/green]"   if added_n   else "[dim]+0[/dim]"
-        removed_str = f"[red]-{removed_n}[/red]"     if removed_n else "[dim]-0[/dim]"
-        agent_str   = (f"  [dim]agent: {delta.agent}[/dim]" if delta.agent else "")
-        ts_str      = (f"  [dim]{delta.timestamp.isoformat()}[/dim]" if delta.timestamp else "")
-        console.print(f"  [bold]seq {delta.seq:>3}[/bold]  "
-                      f"{delta.step:<12} {added_str:>15} {removed_str:>15}"
-                      f"{ts_str}{agent_str}")
-    console.print()
 
 
 @cli.command()
@@ -584,38 +445,13 @@ def diff(target: str, seq_a: int, seq_b: int):
     Useful to see "what did the dedup phase actually do" or "what did seqs
     2..3 contribute" without grepping individual delta files.
     """
-    from src.deltas import doc_scope, materialize
-
-    project_root = _find_project(Path.cwd())
-    slug = _resolve_slug(project_root, target)
-    scope = doc_scope(slug)
-
-    state_a = materialize(project_root, scope, at_seq=seq_a)
-    state_b = materialize(project_root, scope, at_seq=seq_b)
-    a_set = set(state_a)
-    b_set = set(state_b)
-    added   = b_set - a_set
-    removed = a_set - b_set
-
-    console.print(f"\n[bold]Diff[/bold]  {slug}  "
-                  f"seq {seq_a} → {seq_b}\n")
-    console.print(f"  Added:   [green]+{len(added)}[/green] triples")
-    console.print(f"  Removed: [red]-{len(removed)}[/red] triples\n")
-
-    if added:
-        console.print("[bold green]+ Added[/bold green]")
-        for triple in sorted(added, key=str)[:50]:
-            console.print(f"  [green]+[/green]  {triple[0]}  {triple[1]}  {triple[2]}")
-        if len(added) > 50:
-            console.print(f"  [dim]…and {len(added) - 50} more[/dim]")
-        console.print()
-    if removed:
-        console.print("[bold red]- Removed[/bold red]")
-        for triple in sorted(removed, key=str)[:50]:
-            console.print(f"  [red]-[/red]  {triple[0]}  {triple[1]}  {triple[2]}")
-        if len(removed) > 50:
-            console.print(f"  [dim]…and {len(removed) - 50} more[/dim]")
-        console.print()
+    _run_task("diff", {
+        "target":  target,
+        "console": console,
+        "path":    Path("."),
+        "seq_a":   seq_a,
+        "seq_b":   seq_b,
+    }, force_tasks=("diff",))
 
 
 @cli.command()
@@ -630,13 +466,11 @@ def snapshot(target: str, at_seq: int | None):
 
     To refresh the diagram from the snapshot, run `dg diagram <slug>`.
     """
-    project_root = _find_project(Path.cwd())
-    slug = _resolve_slug(project_root, target)
     _run_task("snapshot", {
-        "console":      console,
-        "project_root": project_root,
-        "slug":         slug,
-        "at_seq":       at_seq,
+        "console": console,
+        "target":  target,
+        "path":    Path("."),
+        "at_seq":  at_seq,
     }, exclude=_DIAGRAM_UPSTREAM, force_tasks=("snapshot",))
 
 
@@ -647,38 +481,6 @@ _add_project_task_command(
          "`consolidate` delta that removes the doc-local class and "
          "rewrites instance triples to the new canonical URI.",
 )
-
-
-@cli.command()
-@click.argument("directory", type=click.Path(path_type=Path), default=None, required=False)
-def status(directory: Path | None):
-    """Show the project's ingested sources."""
-    project_root = find_project_root((directory or Path.cwd()).resolve())
-    if project_root is None:
-        console.print("[red]Error:[/red] not a docgraph project (run `docgraph init`).")
-        sys.exit(1)
-
-    sources = list_sources(project_root)
-    console.print(f"Project: [dim]{project_root}[/dim]")
-    console.print(f"Sources: [bold]{len(sources)}[/bold]\n")
-    if not sources:
-        return
-
-    table = Table(show_header=True, header_style="bold cyan")
-    table.add_column("Slug")
-    table.add_column("Label")
-    table.add_column("Mime")
-    table.add_column("Size", justify="right")
-    table.add_column("Added")
-    for s in sources:
-        table.add_row(
-            s["slug"],
-            s["label"],
-            s["mimeType"],
-            f"{s['fileSize']:,}",
-            s["addedAt"][:19],  # trim sub-second / tz tail for the table
-        )
-    console.print(table)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ from src.project import doc_dir, graph_ttl_path
 from src.tasks._registry import docgraph
 
 
-@docgraph.task("snapshot", deps=("register",))
+@docgraph.task("snapshot", deps=("resolve_slug", "register"))
 def snapshot(ctx) -> None:
     console = ctx["console"]
     at_seq = ctx.get("at_seq")
